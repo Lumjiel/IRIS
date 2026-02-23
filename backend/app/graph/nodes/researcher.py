@@ -107,3 +107,14 @@ def research_node(state: AgentState):
                     print(f"--- [Web] 搜索 {q} 失败: {e} ---")
             
     return {"search_results": results}
+
+# 测试
+# def test():
+#     state:AgentState = {
+#         'query':'Transformer',
+#         'plan':['Transformer发展历程','Transformer原理'],
+#         'search_mode':'hybird'
+#     }
+#     res = research_node(state)
+#     print(res)
+# test()

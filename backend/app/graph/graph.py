@@ -27,8 +27,8 @@ def should_continue(state: AgentState):
     返回下一个节点的名称 (字符串) 或 END。
     """
     # 1. 防止死循环：如果已经改了 3 次，强制结束
-    current_revision = state.get("revision_number", 1)
-    if current_revision > 3:
+    current_revision = state.get("revision_number", 0)
+    if current_revision >= 3:
         print("--- [路由] 已达到最大重试次数，强制结束 ---")
         return END
 

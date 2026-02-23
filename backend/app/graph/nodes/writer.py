@@ -12,7 +12,7 @@ WRITE_PROMPT = ChatPromptTemplate.from_template(
     {content}
     审查意见（如果有）：
     {critique_section}
-    
+    不能捏造事实，每个结论都要对应资料里的证据点。
     请写一份结构清晰、有深度的调研报告，且文章题目很有水平，并且能吸引人，使用 Markdown 格式。
     """
 )

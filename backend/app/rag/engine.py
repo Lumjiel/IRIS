@@ -1,11 +1,62 @@
 import os
 import shutil
-from typing import List
+from typing import Any, List, Optional
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_core import vectorstores
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.embeddings import DashScopeEmbeddings
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+
+try:
+    from sentence_transformers import CrossEncoder
+except ImportError:
+    CrossEncoder = None
+
+RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+_reranker = None
+
+def get_reranker():
+    global _reranker
+    if _reranker is not None:
+        return _reranker
+    if CrossEncoder is None:
+        raise RuntimeError(
+            "未安装 sentence-transformers，无法启用 reranking。请执行：pip install sentence-transformers"
+        )
+    _reranker = CrossEncoder(RERANKER_MODEL_NAME)
+    return _reranker
+
+class RerankRetriever(BaseRetriever):
+    """
+    两阶段检索：
+    1) Chroma 向量召回 fetch_k 个候选
+    2) Cross-Encoder rerank
+    3) 返回 top_k
+    """
+
+    vectorstore: Any
+    reranker: Any
+    top_k: int = 5
+    fetch_k: int = 20
+
+    def _get_relevant_documents(self, query: str) -> list[Document]:
+        # 1) 先召回更多候选
+        candidates: list[Document] = self.vectorstore.similarity_search(query, k=self.fetch_k)
+        if not candidates:
+            return []
+
+        # 2) rerank：对 (query, doc_text) 打分
+        pairs = [(query, d.page_content) for d in candidates]
+        scores = self.reranker.predict(pairs)
+
+        # 3) 按分数排序，取 top_k
+        ranked = sorted(zip(candidates, scores), key=lambda x: float(x[1]), reverse=True)
+        top_docs = [doc for doc, _ in ranked[: self.top_k]]
+
+        return top_docs
 
 # 定义数据存储路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,7 +87,7 @@ def reset_knowledge_base():
     try:
         if os.path.exists(DB_PATH):
             # 初始化一个 vectorstore 实例
-            vectorstore = Chroma(persist_directory=DB_PATH, embedding=embeddings)
+            vectorstore = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
             
             # 尝试删除默认的 collection (通常叫 'langchain')
             # 这会清空所有向量数据，但保留文件结构，不会触发文件锁错误
@@ -97,7 +148,10 @@ def get_retriever():
     
     # 加载已存在的数据库
     vectorstore = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
-    
+    top_k = 5
+    fetch_k = 20
+    reranker = get_reranker()
     # 返回检索器
     # k=5 表示每次搜索最相似的 5 段话
-    return vectorstore.as_retriever(search_kwargs={"k": 5})
+    return RerankRetriever(vectorstore=vectorstore, reranker=reranker, top_k=top_k, fetch_k=fetch_k)
+

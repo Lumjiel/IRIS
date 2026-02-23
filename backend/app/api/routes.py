@@ -12,7 +12,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(CURRENT_DIR, "checkpoints.db")
-print(f"📁 记忆数据库将保存在当前运行目录: {DB_PATH}")
+# print(f"📁 记忆数据库将保存在当前运行目录: {DB_PATH}")
 router = APIRouter()
 
 # 定义请求体：前端只需要传一个 query
@@ -72,7 +72,7 @@ async def chat_endpoint(request: ChatRequest):
         # 初始化状态，把前端传来的 search_mode 塞进去
         initial_state = {
             "query": request.query, 
-            "revision_number": 1,
+            "revision_number": 0,
             "search_mode": request.search_mode 
         }
         

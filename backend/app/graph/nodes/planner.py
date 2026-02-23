@@ -29,3 +29,12 @@ def plan_node(state: AgentState):
     
     # 更新状态
     return {"plan": plans}
+
+def test():
+    state:AgentState={
+        "query":"Transformer发展现状"
+    }
+    print(plan_node(state))
+
+# python -m app.graph.nodes.planner
+# test()
