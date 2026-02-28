@@ -16,18 +16,15 @@ def route_query(state: AgentState):
     判断用户输入是“新查询”还是“修改指令”
     """
     query = state["query"]
-    # 获取当前是否已有报告
     has_report = bool(state.get("final_report", "").strip())
 
     print(f"--- [Router] 正在分析意图: '{query}' (已有报告: {has_report}) ---")
 
-    # 如果根本没有历史报告，肯定是新任务，直接去 planner
     if not has_report:
         return "planner"
     final_report = state["final_report"]
     report = final_report[:50]
 
-    # 如果有报告，让 LLM 判断
     prompt = f"""
     当前系统已经生成了一份研究报告。
     用户的最新输入是: "{query}"。

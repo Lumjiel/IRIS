@@ -4,7 +4,7 @@ from app.graph.state import AgentState
 
 llm = get_llm()
 
-# 提示词：教 AI 怎么做计划
+
 PLAN_PROMPT = ChatPromptTemplate.from_template(
     """你是一个专业的调研助手。
     针对用户的问题：{query}
@@ -19,15 +19,9 @@ PLAN_PROMPT = ChatPromptTemplate.from_template(
 def plan_node(state: AgentState):
     print("--- [节点] 正在规划搜索路径 ---")
     query = state["query"]
-    critique = state.get("critique", "") # 获取审查意见
-    
-    # 调用 LLM
+    critique = state.get("critique", "") 
     response = llm.invoke(PLAN_PROMPT.format(query=query, critique=critique))
-    
-    # 解析结果：把 "A, B, C" 变成 ["A", "B", "C"]
     plans = [p.strip() for p in response.content.split(",")]
-    
-    # 更新状态
     return {"plan": plans}
 
 def test():

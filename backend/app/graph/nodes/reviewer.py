@@ -6,7 +6,7 @@ from app.graph.state import AgentState
 
 llm = get_llm(model_type="smart")
 
-# 审查官的提示词
+
 REVIEW_PROMPT = ChatPromptTemplate.from_template(
     """你是一个严厉的审核员。
     请检查以下报告是否充分回答了用户的问题：{query}
@@ -21,12 +21,10 @@ REVIEW_PROMPT = ChatPromptTemplate.from_template(
     }}
     """
 )
-# 处理JSON字符串
+
 def _clean_json_text(s: str) -> str:
-    # 去掉常见 code fence，并裁掉首尾杂质
     s = (s or "").strip()
     s = s.replace("```json", "").replace("```", "").strip()
-    # 如果模型在 JSON 前后夹了废话，尝试截取第一个 { 到最后一个 }
     l = s.find("{")
     r = s.rfind("}")
     if l != -1 and r != -1 and r > l:
@@ -37,10 +35,10 @@ def review_node(state: AgentState):
     print("--- [节点] 正在审查报告质量 ---")
     query = state["query"]
     report = state["final_report"]
-    # 获取当前的循环次数，如果没有则默认为 1
+
     num = state.get("revision_number", 0)
     
-    # 简单的 JSON 解析逻辑 (生产环境建议用 Pydantic OutputParser)
+
     response = llm.invoke(REVIEW_PROMPT.format(query=query, report=report))
     raw = response.content
     content = _clean_json_text(raw)
@@ -49,7 +47,6 @@ def review_node(state: AgentState):
     try:
         result = json.loads(content)
     except Exception as e1:
-        # 轻量重试，强调只输出JSON
         retry_prompt = f'''
         你刚才的输出无法被 JSON 解析。
         请只输出一行合法 JSON，不要 Markdown，不要解释：
