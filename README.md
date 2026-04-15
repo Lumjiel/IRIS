@@ -1,161 +1,135 @@
-# 🌐 IRIS (Intelligent Research Insight System)
+# 🌐 IRIS 智能竞品调研系统
 
-> **IRIS** 是一个基于 **Agentic Workflow（智能体工作流）** 的自动化深度调研与报告生成系统。它摒弃了传统单向 RAG（检索增强生成）的线性问答模式，通过构建多节点状态机（State Machine），实现了从**意图识别、路径规划、动态检索（混合/本地）、深度撰写到自我审查与局部微调**的全自动闭环。
-### 演示截图 (Demo Screenshots)
+> 面向产品/市场人员的竞品调研与报告生成 Agent。支持上传内部文档 + 联网搜索，Agent 自动规划搜索策略、多源检索、撰写结构化竞品分析报告，质量不达标自动重查重写。
 
-#### 1. 系统主界面
-![IRIS 主界面](./docs/demo1.jpeg)
-*系统主界面展示，包含对话输入区、文件上传区和响应展示区*
+### 系统界面
 
-#### 2. 报告生成效果
-![IRIS 报告生成](./docs/demo2.jpeg)
-*系统生成的深度研究报告示例，包含格式化文本、数学公式和图表*
-
-## ✨ 核心特性 (Key Features)
-
-* 🧠 **Agentic 工作流引擎 (Powered by LangGraph)**
-  * 采用图结构（Graph-based）替代传统的链式（LCEL）调用，支持复杂的条件分支与循环流转。
-  * 内置 **Router（路由分配）**, **Planner（规划专家）**, **Researcher（检索专家）**, **Writer（主笔）**, **Reviewer（审查员）** 与 **Refiner（修订员）** 等异构节点协同工作。
-
-* 🛡️ **防幻觉与动态路由 (Relevance Grader)**
-  * 解决传统 RAG 的“强行回答/幻觉”痛点。在本地文档检索后，由轻量级裁判节点（Grader LLM）实时评估文档与问题的相关性。
-  * 若发现用户上传的文档与问题无关，系统会自动触发**熔断机制**（在纯文档模式下终止并警告）或**智能降级**（在混合模式下自动切换至全网搜索）。
-
-* 🔄 **会话级记忆与断点续跑 (Session-Level Persistence)**
-  * 引入 `AsyncSqliteSaver` (SQLite Checkpoint 机制) 实现单次会话级持久化。
-  * 配合前置**意图识别节点 (Intent Router)**，系统能精准区分“开启全新研究课题”与“针对现有报告下达修改指令”（如：“把第一章扩写得更通俗”），实现跨轮次的断点续写与局部微调。每次刷新页面即开启无痕新会话。
-
-* ⚡ **全异步架构与流式传输 (Asynchronous & SSE)**
-  * 后端基于 **FastAPI** 采用全异步 (`async/await`) 架构，无阻塞处理 LLM 节点调度与 SQLite 并发读写。
-  * 采用 **Server-Sent Events (SSE)** 技术，将 Agent 的内部状态流转与最终报告的打字机效果（Typewriter）低延迟推送到前端。
-
-* 🎨 **现代化交互体验 (Modern UI/UX)**
-  * 前端采用 **Vue 3 + Tailwind CSS** 构建，包含仿 iOS Siri 风格的“呼吸灯”思考动效。
-  * 深度整合 `markdown-it` 与 KaTeX，通过底层正则预处理攻克了跨大模型 LaTeX 定界符不一致的问题，完美渲染高难度数学公式。
+主界面分为三个区域：
+- **左侧输入区**：文本框输入调研主题（如"调研字节跳动 AI Coding 产品线"），PDF 上传按钮支持批量上传内部文档（最多 5 个）
+- **模式切换**：Document Only（仅本地文档）/ Hybrid（本地+联网搜索）
+- **右侧展示区**：Agent 执行状态实时显示（Planner → Researcher → Writer → Reviewer），报告以打字机效果逐行渲染，支持 Markdown 格式与数学公式（KaTeX）
 
 ---
 
-## 🏗️ 系统架构图 (Architecture)
+## 解决了什么问题
 
-```text
-User Input
-    ↓
-Intent Router
-    ├── NEW_TOPIC → Task Planner
-    └── REFINE    → Content Refiner → Final Output
+产品/市场团队每周都要出一份竞品分析报告。传统流程是：手动搜资料 → 整理笔记 → 写报告。三个痛点：
 
-Task Planner
+1. **信息渠道分散** — 官网、技术博客、行业报告、内部文档，跨来源整合费时
+2. **质量没法保证** — 人工搜容易漏，写报告时可能凭印象写错
+3. **修改成本高** — 写完发现缺了某方面（比如定价策略），要重新搜重新写
+
+IRIS 把这个流程自动化了：输入一个竞品调研主题，上传内部资料，Agent 自动完成全流程。
+
+---
+
+## 核心特性
+
+### 🧠 6 节点 Agent 状态机（LangGraph）
+
+不同于传统线性 RAG，IRIS 用 LangGraph StateGraph 定义了 6 个专有节点，通过条件边实现路径分支、熔断短路、质量环路三种执行模式：
+
+- **Router** — 意图识别，判断用户是要"开新调研"还是"修改报告某章节"
+- **Planner** — 任务规划，把调研主题拆成 3-5 个子问题
+- **Researcher** — 多源检索（本地文档 + 网络搜索），Relevance Grader 评估文档相关性
+- **Writer** — 基于检索结果撰写结构化报告
+- **Reviewer** — 质量审查，FAIL 时回跳 Planner 重新检索（最多 3 轮）
+- **Refiner** — 局部修改，"把第三章写详细点"只改对应部分，不重写全文
+
+### 🛡️ 防幻觉熔断机制
+
+当用户上传的内部文档与调研主题无关时（比如问"字节跳动 AI Coding 产品"但文档全是自家产品内容），Grader LLM 判断相关性，不相关时触发熔断——系统不编造竞品信息，而是提示用户补充资料或切换到混合搜索模式。
+
+### 🔄 质量审查闭环
+
+Writer 写完报告后，Reviewer 做 JSON 格式审查，内容深度、结构完整度、格式规范任一项不达标就回跳 Planner 重新规划搜索策略，实现"查→写→审→重查→重写"自动迭代，最多 3 轮，无需人工介入。
+
+### ⚡ SSE 流式响应
+
+后端 FastAPI 异步框架，LangGraph 的 `astream()` 逐节点推送执行状态，前端打字机效果实时渲染报告片段，解决多节点执行耗时带来的等待焦虑。
+
+### 🔁 会话级记忆
+
+基于 `AsyncSqliteSaver` 的 SQLite Checkpoint 实现会话持久化，配合 Intent Router 精准区分"开新调研"和"修改已有报告"，支持"把第一章扩写得更详细"等跨轮次局部修订指令。
+
+---
+
+## 系统架构
+
+```
+用户输入调研主题
     ↓
-Deep Researcher
-    ↓
-Relevance Grader (Document Check)
-    ├── Doc Only & Not Relevant
-    │       → Stop & Warn User
-    │
-    ├── Hybrid Mode & Not Relevant
-    │       → Web Search
-    │       → Content Writer
-    │
-    └── Relevant
-            → Content Writer
-                    ↓
-            Quality Reviewer
-                    ├── FAIL → Back to Planner (Self-Correction Loop)
-                    └── PASS → Final Output
+Intent Router → 判断 NEW_TOPIC / REFINE
+    ├── NEW_TOPIC → Planner → Researcher → Relevance Grader
+    │                          ├── 不相关 → 熔断终止（纯文档模式）
+    │                          │         → 自动降级（混合模式）
+    │                          └── 相关   → Writer → Reviewer
+    │                                         ├── FAIL → 回跳 Planner（最多3轮）
+    │                                         └── PASS → 输出报告
+    └── REFINE → Refiner → 直接修改已有报告（快通道，不进审查循环）
 ```
 
 ---
 
-## 🛠️ 技术栈 (Tech Stack)
+## 技术栈
 
-### Backend (后端逻辑与智能体)
-* **API 框架**: Python 3.10+, FastAPI
-* **Agent 架构**: LangChain, LangGraph
-* **向量检索**: ChromaDB (本地知识库 RAG)
-* **持久化存储**: SQLite (`aiosqlite` 异步驱动支持 Checkpointing)
-* **核心 LLM**: OpenAI API (GPT-4o, GPT-4o-mini)
-* **网络搜索**: Tavily Search API
+### 后端
+- **Python 3.10+** / **FastAPI** — 全异步架构
+- **LangGraph** — 状态机编排
+- **ChromaDB** — 本地文档向量检索
+- **CrossEncoder (ms-marco-MiniLM-L-6-v2)** — 两段式精排
+- **Tavily** — 网络搜索
+- **aiosqlite** — 异步 SQLite Checkpoint
 
-### Frontend (前端交互)
-* **核心框架**: Vue 3 (Composition API)
-* **UI 样式**: Tailwind CSS, @tailwindcss/typography
-* **内容渲染**: `markdown-it`, `markdown-it-katex`
+### 前端
+- **Vue 3** (Composition API) / **Tailwind CSS**
+- **markdown-it** + **markdown-it-katex** — 报告渲染
+- **SSE** — 流式推送 + 打字机效果
 
 ---
 
-## 🚀 快速开始 (Getting Started)
+## 快速开始
 
-### 1. 克隆项目
 ```bash
-git clone https://github.com/ttguy0707/IRIS.git
-cd IRIS
-```
-
-### 2. 后端服务配置 (Backend Setup)
-```bash
+# 后端
 cd backend
-
-# 1. 创建并激活虚拟环境 (强烈推荐)
 python -m venv venv
-# Windows: venv\Scripts\activate
-# Mac/Linux: source venv/bin/activate
-
-# 2. 安装核心依赖
+venv\Scripts\activate
 pip install -r requirements.txt
-
-# 3. 配置环境变量
-# 请在 backend 目录下新建 .env 文件并填入你的 API Keys:
-# OPENAI_API_KEY=sk-...
-# TAVILY_API_KEY=tvly-...
-
-# 4. 启动 FastAPI 服务
+# 配置 .env: OPENAI_API_KEY, TAVILY_API_KEY
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-*(服务启动后，Swagger API 调试文档可通过 `http://localhost:8000/docs` 访问)*
 
-### 3. 前端服务配置 (Frontend Setup)
-```bash
+# 前端
 cd ../frontend
-
-# 1. 安装 Node.js 依赖
 npm install
-
-# 2. 启动 Vite 开发服务器
 npm run dev
-```
-*(打开浏览器访问终端中提示的 `http://localhost:5173` 即可开始使用)*
-
----
-
-## 📂 核心目录结构 (Project Structure)
-
-```text
-IRIS/
-├── backend/
-│   ├── app/
-│   │   ├── api/          # FastAPI 路由与中间件 (SSE 流式分发, 绝对路径挂载 SQLite)
-│   │   ├── graph/        # LangGraph 核心逻辑
-│   │   │   ├── nodes/    # 智能体节点 (Planner, Researcher, Writer, Router, Refiner, Reviewer)
-│   │   │   ├── state.py  # 状态机字典定义 (AgentState)
-│   │   │   └── graph.py  # 状态机拓扑构建与条件边连线
-│   │   ├── rag/          # 文档解析、向量化与检索引擎 (ChromaDB)
-│   │   └── tools/        # 外部扩展工具 (Tavily)
-│   ├── main.py           # 后端入口文件
-│   └── requirements.txt  # Python 依赖清单
-├── frontend/
-│   ├── src/
-│   │   ├── components/   # Vue 组件 (状态流转组件、弹窗等)
-│   │   ├── services/     # API 请求封装与 UUID 会话管理
-│   │   └── App.vue       # 主页面逻辑与 UI 布局
-│   ├── tailwind.config.js
-│   └── package.json
-└── README.md
+# 访问 http://localhost:5173
 ```
 
 ---
 
-## 💡 研发心得 (Developer Notes)
+## 核心文件
 
-在构建 IRIS 的过程中，最大的挑战来自于**如何打破传统大模型黑盒调用的不可控性**。
+| 文件 | 内容 |
+|------|------|
+| `backend/app/graph/graph.py` | 状态机拓扑定义（6节点 + 条件边） |
+| `backend/app/graph/nodes/` | 各节点实现（router/planner/researcher/writer/reviewer/refiner） |
+| `backend/app/rag/engine.py` | 两段式 RAG 引擎（Chroma 粗召回 + CrossEncoder 精排） |
+| `backend/app/api/routes.py` | FastAPI 路由 + SSE 流式响应 |
+| `backend/app/utils/llm.py` | LLM 工厂（fast/smart 双模型策略） |
+| `frontend/src/App.vue` | 前端主页面（SSE 消费 + 打字机渲染） |
 
-通过引入 **LangGraph 状态机**，系统获得了在执行过程中“反思”与“动态纠错”的能力；而引入 `AsyncSqliteSaver` 则完美解决了无状态 API 的痛点。这不仅让智能体能够理解上下文并接受用户的“打回修改”指令，更大幅提升了复杂学术调研场景下的鲁棒性。该项目是对 Agentic System 底层运行机制、并发控制与前后端流式交互的一次深度工程实践。
+---
+
+## 研发心得
+
+IRIS 最核心的设计决策是把"纠错"表达成图的拓扑，而不是代码里的 if-else。
+
+传统 RAG 是链式的：检索→生成，一次过，没有回头路。IRIS 用 LangGraph 的条件边把"审查不通过就回跳 Planner"变成了图拓扑里的一条回边——这不是 hack，是图的拓扑结构天然支持循环。
+
+这带来了三个工程上的挑战：
+1. **退出条件** — 没有退出条件会死循环，所以加了 `revision_number` 上限 3 次
+2. **LLM 输出不稳定** — Reviewer 要求 JSON 输出，但模型经常带 Markdown 代码块，加了 `_clean_json_text` 后处理 + fail-closed 兜底
+3. **多 Worker 内存** — CrossEncoder 模型文件约 400MB，多进程部署时每个进程都加载一份，当前是懒加载单例，更完善的方案待实现
+
+这个项目是对 Agentic System 底层运行机制的一次深度工程实践。
