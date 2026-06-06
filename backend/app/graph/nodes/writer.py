@@ -1,6 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from app.utils.llm import llm_invoke
+from app.utils.streaming import llm_stream_tokens, get_token_queue
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
 
@@ -19,7 +20,7 @@ WRITE_PROMPT = ChatPromptTemplate.from_template(
     """
 )
 
-def write_node(state: AgentState):
+async def write_node(state: AgentState):
     log.info("正在撰写报告")
     query = state["query"]
     content = "\n\n".join(state["search_results"])
@@ -38,8 +39,16 @@ def write_node(state: AgentState):
         content=content,
         critique_section=critique_section
     )
-    response = llm_invoke([HumanMessage(content=prompt_text)])
-    report = response.content or ""
+
+    if get_token_queue() is not None:
+        report = await llm_stream_tokens(
+            [HumanMessage(content=prompt_text)],
+            model_type="fast",
+            node_name="writer",
+        )
+    else:
+        response = llm_invoke([HumanMessage(content=prompt_text)])
+        report = response.content or ""
 
     if not report.strip():
         log.warning("LLM 返回空报告，生成兜底内容")

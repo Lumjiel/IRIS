@@ -171,16 +171,64 @@ async def chat_endpoint(request: ChatRequest, req: Request):
             async with AsyncSqliteSaver.from_conn_string(DB_PATH) as memory:
                 app = create_graph(memory=memory)
 
-                async for event in app.astream(initial_state, config=config):
-                     for node_name, state_update in event.items():
-                        data = json.dumps({"step": node_name, "data": state_update}, ensure_ascii=False)
-                        yield f"data: {data}\n\n"
-                        await asyncio.sleep(0.1)
+                from app.utils.streaming import set_token_queue
+                token_queue: asyncio.Queue = asyncio.Queue()
+                set_token_queue(token_queue)
+
+                graph_queue: asyncio.Queue = asyncio.Queue()
+
+                async def _run_graph():
+                    try:
+                        async for event in app.astream(initial_state, config=config):
+                            for node_name, state_update in event.items():
+                                ev = json.dumps({"step": node_name, "data": state_update}, ensure_ascii=False)
+                                await graph_queue.put(ev)
+                    except Exception as e:
+                        log.error(f"Graph error: {e}")
+                        await graph_queue.put(json.dumps({"step": "error", "data": {"message": "研究过程中发生错误，请重试"}}, ensure_ascii=False))
+                    finally:
+                        await graph_queue.put(None)
+
+                graph_task = asyncio.create_task(_run_graph())
+
+                graph_finished = False
+                while not graph_finished:
+                    had_work = False
+                    while True:
+                        try:
+                            tok = token_queue.get_nowait()
+                            yield f"data: {json.dumps(tok, ensure_ascii=False)}\n\n"
+                            had_work = True
+                        except asyncio.QueueEmpty:
+                            break
+
+                    try:
+                        g_ev = graph_queue.get_nowait()
+                        if g_ev is None:
+                            graph_finished = True
+                        else:
+                            yield f"data: {g_ev}\n\n"
+                            had_work = True
+                    except asyncio.QueueEmpty:
+                        pass
+
+                    if not had_work:
+                        await asyncio.sleep(0.01)
+
+                while True:
+                    try:
+                        tok = token_queue.get_nowait()
+                        yield f"data: {json.dumps(tok, ensure_ascii=False)}\n\n"
+                    except asyncio.QueueEmpty:
+                        break
+
         except Exception as e:
             log.error(f"[SSE] 流式传输异常: {e}")
             error_data = json.dumps({"step": "error", "data": {"message": "研究过程中发生错误，请重试"}}, ensure_ascii=False)
             yield f"data: {error_data}\n\n"
         finally:
+            from app.utils.streaming import set_token_queue
+            set_token_queue(None)
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

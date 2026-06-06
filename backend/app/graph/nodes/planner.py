@@ -1,6 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from app.utils.llm import llm_invoke
+from app.utils.streaming import llm_stream_tokens, get_token_queue
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
 
@@ -18,11 +19,21 @@ PLAN_PROMPT = ChatPromptTemplate.from_template(
     """
 )
 
-def plan_node(state: AgentState):
+async def plan_node(state: AgentState):
     log.info("正在规划搜索路径")
     query = state["query"]
     critique = state.get("critique", "")
     prompt_text = PLAN_PROMPT.format(query=query, critique=critique)
-    response = llm_invoke([HumanMessage(content=prompt_text)])
-    plans = [p.strip() for p in response.content.split(",")]
+
+    if get_token_queue() is not None:
+        response_text = await llm_stream_tokens(
+            [HumanMessage(content=prompt_text)],
+            model_type="fast",
+            node_name="planner",
+        )
+    else:
+        response = llm_invoke([HumanMessage(content=prompt_text)])
+        response_text = response.content
+
+    plans = [p.strip() for p in response_text.split(",")]
     return {"plan": plans}

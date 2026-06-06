@@ -363,6 +363,24 @@ const sendMessage = async () => {
         q,
         actualMode,
         (data) => {
+            // 流式 token 事件
+            if (data.step === 'writer_token') {
+                if (!data.data.final && data.data.token) {
+                    reportContent += data.data.token;
+                    streamMsg.content = `🔍 搜索策略已规划\n\n---\n\n🌐 资料检索完成\n\n---\n\n📝 **正在撰写报告...**\n\n${reportContent}`;
+                    scrollToBottom();
+                }
+                return;
+            }
+            if (data.step === 'planner_token') {
+                if (!data.data.final && data.data.token) {
+                    streamMsg.content += data.data.token;
+                    scrollToBottom();
+                }
+                return;
+            }
+
+            // 图节点事件
             if (data.step === 'planner') {
                 const plans = data.data.plan || [];
                 const detail = plans.map(p => `  → ${p}`).join('\n');
@@ -376,18 +394,17 @@ const sendMessage = async () => {
                 }).filter(Boolean);
                 const sourceList = sources.length ? sources.map(s => `  ✓ ${s}`).join('\n') : '  ✓ 已完成';
                 streamMsg.content = `🔍 搜索策略已规划\n\n---\n\n🌐 **正在检索资料...**\n\n${sourceList}\n\n---\n\n📝 **正在撰写报告...**\n\n⏳ 生成中...`;
+                reportContent = '';
             }
             else if (data.step === 'writer') {
                 if (data.data.final_report) {
                     reportContent = data.data.final_report;
-                    streamMsg.content = `🔍 搜索策略已规划\n\n---\n\n🌐 资料检索完成\n\n---\n\n📝 **正在撰写报告...**\n\n⏳ ${reportContent.length} 字`;
                 }
             }
             else if (data.step === 'reviewer') {
                 if (data.data.review_status === 'FAIL') {
                     streamMsg.content += `\n\n🔄 审查未通过，重新规划中...`;
                 } else {
-                    streamMsg.content = '';
                     streamMsg.type = 'report';
                     streamMsg.content = reportContent;
                 }
@@ -395,6 +412,7 @@ const sendMessage = async () => {
             else if (data.step === 'refiner') {
                 if (data.data.final_report) {
                     reportContent = data.data.final_report;
+                    streamMsg.type = 'report';
                     streamMsg.content = reportContent;
                 }
             }
