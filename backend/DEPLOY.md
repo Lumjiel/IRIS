@@ -112,12 +112,16 @@ server {
 |------|------|------|--------|
 | `OPENAI_API_KEY` | DashScope API Key | ✅ | - |
 | `OPENAI_API_BASE` | API 端点 | ✅ | - |
-| `TAVILY_API_KEY` | Tavily 搜索 Key | ✅ | - |
 | `DASHSCOPE_API_KEY` | Embedding API Key | ✅ | - |
+| `TAVILY_API_KEY` | Tavily 搜索 Key | ✅ | - |
+| `LLM_MODEL_PRIMARY` | 主模型 | ❌ | `qwen3.7-plus` |
+| `LLM_MODEL_FALLBACK` | 备用模型 | ❌ | `deepseek-v4-flash` |
 | `CORS_ORIGINS` | 允许的域名 | ✅（生产） | `*` |
-| `ENABLE_RERANKER` | 精排模型 | ❌ | `false` |
+| `ENABLE_RERANKER` | 精排模型（2G 不要开） | ❌ | `false` |
+| `CREATION_DIR` | 报告保存目录 | ❌ | 本地路径 |
+| `CHECKPOINT_DB` | SQLite 路径 | ❌ | `data/checkpoints.db` |
 | `WORKERS` | uvicorn worker 数 | ❌ | `1` |
-| `LOG_LEVEL` | 日志级别 | ❌ | `info` |
+| `LOG_LEVEL` | 日志级别（debug/info/warning/error） | ❌ | `info` |
 
 ### 内存监控
 
