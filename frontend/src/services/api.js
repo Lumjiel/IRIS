@@ -85,7 +85,13 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
           if (!line.startsWith('data: ')) return;
           const dataStr = line.slice(6).trim();
           if (dataStr === '[DONE]') { streamDone = true; return; }
-          try { onData(JSON.parse(dataStr)); } catch(e){}
+          try {
+              const parsed = JSON.parse(dataStr);
+              console.log('[SSE]', parsed.step, parsed.data?.token?.substring(0, 20) || '');
+              onData(parsed);
+          } catch(e){
+              console.warn('[SSE] parse error:', dataStr.substring(0, 50));
+          }
       };
 
       while (true) {

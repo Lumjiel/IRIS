@@ -442,7 +442,7 @@ const sendMessage = async () => {
             finishStreamMsg();
             isLoading.value = false;
             // 保存历史
-            const report = reportMsg ? reportMsg.content : '';
+            const report = reportContent || '';
             if (currentQuery.value) {
                 saveSession({ query: currentQuery.value, report, mode: actualMode });
                 history.value = getHistory();
