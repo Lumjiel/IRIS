@@ -155,12 +155,25 @@
                     </div>
                     <div v-if="aiNewsLoading && aiNews.length === 0" class="p-4 text-center text-[11px] text-gray-400">加载中...</div>
                     <div v-else-if="aiNews.length === 0" class="p-4 text-center text-[11px] text-gray-400">暂无资讯</div>
-                    <div v-for="item in aiNews" :key="item.id" @click="useAiNewsTitle(item.title)" class="px-4 py-2 border-b border-gray-50 cursor-pointer hover:bg-blue-50/50 transition-colors group">
-                        <div class="flex items-start justify-between gap-2">
-                            <p class="text-[11px] font-medium text-gray-700 leading-relaxed line-clamp-2 group-hover:text-blue-600">{{ item.title }}</p>
-                            <span class="shrink-0 text-[9px] text-gray-400 mt-0.5">{{ formatAiTime(item.publishedAt) }}</span>
+                    <div v-for="item in aiNews" :key="item.id" @click="useAiNewsTitle(item.title)" class="px-3 py-2.5 cursor-pointer hover:bg-blue-50/60 transition-all duration-200 group border-b border-gray-50/80 last:border-0">
+                        <div class="flex items-start gap-2">
+                            <div class="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full" :class="{
+                                'bg-blue-500': item.category === 'ai-models',
+                                'bg-green-500': item.category === 'ai-products',
+                                'bg-amber-500': item.category === 'industry',
+                                'bg-purple-500': item.category === 'paper',
+                                'bg-cyan-500': item.category === 'tip',
+                                'bg-gray-300': !item.category
+                            }"></div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-[11px] font-medium text-gray-700 leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{{ item.title }}</p>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <span class="text-[9px] text-gray-400 truncate">{{ item.source }}</span>
+                                    <span class="text-[9px] text-gray-300 shrink-0">{{ formatAiTime(item.publishedAt) }}</span>
+                                </div>
+                            </div>
+                            <svg class="w-3 h-3 text-gray-300 group-hover:text-blue-400 shrink-0 mt-1 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         </div>
-                        <p class="text-[9px] text-gray-400 mt-0.5">{{ item.source }}</p>
                     </div>
                 </div>
 
@@ -218,15 +231,11 @@
                  <h1 class="text-9xl font-black font-sans" style="font-family: 'Orbitron';">IRIS</h1>
             </div>
 
-            <div v-if="!displayedReport && !isLoading" class="flex-1 flex flex-col items-center justify-center text-gray-400 space-y-4">
-                <div class="w-20 h-20 rounded-3xl bg-gradient-to-tr from-blue-100 to-purple-100 flex items-center justify-center shadow-inner">
-                    <svg class="w-10 h-10 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+            <div v-if="!displayedReport && !isLoading" class="flex-1 flex flex-col items-center justify-center text-gray-400">
+                <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-100 to-purple-100 flex items-center justify-center shadow-inner mb-4">
+                    <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
                 </div>
-                <div class="text-center space-y-2">
-                    <h3 class="text-lg font-medium text-gray-900">开始你的深度调研</h3>
-                    <p class="text-sm text-gray-500 max-w-xs">输入一个研究主题，IRIS 会自动规划搜索策略、多源采集信息、撰写结构化报告</p>
-                    <p class="text-[10px] text-gray-400 mt-3">Ctrl + Enter 快速开始</p>
-                </div>
+                <p class="text-sm text-gray-400">输入主题开始调研</p>
             </div>
 
             <div v-else-if="isLoading && !displayedReport" class="flex-1 flex flex-col items-center justify-center relative">

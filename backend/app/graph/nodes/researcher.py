@@ -92,5 +92,9 @@ def research_node(state: AgentState):
                     results.append(f"### 🌐 网络搜索结果 ({q})\n{content}\n")
                 except Exception as e:
                     log.error(f"搜索 {q} 失败: {e}")
-            
+
+    # 如果所有检索都失败，给 writer 一个提示而非空内容
+    if not results:
+        results.append(f"[系统提示] 未能检索到关于「{query}」的外部资料。请基于你的知识直接回答，并在报告开头说明信息来源有限。")
+
     return {"search_results": results}
