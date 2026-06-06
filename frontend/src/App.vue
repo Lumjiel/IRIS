@@ -163,6 +163,12 @@
                 <div class="prose prose-sm max-w-none p-5 leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
               </div>
 
+              <!-- 流式过程消息 -->
+              <div v-else-if="msg.type === 'stream'" class="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm">
+                <div class="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line">{{ msg.content }}</div>
+                <span class="inline-block w-0.5 h-4 bg-blue-500 ml-0.5 animate-pulse align-middle"></span>
+              </div>
+
               <!-- 错误消息 -->
               <div v-else-if="msg.type === 'error'" class="bg-red-50 border border-red-100 rounded-2xl px-4 py-3">
                 <div class="flex items-center gap-2">
@@ -350,48 +356,68 @@ const sendMessage = async () => {
     const actualMode = uploadedFiles.value.length === 0 ? 'hybrid' : searchMode.value;
 
     // 开始流式聊天
-    let reportMsg = null;
-    let stepMsg = null;
+    let streamMsg = addMessage('assistant', 'stream', '');
+    let reportContent = '';
 
     streamChat(
         q,
         actualMode,
         (data) => {
             if (data.step === 'planner') {
-                stepMsg = startStreamMsg('🔍', '任务规划');
                 const plans = data.data.plan || [];
-                updateStreamMsg(`拆解为 ${plans.length} 个搜索方向：\n${plans.map((p, i) => `→ ${p}`).join('\n')}`);
+                const detail = plans.map(p => `  → ${p}`).join('\n');
+                streamMsg.content = `🔍 **正在规划搜索策略...**\n\n已拆解为 ${plans.length} 个方向：\n${detail}\n\n---\n\n🌐 **正在检索资料...**\n\n⏳ 搜索中...`;
             }
             else if (data.step === 'researcher') {
-                finishStreamMsg();
-                stepMsg = startStreamMsg('🌐', '深度检索');
                 const results = data.data.search_results || [];
-                updateStreamMsg(`已采集 ${results.length} 条数据源`);
+                const sources = results.map(r => {
+                    const match = r.match(/### .+?\((.+?)\)/);
+                    return match ? match[1] : '网络搜索';
+                }).filter(Boolean);
+                const sourceList = sources.length ? sources.map(s => `  ✓ ${s}`).join('\n') : '  ✓ 已完成';
+                streamMsg.content = `🔍 搜索策略已规划\n\n---\n\n🌐 **正在检索资料...**\n\n${sourceList}\n\n---\n\n📝 **正在撰写报告...**\n\n⏳ 生成中...`;
             }
             else if (data.step === 'writer') {
-                finishStreamMsg();
                 if (data.data.final_report) {
-                    reportMsg = addMessage('assistant', 'report', data.data.final_report);
+                    reportContent = data.data.final_report;
+                    streamMsg.content = `🔍 搜索策略已规划\n\n---\n\n🌐 资料检索完成\n\n---\n\n📝 **正在撰写报告...**\n\n⏳ ${reportContent.length} 字`;
                 }
             }
             else if (data.step === 'reviewer') {
                 if (data.data.review_status === 'FAIL') {
-                    addMessage('assistant', 'step', '', { icon: '🔄', title: '质量审查', detail: `未通过，重新规划中...\n${data.data.critique || ''}`, status: 'done' });
+                    streamMsg.content += `\n\n🔄 审查未通过，重新规划中...`;
                 } else {
-                    addMessage('assistant', 'step', '', { icon: '✅', title: '质量审查通过', detail: '', status: 'done' });
+                    streamMsg.content = '';
+                    streamMsg.type = 'report';
+                    streamMsg.content = reportContent;
                 }
             }
             else if (data.step === 'refiner') {
                 if (data.data.final_report) {
-                    if (reportMsg) {
-                        reportMsg.content = data.data.final_report;
-                    } else {
-                        reportMsg = addMessage('assistant', 'report', data.data.final_report);
-                    }
+                    reportContent = data.data.final_report;
+                    streamMsg.content = reportContent;
                 }
             }
             else if (data.step === 'error') {
-                addMessage('assistant', 'error', data.data.message || '研究过程中发生错误');
+                streamMsg.type = 'error';
+                streamMsg.content = data.data.message || '研究过程中发生错误';
+            }
+            scrollToBottom();
+        },
+        () => {
+            isLoading.value = false;
+            // 最终：如果还是 stream 类型，转为 report
+            if (streamMsg && streamMsg.type === 'stream' && reportContent) {
+                streamMsg.type = 'report';
+                streamMsg.content = reportContent;
+            } else if (streamMsg && streamMsg.type === 'stream' && !reportContent) {
+                streamMsg.type = 'error';
+                streamMsg.content = '未能生成报告，请重试';
+            }
+            // 保存历史
+            if (currentQuery.value && reportContent) {
+                saveSession({ query: currentQuery.value, report: reportContent, mode: actualMode });
+                history.value = getHistory();
             }
         },
         () => {
