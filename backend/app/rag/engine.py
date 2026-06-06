@@ -12,9 +12,7 @@ from langchain_core.retrievers import BaseRetriever
 from app.utils.logger import get_logger
 from app.config import MAX_KNOWLEDGE_BASE_CHUNKS, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K, FETCH_K
 
-log = get_logger("rag.engine")
-
-try:
+log = get_logger("rag.engine")try:
     from sentence_transformers import CrossEncoder
 except ImportError:
     CrossEncoder = None
@@ -63,9 +61,10 @@ class RerankRetriever(BaseRetriever):
         return top_docs
 
 # 定义数据存储路径
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "chroma_db")   # 数据库文件存这里
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads") # 用户上传的 PDF 存这里
+# 数据存储路径（从配置读取，Docker 部署时改为持久化卷）
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.getenv("CHROMA_DB_PATH", os.path.join(_BASE_DIR, "chroma_db"))
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(_BASE_DIR, "uploads"))
 
 
 #embeddings = HuggingFaceEmbeddings(model_name="moka-ai/m3e-base")

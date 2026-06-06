@@ -106,26 +106,23 @@ async def upload_files(files: List[UploadFile] = File(...)):
     if len(files) > MAX_UPLOAD_FILES:
         raise HTTPException(status_code=400, detail=f"一次最多只能上传 {MAX_UPLOAD_FILES} 个文件")
 
-    try:
+    # 先验证所有文件，再执行破坏性操作
+    file_contents = []
+    for file in files:
+        if not file.filename or not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail=f"仅支持 PDF 文件: {file.filename}")
+        content = await file.read()
+        if len(content) > MAX_FILE_SIZE_MB * 1024 * 1024:
+            raise HTTPException(status_code=400, detail=f"文件 {file.filename} 超过 {MAX_FILE_SIZE_MB}MB 限制")
+        file_contents.append((file.filename, content))
 
+    try:
         reset_knowledge_base()
 
         saved_paths = []
-
-        for file in files:
-            # 文件类型校验
-            if not file.filename or not file.filename.lower().endswith('.pdf'):
-                raise HTTPException(status_code=400, detail=f"仅支持 PDF 文件: {file.filename}")
-
-            # 文件名安全处理（防路径穿越）
-            safe_name = os.path.basename(file.filename)
+        for filename, content in file_contents:
+            safe_name = os.path.basename(filename)
             file_path = os.path.join(UPLOAD_DIR, safe_name)
-
-            # 文件大小校验
-            content = await file.read()
-            if len(content) > MAX_FILE_SIZE_MB * 1024 * 1024:
-                raise HTTPException(status_code=400, detail=f"文件 {file.filename} 超过 {MAX_FILE_SIZE_MB}MB 限制")
-
             with open(file_path, "wb") as buffer:
                 buffer.write(content)
             saved_paths.append(file_path)
