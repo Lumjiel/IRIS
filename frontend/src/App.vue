@@ -104,7 +104,7 @@
               </button>
             </div>
             <!-- 卡片列表 -->
-            <div class="space-y-2 h-64 overflow-y-auto pr-1">
+            <div class="space-y-2 h-64 overflow-y-auto pr-1 scrollbar-none">
               <div v-for="item in filteredAiNews" :key="item.id" @click="useAiNews(item.title)" class="group p-3.5 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 hover:shadow-md hover:shadow-blue-50 transition-all duration-300">
                 <div class="flex items-start justify-between gap-3">
                   <div class="flex-1 min-w-0">
@@ -515,4 +515,6 @@ onMounted(() => {
 .prose th { background: #f9fafb; font-weight: 600; }
 .prose strong { font-weight: 700; color: #111827; }
 .katex { font-size: 1em; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
 </style>
