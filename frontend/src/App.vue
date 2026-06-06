@@ -19,7 +19,7 @@
 
       <!-- Tab 切换 -->
       <div class="flex border-b border-gray-100 mt-2 mx-3">
-        <button v-for="tab in [{key:'kb',label:'知识库'},{key:'history',label:'历史'}]" :key="tab.key" @click="activeTab = tab.key" class="flex-1 py-2 text-[11px] font-bold transition-colors relative" :class="activeTab === tab.key ? 'text-blue-600' : 'text-gray-400'">
+        <button v-for="tab in [{key:'kb',label:'知识库'},{key:'materials',label:'素材库'},{key:'history',label:'历史'}]" :key="tab.key" @click="activeTab = tab.key; if(tab.key==='materials') loadMaterials()" class="flex-1 py-2 text-[11px] font-bold transition-colors relative" :class="activeTab === tab.key ? 'text-blue-600' : 'text-gray-400'">
           {{ tab.label }}
           <div v-if="activeTab === tab.key" class="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-blue-500 rounded-full"></div>
         </button>
@@ -44,6 +44,18 @@
           </div>
           <div class="flex items-center gap-2 px-2 py-1.5 text-[11px] text-gray-400">
             <span class="flex-1 text-center bg-gray-100 rounded-lg py-1" :class="searchMode === 'hybrid' ? 'text-purple-600 font-bold' : ''">混合模式</span>
+          </div>
+        </template>
+
+        <!-- 素材库 -->
+        <template v-if="activeTab === 'materials'">
+          <div v-if="materials.length === 0" class="text-center text-[11px] text-gray-300 py-8">暂无素材<br><span class="text-[10px]">调研完成后点击「💾 保存素材库」</span></div>
+          <div v-for="m in materials" :key="m.filename" class="group px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer" @click="viewMaterial(m)">
+            <div class="flex items-center justify-between">
+              <p class="text-[11px] font-medium text-gray-700 truncate flex-1">{{ m.filename.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '') }}</p>
+              <button @click.stop="deleteMaterialItem(m.filename)" class="text-[10px] text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all px-1">✕</button>
+            </div>
+            <p class="text-[10px] text-gray-400 mt-0.5">{{ m.filename.split('-').slice(0, 3).join('-') }} · {{ formatSize(m.size) }}</p>
           </div>
         </template>
 
@@ -125,62 +137,75 @@
         <div v-else class="max-w-3xl mx-auto py-6 px-4 space-y-4">
           <div v-for="msg in messages" :key="msg.id" class="flex gap-3" :class="msg.role === 'user' ? 'justify-end' : ''">
             <!-- 助手头像 -->
-            <div v-if="msg.role !== 'user'" class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm">
+            <div v-if="msg.role !== 'user'" class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0 shadow-sm mt-1">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
             </div>
 
-            <!-- 消息内容 -->
-            <div class="max-w-[80%] min-w-0" :class="msg.role === 'user' ? 'order-1' : ''">
+            <div class="max-w-[85%] min-w-0" :class="msg.role === 'user' ? 'order-1' : ''">
               <!-- 用户消息 -->
-              <div v-if="msg.role === 'user'" class="bg-blue-600 text-white px-4 py-2.5 rounded-2xl rounded-br-md text-sm">
+              <div v-if="msg.role === 'user'" class="bg-blue-600 text-white px-4 py-2.5 rounded-2xl rounded-br-md text-sm shadow-sm">
                 {{ msg.content }}
               </div>
 
-              <!-- 步骤消息 (规划/检索/写作中) -->
-              <div v-else-if="msg.type === 'step'" class="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm">
-                <div class="flex items-center gap-2 mb-1">
-                  <span class="text-sm">{{ msg.icon }}</span>
-                  <span class="text-xs font-bold text-gray-700">{{ msg.title }}</span>
-                  <span v-if="msg.status === 'done'" class="text-[10px] text-green-500">✓</span>
-                  <span v-else class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+              <!-- 流式消息：状态累积 + 实时文本 -->
+              <div v-else-if="msg.type === 'stream'" class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                <!-- 状态时间线 -->
+                <div v-if="msg.statuses && msg.statuses.length" class="px-4 pt-3 pb-1 space-y-1.5">
+                  <div v-for="(s, i) in msg.statuses" :key="i">
+                    <div class="flex items-center gap-2 text-[11px]">
+                      <span class="w-4 h-4 rounded-full flex items-center justify-center shrink-0" :class="s.active ? 'bg-blue-100' : 'bg-green-50'">
+                        <span v-if="s.active" class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+                        <span v-else class="text-green-500 text-[9px]">✓</span>
+                      </span>
+                      <span :class="s.active ? 'text-blue-600 font-medium' : 'text-gray-400'">{{ s.text }}</span>
+                    </div>
+                    <!-- 详情列表（搜索方向等） -->
+                    <div v-if="s.items && s.items.length" class="ml-6 mt-0.5 space-y-0.5">
+                      <div v-for="(item, j) in s.items" :key="j" class="text-[10px] text-gray-400 leading-relaxed">→ {{ item }}</div>
+                    </div>
+                    <!-- 单行详情（审查意见等） -->
+                    <div v-if="s.detail" class="ml-6 mt-0.5 text-[10px] text-gray-400 leading-relaxed">{{ s.detail }}</div>
+                  </div>
                 </div>
-                <div v-if="msg.detail" class="text-[11px] text-gray-500 ml-7 whitespace-pre-line">{{ msg.detail }}</div>
+                <!-- 流式文本 -->
+                <div v-if="msg.streamText" class="px-4 pb-3 pt-1">
+                  <div class="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line border-l-2 border-blue-200 pl-3">{{ msg.streamText }}</div>
+                </div>
+                <!-- 光标 -->
+                <div v-if="msg.active" class="px-4 pb-3">
+                  <span class="inline-block w-0.5 h-4 bg-blue-500 animate-pulse align-middle"></span>
+                </div>
               </div>
 
-              <!-- 报告消息 -->
+              <!-- 报告消息（Markdown 渲染） -->
               <div v-else-if="msg.type === 'report'" class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
                 <div class="px-4 py-2.5 border-b border-gray-50 flex items-center justify-between">
                   <div class="flex items-center gap-2">
-                    <span class="text-sm">📄</span>
+                    <span class="w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                      <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    </span>
                     <span class="text-xs font-bold text-gray-700">研究报告</span>
                   </div>
-                  <div class="flex items-center gap-1.5">
-                    <button @click="copyReport(msg)" class="text-[10px] text-gray-400 hover:text-blue-500 px-2 py-1 rounded hover:bg-blue-50 transition-colors">复制</button>
-                    <button @click="downloadReport(msg)" class="text-[10px] text-gray-400 hover:text-purple-500 px-2 py-1 rounded hover:bg-purple-50 transition-colors">下载</button>
-                    <button @click="saveToLibrary(msg)" class="text-[10px] text-white bg-gradient-to-r from-blue-500 to-purple-500 px-2.5 py-1 rounded-full hover:shadow-md transition-all">保存素材库</button>
+                  <div class="flex items-center gap-1">
+                    <button @click="copyReport(msg)" class="text-[10px] text-gray-400 hover:text-blue-500 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">📋 复制</button>
+                    <button @click="downloadReport(msg)" class="text-[10px] text-gray-400 hover:text-purple-500 px-2 py-1 rounded-lg hover:bg-purple-50 transition-colors">⬇️ 下载</button>
+                    <button @click="saveToLibrary(msg)" class="text-[10px] text-white bg-gradient-to-r from-blue-500 to-purple-500 px-2.5 py-1 rounded-full hover:shadow-md transition-all">💾 保存素材库</button>
                   </div>
                 </div>
                 <div class="prose prose-sm max-w-none p-5 leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
               </div>
 
-              <!-- 流式过程消息 -->
-              <div v-else-if="msg.type === 'stream'" class="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm">
-                <div class="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line">{{ msg.content }}</div>
-                <span class="inline-block w-0.5 h-4 bg-blue-500 ml-0.5 animate-pulse align-middle"></span>
-              </div>
-
               <!-- 错误消息 -->
-              <div v-else-if="msg.type === 'error'" class="bg-red-50 border border-red-100 rounded-2xl px-4 py-3">
+              <div v-else-if="msg.type === 'error'" class="bg-red-50 border border-red-100 rounded-2xl px-4 py-3 shadow-sm">
                 <div class="flex items-center gap-2">
                   <span class="text-sm">⚠️</span>
                   <span class="text-xs text-red-600">{{ msg.content }}</span>
                 </div>
               </div>
 
-              <!-- 流式文本（打字中） -->
+              <!-- 其他（步骤等） -->
               <div v-else class="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm">
                 <div class="text-sm text-gray-700 prose prose-sm max-w-none" v-html="renderMarkdown(msg.content)"></div>
-                <span v-if="msg.streaming" class="inline-block w-0.5 h-4 bg-blue-500 ml-0.5 animate-pulse align-middle"></span>
               </div>
             </div>
           </div>
@@ -226,7 +251,7 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
-import { uploadFiles, streamChat, clearContext, fetchAihotNews, saveReport } from './services/api';
+import { uploadFiles, streamChat, clearContext, fetchAihotNews, saveReport, listMaterials, deleteMaterial, getMaterial, getThreadId, setThreadId, newThreadId } from './services/api';
 import { getHistory, saveSession, deleteSession, clearHistory, markAsUsed } from './services/history';
 import MarkdownIt from 'markdown-it';
 import mk from 'markdown-it-katex';
@@ -263,6 +288,7 @@ const history = ref([]);
 const activeHistoryId = ref(null);
 const aiNews = ref([]);
 const aiNewsCategory = ref('');
+const materials = ref([]);
 const aiNewsCategories = [
     { key: '', label: '全部' },
     { key: 'ai-models', label: '模型' },
@@ -284,8 +310,9 @@ const catLabel = (cat) => {
 
 // === 研究流 ===
 let currentAbortController = null;
-let currentStreamMsg = null;
 let msgIdCounter = 0;
+
+const getMsgById = (id) => messages.value.find(m => m.id === id);
 
 const addMessage = (role, type, content, extra = {}) => {
     const msg = { id: ++msgIdCounter, role, type, content, timestamp: Date.now(), status: 'done', streaming: false, ...extra };
@@ -294,29 +321,15 @@ const addMessage = (role, type, content, extra = {}) => {
     return msg;
 };
 
-const startStreamMsg = (icon, title) => {
-    const msg = addMessage('assistant', 'step', '', { icon, title, detail: '', status: 'streaming' });
-    currentStreamMsg = msg;
-    return msg;
+const finishStatuses = (msgId) => {
+    const msg = getMsgById(msgId);
+    if (msg?.statuses) msg.statuses.forEach(s => s.active = false);
 };
 
-const updateStreamMsg = (detail) => {
-    if (currentStreamMsg) {
-        currentStreamMsg.detail = detail;
-        scrollToBottom();
-    }
-};
-
-const finishStreamMsg = () => {
-    if (currentStreamMsg) {
-        currentStreamMsg.status = 'done';
-        currentStreamMsg = null;
-    }
-};
-
-const scrollToBottom = async () => {
-    await nextTick();
-    if (chatContainer.value) chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+const scrollToBottom = () => {
+    nextTick(() => {
+        if (chatContainer.value) chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+    });
 };
 
 const handleScroll = () => {};
@@ -332,7 +345,6 @@ const sendMessage = async () => {
     const q = query.value.trim();
     if (!q || isLoading.value) return;
 
-    // 添加用户消息
     addMessage('user', 'text', q);
     currentQuery.value = q;
     query.value = '';
@@ -342,12 +354,10 @@ const sendMessage = async () => {
     activeHistoryId.value = null;
     currentAbortController = new AbortController();
 
-    // 上传文件
     if (uploadedFiles.value.length > 0) {
-        try {
-            await uploadFiles(uploadedFiles.value);
-        } catch (e) {
+        try { await uploadFiles(uploadedFiles.value); } catch (e) {
             addMessage('assistant', 'error', `文件上传失败: ${e.message}`);
+            isLoading.value = false; return;
         }
     } else {
         try { await clearContext(); } catch {}
@@ -355,103 +365,158 @@ const sendMessage = async () => {
 
     const actualMode = uploadedFiles.value.length === 0 ? 'hybrid' : searchMode.value;
 
-    // 开始流式聊天
-    let streamMsg = addMessage('assistant', 'stream', '');
-    let reportContent = '';
+    // 创建流式消息：累积状态 + 流式文本
+    const sMsg = addMessage('assistant', 'stream', '', {
+        statuses: [{ text: '准备中...', active: true }],
+        streamText: '',
+        active: true,
+    });
+    let round = 0;  // 轮次追踪
 
     streamChat(
-        q,
-        actualMode,
+        q, actualMode,
         (data) => {
-            // 流式 token 事件
-            if (data.step === 'writer_token') {
+            const msg = getMsgById(sMsg.id);
+            if (!msg) return;
+
+            // ── 流式 token（即时渲染）──
+            if (data.step === 'planner_token') {
                 if (!data.data.final && data.data.token) {
-                    reportContent += data.data.token;
-                    streamMsg.content = `🔍 搜索策略已规划\n\n---\n\n🌐 资料检索完成\n\n---\n\n📝 **正在撰写报告...**\n\n${reportContent}`;
+                    msg.streamText += data.data.token;
                     scrollToBottom();
                 }
                 return;
             }
-            if (data.step === 'planner_token') {
+            if (data.step === 'writer_token') {
                 if (!data.data.final && data.data.token) {
-                    streamMsg.content += data.data.token;
+                    msg.streamText += data.data.token;
                     scrollToBottom();
                 }
                 return;
             }
 
-            // 图节点事件
+            // ── 图节点事件（累积状态 + 详情）──
             if (data.step === 'planner') {
+                round++;
                 const plans = data.data.plan || [];
-                const detail = plans.map(p => `  → ${p}`).join('\n');
-                streamMsg.content = `🔍 **正在规划搜索策略...**\n\n已拆解为 ${plans.length} 个方向：\n${detail}\n\n---\n\n🌐 **正在检索资料...**\n\n⏳ 搜索中...`;
+                const status = {
+                    text: `第 ${round} 轮 · 拆解了 ${plans.length} 个搜索方向`,
+                    active: true,
+                    items: plans,
+                };
+                if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                msg.statuses.push(status);
+                msg.streamText = '';
+                scrollToBottom();
             }
             else if (data.step === 'researcher') {
                 const results = data.data.search_results || [];
+                // 提取来源名
                 const sources = results.map(r => {
-                    const match = r.match(/### .+?\((.+?)\)/);
-                    return match ? match[1] : '网络搜索';
+                    const m = r.match(/### .+?[（(]([^)）]+)[)）]/) || r.match(/### (.+)/);
+                    return m ? m[1].trim() : null;
                 }).filter(Boolean);
-                const sourceList = sources.length ? sources.map(s => `  ✓ ${s}`).join('\n') : '  ✓ 已完成';
-                streamMsg.content = `🔍 搜索策略已规划\n\n---\n\n🌐 **正在检索资料...**\n\n${sourceList}\n\n---\n\n📝 **正在撰写报告...**\n\n⏳ 生成中...`;
-                reportContent = '';
+                if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                msg.statuses.push({
+                    text: `检索到 ${sources.length || results.length} 个信息源`,
+                    active: true,
+                    items: sources.length ? sources : results.map((_, i) => `来源 ${i + 1}`),
+                });
+                msg.streamText = '';
+                scrollToBottom();
             }
             else if (data.step === 'writer') {
-                if (data.data.final_report) {
-                    reportContent = data.data.final_report;
-                }
+                if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                msg.statuses.push({ text: '正在撰写报告...', active: true });
+                if (data.data.final_report) msg.streamText = data.data.final_report;
+                scrollToBottom();
             }
             else if (data.step === 'reviewer') {
                 if (data.data.review_status === 'FAIL') {
-                    streamMsg.content += `\n\n🔄 审查未通过，重新规划中...`;
+                    const critique = data.data.critique || '需要补充信息';
+                    if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                    msg.statuses.push({
+                        text: `第 ${round} 轮审查未通过，启动第 ${round + 1} 轮`,
+                        active: true,
+                        detail: `审查意见：${critique.slice(0, 100)}${critique.length > 100 ? '...' : ''}`,
+                    });
+                    msg.streamText = '';
                 } else {
-                    streamMsg.type = 'report';
-                    streamMsg.content = reportContent;
+                    if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                    msg.statuses.push({ text: '审查通过，报告完成 ✓', active: false });
+                    finishStatuses(sMsg.id);
+                    msg.type = 'report';
+                    msg.content = msg.streamText || '';
+                    msg.active = false;
                 }
+                scrollToBottom();
             }
             else if (data.step === 'refiner') {
+                if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                msg.statuses.push({ text: '修订完成 ✓', active: false });
+                finishStatuses(sMsg.id);
                 if (data.data.final_report) {
-                    reportContent = data.data.final_report;
-                    streamMsg.type = 'report';
-                    streamMsg.content = reportContent;
+                    msg.type = 'report';
+                    msg.content = data.data.final_report;
+                    msg.active = false;
                 }
+                scrollToBottom();
             }
             else if (data.step === 'error') {
-                streamMsg.type = 'error';
-                streamMsg.content = data.data.message || '研究过程中发生错误';
-            }
-            scrollToBottom();
-        },
-        () => {
-            isLoading.value = false;
-            // 最终：如果还是 stream 类型，转为 report
-            if (streamMsg && streamMsg.type === 'stream' && reportContent) {
-                streamMsg.type = 'report';
-                streamMsg.content = reportContent;
-            } else if (streamMsg && streamMsg.type === 'stream' && !reportContent) {
-                streamMsg.type = 'error';
-                streamMsg.content = '未能生成报告，请重试';
-            }
-            // 保存历史
-            if (currentQuery.value && reportContent) {
-                saveSession({ query: currentQuery.value, report: reportContent, mode: actualMode });
-                history.value = getHistory();
+                finishStatuses(sMsg.id);
+                msg.type = 'error';
+                msg.content = data.data?.message || '研究过程中发生错误';
+                msg.active = false;
+                scrollToBottom();
             }
         },
         () => {
-            finishStreamMsg();
             isLoading.value = false;
-            // 保存历史
-            const report = reportContent || '';
+            const msg = getMsgById(sMsg.id);
+            if (msg) {
+                finishStatuses(sMsg.id);
+                msg.active = false;
+                if (msg.type === 'stream' && msg.streamText) {
+                    msg.type = 'report';
+                    msg.content = msg.streamText;
+                } else if (msg.type === 'stream' && !msg.streamText) {
+                    msg.type = 'error';
+                    msg.content = '未能生成报告，请重试';
+                }
+            }
+            // 保存完整会话
+            const finalReport = msg?.streamText || msg?.content || '';
             if (currentQuery.value) {
-                saveSession({ query: currentQuery.value, report, mode: actualMode });
+                saveSession({
+                    query: currentQuery.value,
+                    report: finalReport,
+                    mode: actualMode,
+                    threadId: getThreadId(),
+                    messages: messages.value.map(m => ({
+                        role: m.role, type: m.type, content: m.content,
+                        statuses: m.statuses, streamText: m.streamText,
+                    })),
+                });
                 history.value = getHistory();
             }
         },
         (err) => {
-            finishStreamMsg();
             isLoading.value = false;
-            addMessage('assistant', 'error', `请求失败: ${err.message}`);
+            addMessage('assistant', 'error', `请求失败: ${err?.message || '未知错误'}`);
+            // 出错也要保存已有的消息
+            if (currentQuery.value) {
+                saveSession({
+                    query: currentQuery.value,
+                    report: '',
+                    mode: actualMode,
+                    threadId: getThreadId(),
+                    messages: messages.value.map(m => ({
+                        role: m.role, type: m.type, content: m.content,
+                        statuses: m.statuses, streamText: m.streamText,
+                    })),
+                });
+                history.value = getHistory();
+            }
         },
         currentAbortController?.signal
     );
@@ -460,8 +525,6 @@ const sendMessage = async () => {
 const stopResearch = () => {
     if (currentAbortController) currentAbortController.abort();
     isLoading.value = false;
-    finishStreamMsg();
-    addMessage('assistant', 'step', '', { icon: '⏹️', title: '已停止', detail: '', status: 'done' });
 };
 
 // === 推文灵感 ===
@@ -475,6 +538,41 @@ const loadAiNews = async () => {
 const useAiNews = (title) => {
     query.value = title;
     if (inputBox.value) inputBox.value.focus();
+};
+
+// === 素材库 ===
+const loadMaterials = async () => {
+    try {
+        const data = await listMaterials();
+        materials.value = data.items || [];
+    } catch { materials.value = []; }
+};
+
+const viewMaterial = async (m) => {
+    messages.value = [];
+    currentQuery.value = m.filename.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
+    addMessage('user', 'text', `查看素材：${currentQuery.value}`);
+    try {
+        const data = await getMaterial(m.filename);
+        addMessage('assistant', 'report', data.content);
+    } catch {
+        addMessage('assistant', 'error', '读取素材失败');
+    }
+    scrollToBottom();
+};
+
+const deleteMaterialItem = async (filename) => {
+    try {
+        await deleteMaterial(filename);
+        materials.value = materials.value.filter(m => m.filename !== filename);
+        showToast('已删除', 'success');
+    } catch { showToast('删除失败', 'error'); }
+};
+
+const formatSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 };
 
 // === 导出 ===
@@ -503,9 +601,28 @@ const saveToLibrary = async (msg) => {
 const viewHistory = (session) => {
     messages.value = [];
     currentQuery.value = session.query;
-    addMessage('user', 'text', session.query);
-    addMessage('assistant', 'report', session.report);
     activeHistoryId.value = session.id;
+
+    // 恢复 thread_id（多轮对话关键）
+    if (session.threadId) {
+        setThreadId(session.threadId);
+    }
+
+    // 恢复完整消息列表
+    if (session.messages && session.messages.length > 0) {
+        session.messages.forEach(m => {
+            addMessage(m.role, m.type, m.content, {
+                statuses: m.statuses,
+                streamText: m.streamText,
+                active: false,
+            });
+        });
+    } else {
+        // 兼容旧版历史（只有 query + report）
+        addMessage('user', 'text', session.query);
+        addMessage('assistant', 'report', session.report);
+    }
+    scrollToBottom();
 };
 
 const formatTime = (ts) => {
@@ -521,6 +638,8 @@ const newChat = () => {
     currentQuery.value = '';
     activeHistoryId.value = null;
     if (isLoading.value) stopResearch();
+    // 生成新的 thread_id，下次发送走新会话
+    newThreadId();
 };
 
 // === Toast ===
@@ -536,6 +655,14 @@ const showToast = (msg, type = 'success') => {
 onMounted(() => {
     history.value = getHistory();
     loadAiNews();
+
+    // 刷新恢复：找到当前 thread_id 对应的最近会话
+    const currentThreadId = getThreadId();
+    const recentSession = history.value.find(s => s.threadId === currentThreadId);
+    if (recentSession) {
+        viewHistory(recentSession);
+    }
+
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); sendMessage(); }
     });
@@ -561,4 +688,22 @@ onMounted(() => {
 .katex { font-size: 1em; }
 .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* 流式消息过渡 */
+.stream-enter-active { transition: all 0.3s ease; }
+.stream-leave-active { transition: all 0.2s ease; }
+.stream-enter-from { opacity: 0; transform: translateY(8px); }
+
+/* 报告卡片 */
+.report-card { transition: box-shadow 0.2s; }
+.report-card:hover { box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+
+/* 流式文本区域 */
+.stream-body {
+  font-size: 0.8125rem;
+  line-height: 1.8;
+  color: #374151;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 </style>

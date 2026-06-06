@@ -29,7 +29,8 @@ def cleanup_old_checkpoints(max_age_days: int = 7):
         import sqlite3
         if not os.path.exists(DB_PATH):
             return
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=5)
+        conn.execute("PRAGMA journal_mode=WAL")
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
@@ -40,8 +41,12 @@ def cleanup_old_checkpoints(max_age_days: int = 7):
             conn.commit()
             if deleted:
                 log.info(f"清理了 {deleted} 条过期检查点")
-                cursor.execute("VACUUM")
         conn.close()
+    except sqlite3.OperationalError as e:
+        if "locked" in str(e):
+            log.debug("数据库被占用，跳过清理")
+        else:
+            log.warning(f"清理检查点时出错: {e}")
     except Exception as e:
         log.warning(f"清理检查点时出错: {e}")
 
@@ -184,8 +189,8 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                                 ev = json.dumps({"step": node_name, "data": state_update}, ensure_ascii=False)
                                 await graph_queue.put(ev)
                     except Exception as e:
-                        log.error(f"Graph error: {e}")
-                        await graph_queue.put(json.dumps({"step": "error", "data": {"message": "研究过程中发生错误，请重试"}}, ensure_ascii=False))
+                        log.error(f"Graph error: {type(e).__name__}: {e}", exc_info=True)
+                        await graph_queue.put(json.dumps({"step": "error", "data": {"message": f"研究过程中发生错误: {type(e).__name__}: {e}"}}, ensure_ascii=False))
                     finally:
                         await graph_queue.put(None)
 
@@ -311,3 +316,46 @@ async def save_report(request: SaveReportRequest):
     except Exception as e:
         log.error(f"保存报告失败: {e}")
         raise HTTPException(status_code=500, detail="保存失败")
+
+
+@router.get("/materials")
+async def list_materials():
+    """列出素材库中已保存的报告"""
+    try:
+        if not os.path.exists(CREATION_DIR):
+            return {"items": []}
+        items = []
+        for f in sorted(glob.glob(os.path.join(CREATION_DIR, "*.md")), reverse=True):
+            stat = os.stat(f)
+            name = os.path.basename(f)
+            items.append({
+                "filename": name,
+                "path": f,
+                "size": stat.st_size,
+                "mtime": int(stat.st_mtime * 1000),
+            })
+        return {"items": items}
+    except Exception as e:
+        log.error(f"列出素材失败: {e}")
+        return {"items": []}
+
+
+@router.delete("/materials/{filename}")
+async def delete_material(filename: str):
+    """删除素材库中的报告"""
+    filepath = os.path.join(CREATION_DIR, filename)
+    if not os.path.exists(filepath) or not filepath.startswith(CREATION_DIR):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    os.remove(filepath)
+    return {"status": "success"}
+
+
+@router.get("/materials/{filename}")
+async def get_material(filename: str):
+    """读取单个素材内容"""
+    filepath = os.path.join(CREATION_DIR, filename)
+    if not os.path.exists(filepath) or not filepath.startswith(CREATION_DIR):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    with open(filepath, "r", encoding="utf-8") as f:
+        content = f.read()
+    return {"filename": filename, "content": content}

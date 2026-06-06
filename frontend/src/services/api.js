@@ -1,6 +1,6 @@
 // frontend/src/services/api.js
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
 
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -9,8 +9,22 @@ function generateUUID() {
   });
 }
 
-// 会话级 ID：页面一刷新就重置，满足"单次会话记忆"需求
-const SESSION_THREAD_ID = generateUUID();
+// 会话级 ID：可持久化，支持刷新后恢复
+let _threadId = localStorage.getItem('iris_thread_id') || crypto.randomUUID();
+localStorage.setItem('iris_thread_id', _threadId);
+
+export function getThreadId() { return _threadId; }
+export function setThreadId(id) {
+  _threadId = id;
+  localStorage.setItem('iris_thread_id', id);
+}
+export function newThreadId() {
+  const id = crypto.randomUUID();
+  _threadId = id;
+  localStorage.setItem('iris_thread_id', id);
+  return id;
+}
+
 /**
  * 批量上传文件
  * @param {Array<File>} files - 文件对象数组
@@ -65,7 +79,7 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
           body: JSON.stringify({
               query: query,
               search_mode: search_mode,
-              thread_id: SESSION_THREAD_ID
+              thread_id: _threadId
           }),
           signal,
       });
@@ -87,7 +101,6 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
           if (dataStr === '[DONE]') { streamDone = true; return; }
           try {
               const parsed = JSON.parse(dataStr);
-              console.log('[SSE]', parsed.step, parsed.data?.token?.substring(0, 20) || '');
               onData(parsed);
           } catch(e){
               console.warn('[SSE] parse error:', dataStr.substring(0, 50));
@@ -132,5 +145,23 @@ export async function saveReport(query, report, watermark = true) {
     body: JSON.stringify({ query, report, watermark })
   });
   if (!response.ok) throw new Error('Failed to save report');
+  return await response.json();
+}
+
+export async function listMaterials() {
+  const response = await fetch(`${API_BASE}/materials`);
+  if (!response.ok) throw new Error('Failed to list materials');
+  return await response.json();
+}
+
+export async function deleteMaterial(filename) {
+  const response = await fetch(`${API_BASE}/materials/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to delete material');
+  return await response.json();
+}
+
+export async function getMaterial(filename) {
+  const response = await fetch(`${API_BASE}/materials/${encodeURIComponent(filename)}`);
+  if (!response.ok) throw new Error('Failed to get material');
   return await response.json();
 }

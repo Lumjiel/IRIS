@@ -8,6 +8,20 @@ from app.utils.llm import PRIMARY_MODEL, FALLBACK_MODEL
 
 log = get_logger("main")
 
+# 启动时检查关键依赖
+def _check_deps():
+    missing = []
+    for mod in ["langgraph.checkpoint.sqlite.aio", "langgraph", "langchain_openai", "chromadb", "tavily"]:
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(mod)
+    if missing:
+        log.error(f"缺少依赖: {', '.join(missing)}，请运行 pip install -r requirements.txt")
+        raise SystemExit(1)
+
+_check_deps()
+
 app = FastAPI(title="IRIS Agent API")
 
 app.add_middleware(
