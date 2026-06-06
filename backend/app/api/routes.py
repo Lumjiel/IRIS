@@ -8,6 +8,7 @@ import asyncio
 import os
 import glob
 import time
+import random
 import shutil
 from collections import defaultdict
 from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
@@ -153,8 +154,7 @@ async def chat_endpoint(request: ChatRequest, req: Request):
         raise HTTPException(status_code=429, detail="请求太频繁，请稍后再试（每分钟最多 5 次）")
 
     # 低概率触发检查点清理（避免每次请求都清理）
-    import random
-    if random.random() < 0.1:  # 10% 概率
+    if random.random() < 0.1:
         cleanup_old_checkpoints(max_age_days=CHECKPOINT_MAX_AGE_DAYS)
 
     config = {"configurable": {"thread_id": request.thread_id}}

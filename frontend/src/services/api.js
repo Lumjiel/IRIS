@@ -29,8 +29,14 @@ export async function uploadFiles(files) {
     });
     
     if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Upload failed");
+        let msg = "上传失败";
+        try {
+            const errorData = await response.json();
+            msg = errorData.detail || msg;
+        } catch {
+            msg = `HTTP ${response.status}`;
+        }
+        throw new Error(msg);
     }
     
     return await response.json();
@@ -64,19 +70,25 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
           signal,
       });
       
-      if (!response.ok) throw new Error('Network error');
+      if (!response.ok) {
+          let msg = "请求失败";
+          try { const d = await response.json(); msg = d.detail || msg; } catch { msg = `HTTP ${response.status}`; }
+          throw new Error(msg);
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder('utf-8');
-      
+      let buffer = '';
+
       while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // 保留不完整的最后一行
           for (const line of lines) {
               if (line.startsWith('data: ')) {
-                  const dataStr = line.replace('data: ', '').trim();
+                  const dataStr = line.slice(6).trim();
                   if (dataStr === '[DONE]') {
                       onDone(); return;
                   }
