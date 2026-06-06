@@ -86,10 +86,10 @@
           <h2 class="text-lg font-semibold text-gray-800 mb-1">有什么想调研的？</h2>
           <p class="text-sm text-gray-400 mb-6">输入主题开始深度调研，或试试下方灵感</p>
 
-          <!-- AI 灵感卡片 -->
+          <!-- 推文灵感卡片 -->
           <div class="w-full max-w-2xl">
             <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-bold text-gray-400">🔥 AI 灵感</span>
+              <span class="text-xs font-bold text-gray-400">🔥 推文灵感</span>
               <button @click="loadAiNews" class="text-[10px] text-gray-400 hover:text-blue-500">刷新</button>
             </div>
             <div class="grid grid-cols-2 gap-2">
@@ -383,7 +383,7 @@ const stopResearch = () => {
     addMessage('assistant', 'step', '', { icon: '⏹️', title: '已停止', detail: '', status: 'done' });
 };
 
-// === AI 灵感 ===
+// === 推文灵感 ===
 const loadAiNews = async () => {
     try {
         const data = await fetchAihotNews(20);
