@@ -39,7 +39,7 @@ def review_node(state: AgentState):
 
     num = state.get("revision_number", 0)
 
-    response = llm_invoke(REVIEW_PROMPT.format(query=query, report=report).messages, model_type="smart")
+    response = llm_invoke([HumanMessage(content=REVIEW_PROMPT.format(query=query, report=report))], model_type="smart")
     raw = response.content
     content = _clean_json_text(raw)
 

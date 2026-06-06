@@ -1,4 +1,5 @@
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage
 from app.utils.llm import llm_invoke
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
@@ -32,10 +33,11 @@ def write_node(state: AgentState):
         请务必在本次写作中修正上述问题。
         """
 
-    response = llm_invoke(WRITE_PROMPT.format(
+    prompt_text = WRITE_PROMPT.format(
         query=query,
         content=content,
         critique_section=critique_section
-    ).messages)
+    )
+    response = llm_invoke([HumanMessage(content=prompt_text)])
 
     return {"final_report": response.content}
