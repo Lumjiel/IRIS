@@ -35,7 +35,16 @@ def _clean_json_text(s: str) -> str:
 def review_node(state: AgentState):
     log.info("正在审查报告质量")
     query = state["query"]
-    report = state["final_report"]
+    report = state.get("final_report", "")
+
+    # 空报告直接 FAIL
+    if not report or len(report.strip()) < 50:
+        log.warning("报告内容过短或为空，直接判 FAIL")
+        return {
+            "critique": "报告内容不完整或为空，请重新生成。",
+            "revision_number": state.get("revision_number", 0) + 1,
+            "review_status": "FAIL"
+        }
 
     num = state.get("revision_number", 0)
 

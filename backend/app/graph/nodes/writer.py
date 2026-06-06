@@ -39,5 +39,10 @@ def write_node(state: AgentState):
         critique_section=critique_section
     )
     response = llm_invoke([HumanMessage(content=prompt_text)])
+    report = response.content or ""
 
-    return {"final_report": response.content}
+    if not report.strip():
+        log.warning("LLM 返回空报告，生成兜底内容")
+        report = f"## {query}\n\n基于现有信息，关于「{query}」的研究报告暂时无法完整生成。建议稍后重试或调整研究方向。"
+
+    return {"final_report": report}
