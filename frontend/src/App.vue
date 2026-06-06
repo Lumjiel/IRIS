@@ -86,24 +86,35 @@
           <h2 class="text-lg font-semibold text-gray-800 mb-1">有什么想调研的？</h2>
           <p class="text-sm text-gray-400 mb-6">输入主题开始深度调研，或试试下方灵感</p>
 
-          <!-- 推文灵感卡片 -->
-          <div class="w-80 max-w-full">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-[11px] font-bold text-gray-400">🔥 推文灵感</span>
-              <button @click="loadAiNews" class="text-[10px] text-gray-400 hover:text-blue-500">刷新</button>
+          <!-- 推文灵感 -->
+          <div class="w-full max-w-xl">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <span class="text-sm font-semibold text-gray-700">推文灵感</span>
+              </div>
+              <button @click="loadAiNews" class="text-[11px] text-gray-400 hover:text-blue-500 transition-colors">换一批</button>
             </div>
-            <!-- 分类筛选 -->
-            <div class="flex gap-1 mb-2 overflow-x-auto scrollbar-none">
-              <button v-for="cat in aiNewsCategories" :key="cat.key" @click="aiNewsCategory = cat.key" class="shrink-0 px-2 py-0.5 rounded text-[9px] font-medium transition-all" :class="aiNewsCategory === cat.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'">
+            <!-- 分类 -->
+            <div class="flex gap-1.5 mb-3 flex-wrap">
+              <button v-for="cat in aiNewsCategories" :key="cat.key" @click="aiNewsCategory = cat.key" class="px-3 py-1 rounded-full text-[11px] font-medium transition-all duration-200" :class="aiNewsCategory === cat.key ? 'bg-gray-900 text-white shadow-md' : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-200'">
                 {{ cat.label }}
               </button>
             </div>
-            <div class="space-y-1 max-h-52 overflow-y-auto">
-              <div v-for="item in filteredAiNews" :key="item.id" @click="useAiNews(item.title)" class="px-2.5 py-1.5 bg-white rounded-lg border border-gray-100 cursor-pointer hover:border-blue-200 transition-colors group">
-                <p class="text-[11px] text-gray-600 leading-snug line-clamp-1 group-hover:text-blue-600">{{ item.title }}</p>
-                <div class="flex items-center gap-1 mt-0.5">
-                  <span v-if="item.category" class="text-[8px] px-1 py-px rounded" :class="{'bg-blue-50 text-blue-500':item.category==='ai-models','bg-green-50 text-green-500':item.category==='ai-products','bg-amber-50 text-amber-500':item.category==='industry','bg-purple-50 text-purple-500':item.category==='paper','bg-cyan-50 text-cyan-500':item.category==='tip'}">{{ catLabel(item.category) }}</span>
-                  <span class="text-[8px] text-gray-300 truncate flex-1">{{ item.source }}</span>
+            <!-- 卡片列表 -->
+            <div class="space-y-2">
+              <div v-for="item in filteredAiNews" :key="item.id" @click="useAiNews(item.title)" class="group p-3.5 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 hover:shadow-md hover:shadow-blue-50 transition-all duration-300">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-[13px] font-medium text-gray-800 leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">{{ item.title }}</p>
+                    <div class="flex items-center gap-2 mt-2">
+                      <span v-if="item.category" class="text-[10px] font-medium px-2 py-0.5 rounded-full" :class="{'bg-blue-50 text-blue-600':item.category==='ai-models','bg-emerald-50 text-emerald-600':item.category==='ai-products','bg-amber-50 text-amber-600':item.category==='industry','bg-purple-50 text-purple-600':item.category==='paper','bg-cyan-50 text-cyan-600':item.category==='tip'}">{{ catLabel(item.category) }}</span>
+                      <span class="text-[10px] text-gray-400">{{ item.source }}</span>
+                    </div>
+                  </div>
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-300 group-hover:text-blue-400 shrink-0 mt-1 transition-all duration-200 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
                 </div>
               </div>
             </div>
