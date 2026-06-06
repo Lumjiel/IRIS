@@ -1,6 +1,9 @@
 from langchain_core.messages import HumanMessage
 from app.graph.state import AgentState
 from app.utils.llm import get_llm
+from app.utils.logger import get_logger
+
+log = get_logger("refiner")
 
 llm = get_llm()
 
@@ -8,7 +11,7 @@ def refine_node(state: AgentState):
     query = state["query"]               # 修改指令，例如 "把第一章改详细点"
     old_report = state.get("final_report", "")
     
-    print(f"--- [Refiner] 正在根据指令修改报告: {query} ---")
+    log.info(f"[Refiner] 正在根据指令修改报告: {query}")
     
     prompt = f"""
     你是一个专业的报告编辑。

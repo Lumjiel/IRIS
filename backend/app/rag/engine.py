@@ -9,6 +9,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
+from app.utils.logger import get_logger
+
+log = get_logger("rag.engine")
 
 try:
     from sentence_transformers import CrossEncoder
@@ -78,21 +81,21 @@ def reset_knowledge_base():
         try:
             shutil.rmtree(UPLOAD_DIR)
         except Exception as e:
-            print(f"--- [RAG] 清理上传目录警告: {e} ---")
+            log.warning(f"[RAG] 清理上传目录警告: {e}")
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-    print("--- [RAG] 正在重置知识库数据... ---")
+    log.info("[RAG] 正在重置知识库数据...")
     try:
         if os.path.exists(DB_PATH):
             vectorstore = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
             try:
                 vectorstore.delete_collection()
-                print("--- [RAG] 知识库 Collection 已删除 (数据已清空) ---")
+                log.info("[RAG] 知识库 Collection 已删除 (数据已清空)")
             except Exception:
                 pass
     except Exception as e:
-        print(f"--- [RAG] 重置数据库时遇到非致命错误 (不影响使用): {e} ---")
+        log.warning(f"[RAG] 重置数据库时遇到非致命错误 (不影响使用): {e}")
 
 def process_documents(file_paths: List[str]):
     """
@@ -101,7 +104,7 @@ def process_documents(file_paths: List[str]):
     all_splits = []
     
     for file_path in file_paths:
-        print(f"--- [RAG] 正在处理文档: {os.path.basename(file_path)} ---")
+        log.info(f"[RAG] 正在处理文档: {os.path.basename(file_path)}")
         try:
             loader = PyPDFLoader(file_path)
             docs = loader.load()
@@ -113,16 +116,16 @@ def process_documents(file_paths: List[str]):
             splits = text_splitter.split_documents(docs)
             all_splits.extend(splits)
         except Exception as e:
-            print(f"❌ 处理文件 {file_path} 失败: {e}")
+            log.error(f"处理文件 {file_path} 失败: {e}")
     
     if all_splits:
-        print(f"--- [RAG] 正在将 {len(all_splits)} 个片段写入向量数据库... ---")
+        log.info(f"[RAG] 正在将 {len(all_splits)} 个片段写入向量数据库...")
         Chroma.from_documents(
             documents=all_splits,
             embedding=embeddings,
             persist_directory=DB_PATH
         )
-        print("--- [RAG] 写入完成 ---")
+        log.info("[RAG] 写入完成")
     
     return len(all_splits)
 

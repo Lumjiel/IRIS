@@ -39,6 +39,12 @@
           <span class="text-[10px] text-gray-400 font-medium tracking-wider uppercase">
              {{ step.desc }}
           </span>
+          <span
+            v-if="currentStepIndex === index && currentStep !== 'done' && elapsed > 0"
+            class="text-[10px] text-blue-500 font-mono mt-0.5"
+          >
+            {{ formatElapsed(elapsed) }}
+          </span>
         </div>
       </div>
     </div>
@@ -46,24 +52,50 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
 import { CheckIcon, Loader2Icon, BrainCircuitIcon, SearchIcon, FileTextIcon, ShieldCheckIcon } from 'lucide-vue-next';
 
 const props = defineProps({
-  currentStep: { type: String, default: 'idle' }
+  currentStep: { type: String, default: 'idle' },
+  startTime: { type: Number, default: 0 }
 });
 
+const elapsed = ref(0);
+let timer = null;
+
 const steps = [
-  { id: 'planner', label: 'TASK PLANNING', desc: '拆解任务与路径规划', icon: BrainCircuitIcon },
-  { id: 'researcher', label: 'DEEP SEARCH', desc: '全网数据检索与聚合', icon: SearchIcon },
-  { id: 'writer', label: 'CONTENT GENERATION', desc: '多维信息整合与写作', icon: FileTextIcon },
-  { id: 'reviewer', label: 'QUALITY ASSURANCE', desc: '逻辑校验与反思修正', icon: ShieldCheckIcon },
+  { id: 'planner', label: '任务规划', desc: '拆解问题与路径规划', icon: BrainCircuitIcon },
+  { id: 'researcher', label: '深度检索', desc: '多源数据采集与聚合', icon: SearchIcon },
+  { id: 'writer', label: '内容生成', desc: '信息整合与报告撰写', icon: FileTextIcon },
+  { id: 'reviewer', label: '质量审查', desc: '逻辑校验与反思修正', icon: ShieldCheckIcon },
 ];
 
 const currentStepIndex = computed(() => {
     if (props.currentStep === 'idle') return -1;
     if (props.currentStep === 'done') return steps.length;
     return steps.findIndex(s => s.id === props.currentStep);
+});
+
+// 计时器
+const formatElapsed = (ms) => {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s / 60)}m ${s % 60}s`;
+};
+
+watch(() => props.currentStep, (step) => {
+    if (timer) clearInterval(timer);
+    elapsed.value = 0;
+    if (step !== 'idle' && step !== 'done' && props.startTime) {
+        elapsed.value = Date.now() - props.startTime;
+        timer = setInterval(() => {
+            elapsed.value = Date.now() - props.startTime;
+        }, 1000);
+    }
+});
+
+onUnmounted(() => {
+    if (timer) clearInterval(timer);
 });
 
 // 样式辅助函数

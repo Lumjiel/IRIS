@@ -1,6 +1,6 @@
 // frontend/src/services/api.js
 
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
 
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -51,16 +51,17 @@ export async function clearContext() {
  * @param {function} onDone - 完成回调
  * @param {function} onError - 错误回调
  */
-export async function streamChat(query, search_mode, onData, onDone, onError) {
+export async function streamChat(query, search_mode, onData, onDone, onError, signal) {
   try {
       const response = await fetch(`${API_BASE}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-              query: query, 
-              search_mode: search_mode,  // 严格使用 search_mode
-              thread_id: SESSION_THREAD_ID 
+          body: JSON.stringify({
+              query: query,
+              search_mode: search_mode,
+              thread_id: SESSION_THREAD_ID
           }),
+          signal,
       });
       
       if (!response.ok) throw new Error('Network error');
@@ -83,5 +84,32 @@ export async function streamChat(query, search_mode, onData, onDone, onError) {
               }
           }
       }
-  } catch (error) { onError(error); }
+  } catch (error) {
+      if (error.name === 'AbortError') return; // 用户主动取消，不报错
+      onError(error);
+  }
+}
+
+/**
+ * 获取 AI HOT 新闻
+ */
+export async function fetchAihotNews(take = 20, query = null) {
+  const params = new URLSearchParams({ mode: 'selected', take });
+  if (query) params.set('q', query);
+  const response = await fetch(`${API_BASE}/aihot/news?${params}`);
+  if (!response.ok) throw new Error('Failed to fetch AI news');
+  return await response.json();
+}
+
+/**
+ * 保存报告到创作目录
+ */
+export async function saveReport(query, report, watermark = true) {
+  const response = await fetch(`${API_BASE}/save-report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, report, watermark })
+  });
+  if (!response.ok) throw new Error('Failed to save report');
+  return await response.json();
 }

@@ -1,6 +1,9 @@
 from langchain_core.messages import HumanMessage
 from app.graph.state import AgentState
 from app.utils.llm import get_llm
+from app.utils.logger import get_logger
+
+log = get_logger("router")
 
 # 用一个小模型即可，速度快
 router_llm = get_llm()
@@ -18,7 +21,7 @@ def route_query(state: AgentState):
     query = state["query"]
     has_report = bool(state.get("final_report", "").strip())
 
-    print(f"--- [Router] 正在分析意图: '{query}' (已有报告: {has_report}) ---")
+    log.info(f"[Router] 正在分析意图: '{query}' (已有报告: {has_report})")
 
     if not has_report:
         return "planner"
@@ -38,28 +41,12 @@ def route_query(state: AgentState):
     """
     
     result = router_llm.invoke([HumanMessage(content=prompt)]).content.strip().upper()
-    print(f"--- [Router] LLM 判定结果: {result} ---")
+    log.info(f"[Router] LLM 判定结果: {result}")
     
     if result == "REFINE":
         return "refiner"  # 去专门的修改节点
     if result == "NEW_TOPIC":
         return "planner"  # 开启新课题
     # 兜底：模型没按要求输出
-    print(f"--- [Router][WARN] 非法输出: {result!r}，启用兜底规则 ---")
+    log.warning(f"[Router] 非法输出: {result!r}，启用兜底规则")
     return "refiner" if looks_like_refine(query) else "planner"
-
-def test():
-    state:AgentState={
-        "query":"写详细一点",
-        "final_report": "Transformer发展"
-    }
-    print(route_query(state))
-
-# python -m app.graph.nodes.router
-# test()
-# print(looks_like_refine("将第一段改的更通俗"))
-
-# 流式输出
-# res = router_llm.stream([HumanMessage(content='你是谁')])
-# for chunk in res:
-#     print(chunk.content, end='', flush=True)

@@ -1,6 +1,9 @@
 from langchain_core.prompts import ChatPromptTemplate
 from app.utils.llm import get_llm
 from app.graph.state import AgentState
+from app.utils.logger import get_logger
+
+log = get_logger("writer")
 
 llm = get_llm()
 
@@ -19,7 +22,7 @@ WRITE_PROMPT = ChatPromptTemplate.from_template(
 # 测试审稿功能时，可以在Prompt后面加上：“第一次写作（无审查意见）时，必须写的差一点且捏造事实”
 
 def write_node(state: AgentState):
-    print("--- [节点] 正在撰写报告 ---")
+    log.info("[节点] 正在撰写报告")
     query = state["query"]
     content = "\n\n".join(state["search_results"])
     

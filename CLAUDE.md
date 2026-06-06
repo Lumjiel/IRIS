@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-IRIS (Intelligent Research & Insight System) 是一个基于 **LangGraph 有向图状态机** 的 AI 研究智能体。通过 6 节点协作实现：意图识别 → 策略规划 → 多源检索 → 报告生成 → 质量评审 → 自动迭代的全自动闭环。
+IRIS (Intelligent Research Insight System) 是一个基于 **LangGraph 状态机** 的自动化深度调研与报告生成系统。通过多节点协作实现：意图识别 → 路径规划 → 动态检索 → 深度撰写 → 自我审查的全自动闭环。
 
 ## 技术栈
 
 - **后端**: FastAPI + LangGraph + ChromaDB (RAG) + Tavily (网络搜索) + SQLite Checkpoint
 - **前端**: Vue 3 + Tailwind CSS + markdown-it + KaTeX
-- **LLM**: DashScope (qwen3-max + deepseek-r1 双模型) + Tavily Search
+- **LLM**: OpenAI API (GPT-4o) + Tavily Search
 
 ## 目录结构
 
@@ -47,6 +47,17 @@ IRIS/
 | `reviewer` | 质量审查，FAIL → 返回 planner 重试（最多3轮） |
 | `refiner` | 对现有报告进行局部修订 |
 
+## 环境变量
+
+在 `backend/.env` 中配置：
+
+| 变量 | 说明 | 必填 |
+|------|------|------|
+| `OPENAI_API_KEY` | DashScope / OpenAI API Key | ✅ |
+| `OPENAI_API_BASE` | API 端点（如 DashScope: `https://dashscope.aliyuncs.com/compatible-mode/v1`） | ✅ |
+| `TAVILY_API_KEY` | Tavily 搜索 API Key | ✅ |
+| `ENABLE_RERANKER` | 启用 CrossEncoder 精排（`true`/`false`，默认 `false`） | ❌ |
+
 ## 常用命令
 
 ```bash
@@ -54,7 +65,7 @@ IRIS/
 cd backend
 python -m venv venv && venv\Scripts\activate  # Windows
 pip install -r requirements.txt
-# 配置 .env: OPENAI_API_KEY, OPENAI_API_BASE, TAVILY_API_KEY, ENABLE_RERANKER
+# 配置 .env: OPENAI_API_KEY, TAVILY_API_KEY
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # 前端
@@ -75,8 +86,28 @@ npm run build  # 生产构建
 ## 关键实现细节
 
 - **SSE 流式**: `routes.py` 中的 `streamChat` 通过 `app.astream()` 将每个节点的状态实时推送至前端
-- **相关性熔断**: Researcher 节点内置 Grader LLM，当文档与问题不相关时，`should_stop=True` 触发提前结束（纯文档模式）或自动降级（全网搜索）- **会话持久化**: `AsyncSqliteSaver` 实现断点续跑，每次请求通过 `thread_id` 关联会话状态
+- **相关性熔断**: Researcher 节点内置 Grader LLM，当文档与问题不相关时，`should_stop=True` 触发提前结束（纯文档模式）或自动降级（全网搜索）
+- **会话持久化**: `AsyncSqliteSaver` 实现断点续跑，每次请求通过 `thread_id` 关联会话状态
 - **前端打字机**: `App.vue` 中的 `typeWriterEffect` 每10ms输出3个字符，配合 markdown-it-katex 渲染 LaTeX 公式
+
+## 双模型架构
+
+- **快模型 (qwen3-max, temperature=0.7)**: Router、Planner、Writer、Refiner — 追求低延迟
+- **慢模型 (deepseek-r1, temperature=0)**: Researcher Grader、Reviewer — 追求判断准确性
+- 模型工厂: `app/utils/llm.py` 中的 `get_llm(model_type="fast"|"smart")`
+
+## RAG 引擎
+
+- **Embedding**: DashScope `text-embedding-v4`
+- **两阶段检索**: Chroma 向量召回 (fetch_k=20) → 可选 CrossEncoder 精排 (top_k=5)
+- **精排开关**: `ENABLE_RERANKER` 环境变量控制，开启需额外 ~400MB 内存
+- **熔断逻辑**: Document Only 模式下文档不相关 → `should_stop=True` 终止；Hybrid 模式 → 自动降级为全网搜索
+
+## 容错机制
+
+- **Router 兜底**: LLM 输出非法时，`looks_like_refine()` 关键词匹配作为 fallback
+- **Reviewer 兜底**: JSON 解析失败 → 重试一次 → 仍失败则 fail-closed（默认 FAIL）
+- **重试上限**: `revision_number` 达到 3 次强制结束，防止死循环
 
 ## API 端点
 
