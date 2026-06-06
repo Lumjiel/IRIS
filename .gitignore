@@ -22,3 +22,4 @@ backend/app/api/checkpoints.db
 .claude/
 .understand-anything/
 *.db
+backend/checkpoints.db*

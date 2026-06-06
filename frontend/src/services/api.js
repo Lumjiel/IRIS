@@ -79,23 +79,26 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
       const reader = response.body.getReader();
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
+      let streamDone = false;
+
+      const processLine = (line) => {
+          if (!line.startsWith('data: ')) return;
+          const dataStr = line.slice(6).trim();
+          if (dataStr === '[DONE]') { streamDone = true; return; }
+          try { onData(JSON.parse(dataStr)); } catch(e){}
+      };
 
       while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
-          buffer = lines.pop(); // 保留不完整的最后一行
-          for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                  const dataStr = line.slice(6).trim();
-                  if (dataStr === '[DONE]') {
-                      onDone(); return;
-                  }
-                  try { onData(JSON.parse(dataStr)); } catch(e){}
-              }
-          }
+          buffer = lines.pop();
+          for (const line of lines) processLine(line);
       }
+      // 处理 buffer 中剩余的数据
+      if (buffer.trim()) processLine(buffer.trim());
+      onDone();
   } catch (error) {
       if (error.name === 'AbortError') return; // 用户主动取消，不报错
       onError(error);
