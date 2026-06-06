@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # LLM
-LLM_TIMEOUT_FAST = int(os.getenv("LLM_TIMEOUT_FAST", "60"))
-LLM_TIMEOUT_SMART = int(os.getenv("LLM_TIMEOUT_SMART", "90"))
+LLM_TIMEOUT_FAST = int(os.getenv("LLM_TIMEOUT_FAST", "120"))
+LLM_TIMEOUT_SMART = int(os.getenv("LLM_TIMEOUT_SMART", "120"))
 MAX_REVISIONS = int(os.getenv("MAX_REVISIONS", "3"))
 
 # RAG

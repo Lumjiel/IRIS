@@ -781,14 +781,19 @@ const startResearch = async () => {
                         }
                     }
                     else if (data.step === 'refiner') {
-                    currentStep.value = 'writer'; // UI上复用写作状态
+                    currentStep.value = 'writer';
                     logs.value.push(`[修订] 根据反馈修改报告...`);
                     if (data.data.final_report) {
                         displayedReport.value = '';
-                        // 重新打字输出修改后的报告
                         typeWriterEffect(data.data.final_report);
                     }
                 }
+
+                    // --- 错误处理 ---
+                    else if (data.step === 'error') {
+                        logs.value.push(`[错误] ${data.data.message || '未知错误'}`);
+                        showToast(data.data.message || '研究过程中发生错误', 'error');
+                    }
 
                     scrollToBottom();
                 },
