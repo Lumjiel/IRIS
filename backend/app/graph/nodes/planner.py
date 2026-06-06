@@ -1,11 +1,9 @@
 from langchain_core.prompts import ChatPromptTemplate
-from app.utils.llm import get_llm
+from app.utils.llm import llm_invoke
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
 
 log = get_logger("planner")
-
-llm = get_llm()
 
 
 PLAN_PROMPT = ChatPromptTemplate.from_template(
@@ -20,9 +18,9 @@ PLAN_PROMPT = ChatPromptTemplate.from_template(
 )
 
 def plan_node(state: AgentState):
-    log.info("[节点] 正在规划搜索路径")
+    log.info("正在规划搜索路径")
     query = state["query"]
-    critique = state.get("critique", "") 
-    response = llm.invoke(PLAN_PROMPT.format(query=query, critique=critique))
+    critique = state.get("critique", "")
+    response = llm_invoke(PLAN_PROMPT.format(query=query, critique=critique).messages)
     plans = [p.strip() for p in response.content.split(",")]
     return {"plan": plans}

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
@@ -6,12 +6,35 @@ from app.graph.graph import create_graph
 import json
 import asyncio
 import os
+import glob
+import time
 import shutil
+from collections import defaultdict
 from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.utils.logger import get_logger
 
 log = get_logger("routes")
+
+
+# --- 简单内存限流 ---
+class RateLimiter:
+    def __init__(self, max_requests: int = 5, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window = window_seconds
+        self._requests: dict[str, list[float]] = defaultdict(list)
+
+    def is_allowed(self, key: str) -> bool:
+        now = time.time()
+        cutoff = now - self.window
+        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
+        if len(self._requests[key]) >= self.max_requests:
+            return False
+        self._requests[key].append(now)
+        return True
+
+# 每个 IP 每分钟最多 5 次研究请求
+chat_limiter = RateLimiter(max_requests=5, window_seconds=60)
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(CURRENT_DIR, "checkpoints.db")
@@ -20,8 +43,13 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     query: str
-    search_mode: str = "hybrid" # 默认为混合搜索
-    thread_id: str             
+    search_mode: str = "hybrid"
+    thread_id: str
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if len(self.query) > 2000:
+            raise ValueError("研究主题不能超过 2000 字")             
 
 @router.post("/clear")
 async def clear_endpoint():
@@ -62,6 +90,9 @@ async def upload_files(files: List[UploadFile] = File(...)):
 
         chunks_num = process_documents(saved_paths)
 
+        # 清理旧文件，防止磁盘爆满
+        cleanup_old_uploads(max_age_hours=24)
+
         return {
             "status": "success",
             "file_count": len(files),
@@ -75,7 +106,12 @@ async def upload_files(files: List[UploadFile] = File(...)):
         raise HTTPException(status_code=500, detail="文档处理失败，请检查文件格式后重试")
 
 @router.post("/chat")
-async def chat_endpoint(request: ChatRequest):
+async def chat_endpoint(request: ChatRequest, req: Request):
+    # 限流检查
+    client_ip = req.client.host if req.client else "unknown"
+    if not chat_limiter.is_allowed(client_ip):
+        raise HTTPException(status_code=429, detail="请求太频繁，请稍后再试（每分钟最多 5 次）")
+
     config = {"configurable": {"thread_id": request.thread_id}}
     async def event_generator():
         try:
@@ -138,6 +174,24 @@ class SaveReportRequest(BaseModel):
     watermark: bool = True
 
 创作目录 = os.path.normpath(r"E:\claudecode\创作\projects\公众号\IRIS调研")
+
+
+def cleanup_old_uploads(max_age_hours: int = 24):
+    """清理超过指定时间的上传文件，防止磁盘爆满"""
+    try:
+        if not os.path.exists(UPLOAD_DIR):
+            return
+        now = time.time()
+        cutoff = now - (max_age_hours * 3600)
+        removed = 0
+        for f in glob.glob(os.path.join(UPLOAD_DIR, "*")):
+            if os.path.isfile(f) and os.path.getmtime(f) < cutoff:
+                os.remove(f)
+                removed += 1
+        if removed:
+            log.info(f"清理了 {removed} 个过期上传文件")
+    except Exception as e:
+        log.warning(f"清理上传文件时出错: {e}")
 
 @router.post("/save-report")
 async def save_report(request: SaveReportRequest):

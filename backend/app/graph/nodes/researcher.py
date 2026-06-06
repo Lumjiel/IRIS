@@ -2,11 +2,10 @@ from langchain_core.messages import HumanMessage
 from app.tools.search import search_tavily
 from app.graph.state import AgentState
 from app.rag.engine import get_retriever
-from app.utils.llm import get_llm
+from app.utils.llm import llm_invoke
 from app.utils.logger import get_logger
 
 log = get_logger("researcher")
-llm = get_llm(model_type="smart")
 def research_node(state: AgentState):
 
     mode = state.get("search_mode", "hybrid")
@@ -41,7 +40,7 @@ def research_node(state: AgentState):
                 只输出 "YES" 或 "NO"，不要输出其他内容。
                 """
                 try:
-                    grade = llm.invoke([HumanMessage(content=grader_prompt)]).content.strip().upper()
+                    grade = llm_invoke([HumanMessage(content=grader_prompt)], model_type="smart").content.strip().upper()
                 except Exception as e:
                     log.warning(f"Grader LLM 调用失败: {e}，默认文档相关")
                     grade = "YES"  # grader 超时时保守地认为文档相关
