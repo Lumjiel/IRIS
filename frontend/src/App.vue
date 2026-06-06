@@ -2,7 +2,7 @@
   <div class="h-screen flex bg-gray-50 overflow-hidden">
 
     <!-- 侧边栏 -->
-    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0" :class="sidebarOpen ? '' : 'hidden lg:flex'">
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0 transition-transform duration-300" :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 fixed lg:relative z-30 h-full'">
       <!-- Logo -->
       <div class="px-5 py-4 border-b border-gray-100">
         <h1 class="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">IRIS</h1>
@@ -398,8 +398,9 @@ const sendMessage = async () => {
             finishStreamMsg();
             isLoading.value = false;
             // 保存历史
-            if (reportMsg) {
-                saveSession({ query: currentQuery.value, report: reportMsg.content, mode: actualMode });
+            const report = reportMsg ? reportMsg.content : '';
+            if (currentQuery.value) {
+                saveSession({ query: currentQuery.value, report, mode: actualMode });
                 history.value = getHistory();
             }
         },
