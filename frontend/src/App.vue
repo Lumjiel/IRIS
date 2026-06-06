@@ -92,13 +92,22 @@
               <span class="text-xs font-bold text-gray-400">🔥 推文灵感</span>
               <button @click="loadAiNews" class="text-[10px] text-gray-400 hover:text-blue-500">刷新</button>
             </div>
-            <div class="grid grid-cols-2 gap-2">
-              <div v-for="item in aiNews.slice(0, 6)" :key="item.id" @click="useAiNews(item.title)" class="p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 hover:shadow-sm transition-all group">
+            <!-- 分类筛选 -->
+            <div class="flex gap-1.5 mb-3 overflow-x-auto pb-1 scrollbar-none">
+              <button v-for="cat in aiNewsCategories" :key="cat.key" @click="aiNewsCategory = cat.key" class="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all" :class="aiNewsCategory === cat.key ? 'bg-blue-500 text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'">
+                {{ cat.label }}
+              </button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div v-for="item in filteredAiNews" :key="item.id" @click="useAiNews(item.title)" class="p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 hover:shadow-sm transition-all group">
                 <div class="flex items-start gap-2">
                   <div class="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" :class="{'bg-blue-500':item.category==='ai-models','bg-green-500':item.category==='ai-products','bg-amber-500':item.category==='industry','bg-purple-500':item.category==='paper','bg-cyan-500':item.category==='tip','bg-gray-300':!item.category}"></div>
                   <p class="text-xs text-gray-600 leading-relaxed line-clamp-2 group-hover:text-blue-600">{{ item.title }}</p>
                 </div>
-                <p class="text-[10px] text-gray-300 mt-1.5 ml-3.5">{{ item.source }}</p>
+                <div class="flex items-center gap-2 mt-1.5 ml-3.5">
+                  <p class="text-[10px] text-gray-300 truncate">{{ item.source }}</p>
+                  <span v-if="item.category" class="text-[9px] px-1.5 py-0.5 rounded-full shrink-0" :class="{'bg-blue-50 text-blue-500':item.category==='ai-models','bg-green-50 text-green-500':item.category==='ai-products','bg-amber-50 text-amber-500':item.category==='industry','bg-purple-50 text-purple-500':item.category==='paper','bg-cyan-50 text-cyan-500':item.category==='tip'}">{{ catLabel(item.category) }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -239,6 +248,25 @@ const uploadedFiles = ref([]);
 const history = ref([]);
 const activeHistoryId = ref(null);
 const aiNews = ref([]);
+const aiNewsCategory = ref('');
+const aiNewsCategories = [
+    { key: '', label: '全部' },
+    { key: 'ai-models', label: '模型' },
+    { key: 'ai-products', label: '产品' },
+    { key: 'industry', label: '行业' },
+    { key: 'paper', label: '论文' },
+    { key: 'tip', label: '技巧' },
+];
+
+const filteredAiNews = computed(() => {
+    const items = aiNewsCategory.value ? aiNews.value.filter(i => i.category === aiNewsCategory.value) : aiNews.value;
+    return items.slice(0, 8);
+});
+
+const catLabel = (cat) => {
+    const m = { 'ai-models': '模型', 'ai-products': '产品', 'industry': '行业', 'paper': '论文', 'tip': '技巧' };
+    return m[cat] || '';
+};
 
 // === 研究流 ===
 let currentAbortController = null;
