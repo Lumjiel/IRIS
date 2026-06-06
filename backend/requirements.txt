@@ -13,3 +13,4 @@ chromadb
 aiosqlite
 httpx
 dashscope
+langgraph-checkpoint-sqlite

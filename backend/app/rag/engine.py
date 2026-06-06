@@ -10,7 +10,7 @@ from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from app.utils.logger import get_logger
-from app.config import MAX_KNOWLEDGE_BASE_CHUNKS
+from app.config import MAX_KNOWLEDGE_BASE_CHUNKS, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K, FETCH_K
 
 log = get_logger("rag.engine")
 
@@ -111,8 +111,8 @@ def process_documents(file_paths: List[str]):
             docs = loader.load()
 
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=500,
-                chunk_overlap=50
+                chunk_size=CHUNK_SIZE,
+                chunk_overlap=CHUNK_OVERLAP
             )
             splits = text_splitter.split_documents(docs)
             all_splits.extend(splits)
@@ -143,17 +143,15 @@ def get_retriever():
     if not os.path.exists(DB_PATH) or not os.listdir(DB_PATH):
         return None
     vectorstore = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
-    top_k = 5
-    fetch_k = 20
 
     enable_reranker = os.getenv("ENABLE_RERANKER", "false").lower() == "true"
     if enable_reranker:
         try:
             reranker = get_reranker()
-            return RerankRetriever(vectorstore=vectorstore, reranker=reranker, top_k=top_k, fetch_k=fetch_k)
+            return RerankRetriever(vectorstore=vectorstore, reranker=reranker, top_k=TOP_K, fetch_k=FETCH_K)
         except Exception as e:
             log.warning(f"Reranker 加载失败，降级为纯向量检索: {e}")
 
     # 降级：直接用向量相似度 top_k
-    return vectorstore.as_retriever(search_kwargs={"k": top_k})
+    return vectorstore.as_retriever(search_kwargs={"k": TOP_K})
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List
 from app.graph.graph import create_graph
 import json
@@ -13,12 +13,12 @@ from collections import defaultdict
 from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.utils.logger import get_logger
-from app.config import CHECKPOINT_MAX_AGE_DAYS
+from app.config import CHECKPOINT_MAX_AGE_DAYS, MAX_UPLOAD_FILES, MAX_FILE_SIZE_MB, CREATION_DIR, CHECKPOINT_DB
 
 log = get_logger("routes")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(CURRENT_DIR, "checkpoints.db")
+DB_PATH = CHECKPOINT_DB
 router = APIRouter()
 
 
@@ -51,6 +51,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window = window_seconds
         self._requests: dict[str, list[float]] = defaultdict(list)
+        self._last_cleanup = time.time()
 
     def is_allowed(self, key: str) -> bool:
         now = time.time()
@@ -59,7 +60,17 @@ class RateLimiter:
         if len(self._requests[key]) >= self.max_requests:
             return False
         self._requests[key].append(now)
+
+        # 每 5 分钟清理一次过期 IP
+        if now - self._last_cleanup > 300:
+            self._cleanup(cutoff)
+            self._last_cleanup = now
         return True
+
+    def _cleanup(self, cutoff: float):
+        empty_keys = [k for k, v in self._requests.items() if not v or v[-1] < cutoff]
+        for k in empty_keys:
+            del self._requests[k]
 
 # 每个 IP 每分钟最多 5 次研究请求
 chat_limiter = RateLimiter(max_requests=5, window_seconds=60)
@@ -70,10 +81,12 @@ class ChatRequest(BaseModel):
     search_mode: str = "hybrid"
     thread_id: str
 
-    def __init__(self, **data):
-        super().__init__(**data)
-        if len(self.query) > 2000:
-            raise ValueError("研究主题不能超过 2000 字")             
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, v):
+        if len(v) > 2000:
+            raise ValueError("研究主题不能超过 2000 字")
+        return v             
 
 @router.post("/clear")
 async def clear_endpoint():
@@ -90,8 +103,8 @@ async def upload_files(files: List[UploadFile] = File(...)):
     批量上传接口
     """
 
-    if len(files) > 5:
-        raise HTTPException(status_code=400, detail="一次最多只能上传 5 个文件")
+    if len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(status_code=400, detail=f"一次最多只能上传 {MAX_UPLOAD_FILES} 个文件")
 
     try:
 
@@ -107,8 +120,14 @@ async def upload_files(files: List[UploadFile] = File(...)):
             # 文件名安全处理（防路径穿越）
             safe_name = os.path.basename(file.filename)
             file_path = os.path.join(UPLOAD_DIR, safe_name)
+
+            # 文件大小校验
+            content = await file.read()
+            if len(content) > MAX_FILE_SIZE_MB * 1024 * 1024:
+                raise HTTPException(status_code=400, detail=f"文件 {file.filename} 超过 {MAX_FILE_SIZE_MB}MB 限制")
+
             with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+                buffer.write(content)
             saved_paths.append(file_path)
 
 
@@ -202,8 +221,6 @@ class SaveReportRequest(BaseModel):
     report: str
     watermark: bool = True
 
-创作目录 = os.path.normpath(r"E:\claudecode\创作\projects\公众号\IRIS调研")
-
 
 def cleanup_old_uploads(max_age_hours: int = 24):
     """清理超过指定时间的上传文件，防止磁盘爆满"""
@@ -224,9 +241,9 @@ def cleanup_old_uploads(max_age_hours: int = 24):
 
 @router.post("/save-report")
 async def save_report(request: SaveReportRequest):
-    """将调研报告保存到寻阶行创作目录"""
+    """将调研报告保存到创作目录"""
     try:
-        os.makedirs(创作目录, exist_ok=True)
+        os.makedirs(CREATION_DIR, exist_ok=True)
 
         # 生成文件名
         safe_query = "".join(c for c in request.query if c.isalnum() or c in "一二三四五六七八九十百千万亿年月日时分秒AI").
@@ -234,7 +251,7 @@ async def save_report(request: SaveReportRequest):
         from datetime import datetime
         date_str = datetime.now().strftime("%Y-%m-%d")
         filename = f"{date_str}-{safe_query}.md"
-        filepath = os.path.join(创作目录, filename)
+        filepath = os.path.join(CREATION_DIR, filename)
 
         # 追加水印
         content = request.report

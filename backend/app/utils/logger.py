@@ -1,5 +1,15 @@
 import logging
+import os
 import sys
+
+
+_LOG_LEVEL = os.getenv("LOG_LEVEL", "info").upper()
+_LEVEL_MAP = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+}
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -12,5 +22,5 @@ def get_logger(name: str) -> logging.Logger:
             datefmt='%H:%M:%S'
         ))
         logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
+        logger.setLevel(_LEVEL_MAP.get(_LOG_LEVEL, logging.INFO))
     return logger

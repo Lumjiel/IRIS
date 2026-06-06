@@ -13,7 +13,7 @@ app = FastAPI(title="IRIS Agent API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=CORS_ORIGINS != ["*"],  # 通配符时不能开 credentials
     allow_methods=["*"],
     allow_headers=["*"],
 )

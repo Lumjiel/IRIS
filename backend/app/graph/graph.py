@@ -8,6 +8,7 @@ import json
 from app.graph.nodes.router import route_query
 from app.graph.nodes.refiner import refine_node
 from app.utils.logger import get_logger
+from app.config import MAX_REVISIONS
 
 log = get_logger("graph")
 
@@ -31,8 +32,8 @@ def should_continue(state: AgentState):
     """
 
     current_revision = state.get("revision_number", 0)
-    if current_revision >= 3:
-        log.info("[路由] 已达到最大重试次数，强制结束")
+    if current_revision >= MAX_REVISIONS:
+        log.info(f"已达到最大重试次数 {MAX_REVISIONS}，强制结束")
         return END
 
     review_status = state.get("review_status", "PASS")

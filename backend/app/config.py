@@ -28,9 +28,16 @@ TAVILY_MAX_RETRIES = int(os.getenv("TAVILY_MAX_RETRIES", "2"))
 MAX_UPLOAD_FILES = int(os.getenv("MAX_UPLOAD_FILES", "5"))
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "20"))
 
+# 创作目录（保存报告用）
+CREATION_DIR = os.getenv("CREATION_DIR", r"E:\claudecode\创作\projects\公众号\IRIS调研")
+
 # Server
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
-WORKERS = int(os.getenv("WORKERS", "1"))  # 2G 服务器建议 1 worker
+WORKERS = int(os.getenv("WORKERS", "1"))
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
+
+# 数据目录
+DATA_DIR = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", os.path.join(DATA_DIR, "checkpoints.db"))
