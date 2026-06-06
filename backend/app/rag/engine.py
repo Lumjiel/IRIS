@@ -132,12 +132,22 @@ def process_documents(file_paths: List[str]):
 def get_retriever():
     """
     获取检索器：给 Agent 用的接口
+    启用 ENABLE_RERANKER=true 时使用 CrossEncoder 精排（额外 ~400MB 内存）
     """
     if not os.path.exists(DB_PATH) or not os.listdir(DB_PATH):
         return None
     vectorstore = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
     top_k = 5
     fetch_k = 20
-    reranker = get_reranker()
-    return RerankRetriever(vectorstore=vectorstore, reranker=reranker, top_k=top_k, fetch_k=fetch_k)
+
+    enable_reranker = os.getenv("ENABLE_RERANKER", "false").lower() == "true"
+    if enable_reranker:
+        try:
+            reranker = get_reranker()
+            return RerankRetriever(vectorstore=vectorstore, reranker=reranker, top_k=top_k, fetch_k=fetch_k)
+        except Exception as e:
+            log.warning(f"Reranker 加载失败，降级为纯向量检索: {e}")
+
+    # 降级：直接用向量相似度 top_k
+    return vectorstore.as_retriever(search_kwargs={"k": top_k})
 

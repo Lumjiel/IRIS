@@ -16,6 +16,7 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
 TOP_K = int(os.getenv("TOP_K", "5"))
 FETCH_K = int(os.getenv("FETCH_K", "20"))
+ENABLE_RERANKER = os.getenv("ENABLE_RERANKER", "false").lower() == "true"
 
 # Search
 TAVILY_MAX_RESULTS = int(os.getenv("TAVILY_MAX_RESULTS", "3"))
@@ -28,4 +29,6 @@ MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "20"))
 # Server
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
+WORKERS = int(os.getenv("WORKERS", "1"))  # 2G 服务器建议 1 worker
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "info")

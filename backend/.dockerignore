@@ -1,0 +1,9 @@
+__pycache__
+*.pyc
+venv/
+.env
+*.db
+app/rag/chroma_db/
+app/rag/uploads/
+.vscode/
+.idea/
