@@ -98,15 +98,15 @@
                 {{ cat.label }}
               </button>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div v-for="item in filteredAiNews" :key="item.id" @click="useAiNews(item.title)" class="p-3 bg-white rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 hover:shadow-sm transition-all group">
-                <div class="flex items-start gap-2">
-                  <div class="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" :class="{'bg-blue-500':item.category==='ai-models','bg-green-500':item.category==='ai-products','bg-amber-500':item.category==='industry','bg-purple-500':item.category==='paper','bg-cyan-500':item.category==='tip','bg-gray-300':!item.category}"></div>
-                  <p class="text-xs text-gray-600 leading-relaxed line-clamp-2 group-hover:text-blue-600">{{ item.title }}</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              <div v-for="item in filteredAiNews" :key="item.id" @click="useAiNews(item.title)" class="px-3 py-2 bg-white rounded-lg border border-gray-100 cursor-pointer hover:border-blue-200 hover:shadow-sm transition-all group">
+                <div class="flex items-start gap-1.5">
+                  <div class="w-1 h-1 rounded-full mt-1.5 shrink-0" :class="{'bg-blue-500':item.category==='ai-models','bg-green-500':item.category==='ai-products','bg-amber-500':item.category==='industry','bg-purple-500':item.category==='paper','bg-cyan-500':item.category==='tip','bg-gray-300':!item.category}"></div>
+                  <p class="text-[11px] text-gray-600 leading-snug line-clamp-2 group-hover:text-blue-600">{{ item.title }}</p>
                 </div>
-                <div class="flex items-center gap-2 mt-1.5 ml-3.5">
-                  <p class="text-[10px] text-gray-300 truncate">{{ item.source }}</p>
-                  <span v-if="item.category" class="text-[9px] px-1.5 py-0.5 rounded-full shrink-0" :class="{'bg-blue-50 text-blue-500':item.category==='ai-models','bg-green-50 text-green-500':item.category==='ai-products','bg-amber-50 text-amber-500':item.category==='industry','bg-purple-50 text-purple-500':item.category==='paper','bg-cyan-50 text-cyan-500':item.category==='tip'}">{{ catLabel(item.category) }}</span>
+                <div class="flex items-center gap-1.5 mt-1 ml-2.5">
+                  <p class="text-[9px] text-gray-300 truncate flex-1">{{ item.source }}</p>
+                  <span v-if="item.category" class="text-[8px] px-1 py-0.5 rounded shrink-0" :class="{'bg-blue-50 text-blue-500':item.category==='ai-models','bg-green-50 text-green-500':item.category==='ai-products','bg-amber-50 text-amber-500':item.category==='industry','bg-purple-50 text-purple-500':item.category==='paper','bg-cyan-50 text-cyan-500':item.category==='tip'}">{{ catLabel(item.category) }}</span>
                 </div>
               </div>
             </div>
