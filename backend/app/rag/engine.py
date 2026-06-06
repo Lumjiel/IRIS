@@ -12,7 +12,9 @@ from langchain_core.retrievers import BaseRetriever
 from app.utils.logger import get_logger
 from app.config import MAX_KNOWLEDGE_BASE_CHUNKS, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K, FETCH_K
 
-log = get_logger("rag.engine")try:
+log = get_logger("rag.engine")
+
+try:
     from sentence_transformers import CrossEncoder
 except ImportError:
     CrossEncoder = None

@@ -243,7 +243,7 @@ async def save_report(request: SaveReportRequest):
         os.makedirs(CREATION_DIR, exist_ok=True)
 
         # 生成文件名
-        safe_query = "".join(c for c in request.query if c.isalnum() or c in "一二三四五六七八九十百千万亿年月日时分秒AI").
+        safe_query = "".join(c for c in request.query if c.isalnum() or c in "一二三四五六七八九十百千万亿年月日时分秒AI")
         safe_query = safe_query[:40] or "调研报告"
         from datetime import datetime
         date_str = datetime.now().strftime("%Y-%m-%d")

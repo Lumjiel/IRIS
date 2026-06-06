@@ -3,10 +3,10 @@ from app.utils.llm import llm_invoke
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
 
-log = get_logger(“writer”)
+log = get_logger("writer")
 
 WRITE_PROMPT = ChatPromptTemplate.from_template(
-    “””你是一个专业的技术撰稿人。
+    """你是一个专业的技术撰稿人。
     基于以下的调研资料，回答用户的问题：{query}
 
     调研资料：
@@ -15,22 +15,22 @@ WRITE_PROMPT = ChatPromptTemplate.from_template(
     {critique_section}
     不能捏造事实，每个结论都要对应资料里的证据点。
     请写一份结构清晰、有深度的调研报告，且文章题目很有水平，并且能吸引人，使用 Markdown 格式。
-    “””
+    """
 )
 
 def write_node(state: AgentState):
-    log.info(“正在撰写报告”)
-    query = state[“query”]
-    content = “\n\n”.join(state[“search_results”])
+    log.info("正在撰写报告")
+    query = state["query"]
+    content = "\n\n".join(state["search_results"])
 
-    critique = state.get(“critique”, “”)
-    critique_section = “”
+    critique = state.get("critique", "")
+    critique_section = ""
     if critique:
-        critique_section = f”””
+        critique_section = f"""
         【重要提示】上一版本的报告未通过审查。
-        审查意见如下：”{critique}”
+        审查意见如下："{critique}"
         请务必在本次写作中修正上述问题。
-        “””
+        """
 
     response = llm_invoke(WRITE_PROMPT.format(
         query=query,
@@ -38,4 +38,4 @@ def write_node(state: AgentState):
         critique_section=critique_section
     ).messages)
 
-    return {“final_report”: response.content}
+    return {"final_report": response.content}
