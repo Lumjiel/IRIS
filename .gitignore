@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Data
+backend/app/rag/chroma_db/
+backend/app/rag/uploads/
+backend/app/api/checkpoints.db
+
+# Claude Code / Tools
+.claude/
+.understand-anything/

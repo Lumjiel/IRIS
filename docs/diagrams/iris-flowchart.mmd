@@ -1,0 +1,170 @@
+flowchart TD
+    subgraph FE["🖥️ 前端 Frontend"]
+        direction TB
+        U[用户输入: query + PDF + mode] --> UPLOAD{上传文件?}
+        UPLOAD -->|是| UP_API["POST /api/upload
+        最多5个PDF
+        reset → save → chunk+embed"]
+        UPLOAD -->|否| CLR["POST /api/clear
+        清除旧知识库
+        强制切换hybrid模式"]
+        UP_API --> SSE["POST /api/chat
+        SSE 流式连接"]
+        CLR --> SSE
+    end
+
+    subgraph GSSE["📡 API 层"]
+        SSE --> INIT["初始化 AgentState
+        query + mode + revision=0
+        AsyncSqliteSaver 持久化"]
+    end
+
+    subgraph GR["🔀 Router 路由节点"]
+        direction TB
+        INIT --> HAS_RPT{已有报告?}
+        HAS_RPT -->|否| PLANNER
+        HAS_RPT -->|是| LLM_R["LLM 分类意图
+        qwen3-max"]
+        LLM_R --> INTENT{NEW_TOPIC
+        还是 REFINE?}
+        INTENT -->|NEW_TOPIC| PLANNER
+        INTENT -->|REFINE| REFINER
+        LLM_R -.->|解析失败| FALLBACK["关键词匹配兜底
+        改/润色/优化/补充/扩写
+        /重写/调整/总结"]
+        FALLBACK --> REFINER
+    end
+
+    subgraph GP["📋 Planner 规划节点"]
+        PLANNER["plan_node
+        qwen3-max"] --> PLAN["生成3-5个搜索子问题
+        如有critique则补充遗漏信息
+        按逗号分割解析"]
+    end
+
+    subgraph GR2["🔬 Researcher 检索节点"]
+        direction TB
+        PLAN --> HAS_RET{RAG 检索器可用?}
+        HAS_RET -->|否| SKIP_RAG["跳过文档检索"]
+        HAS_RET -->|是| RAG_DO["Chroma 检索20个候选
+        → CrossEncoder 重排取Top5"]
+        RAG_DO --> GRADE["LLM 评估文档相关性
+        deepseek-r1 温度=0"]
+        GRADE --> DOC_REL{文档相关?}
+        DOC_REL -->|是| ADD_DOCS["标记为已验证相关
+        加入 search_results"]
+        DOC_REL -->|否| IGNORE["记录：文档自动忽略"]
+
+        ADD_DOCS --> MODE{search_mode?}
+        IGNORE --> MODE
+        SKIP_RAG --> WEB_ONLY
+
+        MODE -->|document| DOC_PATH
+        DOC_PATH --> DOC_OK{文档相关?}
+        DOC_OK -->|是| WRITER["→ Writer"]
+        DOC_OK -->|否| STOP["should_stop = true
+        严重警告：文档无关"]
+
+        MODE -->|hybrid| WEB_ONLY["Tavily 网络搜索
+        逐个子问题执行
+        单个失败不影响其他"]
+    end
+
+    STOP --> EARLY["route_after_research
+    should_stop → END
+    前端显示文档无关警告"]
+
+    WEB_ONLY --> WRITER
+
+    subgraph GW["✍️ Writer 撰写节点"]
+        WRITER --> W_LLM["write_node
+        qwen3-max"]
+        W_LLM --> W_CK{有 critique?}
+        W_CK -->|是| W_C["附加 CRITICAL NOTE
+        含具体反馈内容"]
+        W_CK -->|否| W_EMPTY["首次撰写"]
+        W_C --> W_OUT["输出 Markdown 报告
+        专业写作 + 无捏造 + 引用依据"]
+        W_EMPTY --> W_OUT
+    end
+
+    subgraph GRV["🔍 Reviewer 审查节点"]
+        W_OUT --> RV_LLM["review_node
+        deepseek-r1 温度=0
+        严格审查报告质量"]
+        RV_LLM --> RV_PARSE{JSON 解析成功?}
+        RV_PARSE -->|否| RV_RETRY["重试：要求输出纯JSON"]
+        RV_RETRY --> RV_PARSE2{第二次解析?}
+        RV_PARSE2 -->|否| RV_FAIL["兜底：status=FAIL
+        输出格式错误反馈"]
+        RV_PARSE2 -->|是| RV_CHK
+        RV_PARSE -->|是| RV_CHK{status?}
+        RV_FAIL --> RV_INC
+        RV_CHK -->|PASS| END_PASS["✅ END
+        输出最终报告"]
+        RV_CHK -->|FAIL| RV_INC["revision_number + 1"]
+    end
+
+    RV_INC --> MAX_REV{revision >= 3?}
+    MAX_REV -->|是| END_MAX["⚠️ END
+    达到最大修订次数
+    输出当前最优版本"]
+    MAX_REV -->|否| LOOP["将 critique 反馈
+    传回 Planner"]
+    LOOP --> PLANNER
+
+    subgraph GRF["🔧 Refiner 精修节点"]
+        REFINER --> RF_LLM["refiner_node
+        qwen3-max
+        仅修改指定部分"]
+        RF_LLM --> RF_OUT["输出修改后报告
+        review_status = PASS
+        跳过审查直接结束"]
+        RF_OUT --> END_REF["✅ END
+        输出精修报告"]
+    end
+
+    subgraph ARCH["🏗️ 系统架构"]
+        direction TB
+        A1["双模型策略
+        ─────────────
+        快速模型 qwen3-max 温度0.7
+        → Router / Planner / Writer / Refiner
+        深度模型 deepseek-r1 温度0
+        → Researcher Grader / Reviewer"]
+        A2["RAG 双阶段检索
+        ─────────────
+        Stage 1: Chroma 向量检索 20候选
+        Embedding: DashScope text-embedding-v4
+        Stage 2: CrossEncoder 重排序
+        ms-marco-MiniLM-L-6-v2 → Top 5"]
+        A3["状态字段 × 9
+        ─────────────
+        query / plan / search_results+ / final_report
+        critique / revision_number / review_status
+        search_mode / should_stop
+        search_results 用 add 归约器累加"]
+    end
+
+    subgraph ERR["⚠️ 容错机制"]
+        direction TB
+        E1["Reviewer JSON 解析
+        两次重试 → 兜底FAIL"]
+        E2["Router 意图分类
+        LLM失败 → 关键词兜底"]
+        E3["Web 搜索
+        按子问题 try/catch 隔离"]
+        E4["修订上限 = 3
+        防止无限循环"]
+    end
+
+    style FE fill:#e3f2fd,stroke:#1565c0
+    style GSSE fill:#fff3e0,stroke:#e65100
+    style GR fill:#fce4ec,stroke:#c62828
+    style GP fill:#e8f5e9,stroke:#2e7d32
+    style GR2 fill:#f3e5f5,stroke:#6a1b9a
+    style GW fill:#e0f7fa,stroke:#00695c
+    style GRV fill:#fff8e1,stroke:#f57f17
+    style GRF fill:#efebe9,stroke:#4e342e
+    style ARCH fill:#f5f5f5,stroke:#616161
+    style ERR fill:#ffebee,stroke:#b71c1c
