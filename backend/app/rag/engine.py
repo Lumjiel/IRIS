@@ -10,6 +10,7 @@ from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from app.utils.logger import get_logger
+from app.config import MAX_KNOWLEDGE_BASE_CHUNKS
 
 log = get_logger("rag.engine")
 
@@ -102,13 +103,13 @@ def process_documents(file_paths: List[str]):
     核心逻辑：读取 -> 切片 -> 向量化 -> 存储
     """
     all_splits = []
-    
+
     for file_path in file_paths:
-        log.info(f"[RAG] 正在处理文档: {os.path.basename(file_path)}")
+        log.info(f"正在处理文档: {os.path.basename(file_path)}")
         try:
             loader = PyPDFLoader(file_path)
             docs = loader.load()
-            
+
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=500,
                 chunk_overlap=50
@@ -117,16 +118,21 @@ def process_documents(file_paths: List[str]):
             all_splits.extend(splits)
         except Exception as e:
             log.error(f"处理文件 {file_path} 失败: {e}")
-    
+
     if all_splits:
-        log.info(f"[RAG] 正在将 {len(all_splits)} 个片段写入向量数据库...")
+        # 检查片段数上限
+        if len(all_splits) > MAX_KNOWLEDGE_BASE_CHUNKS:
+            log.warning(f"文档片段数 {len(all_splits)} 超过上限 {MAX_KNOWLEDGE_BASE_CHUNKS}，已截断")
+            all_splits = all_splits[:MAX_KNOWLEDGE_BASE_CHUNKS]
+
+        log.info(f"正在将 {len(all_splits)} 个片段写入向量数据库...")
         Chroma.from_documents(
             documents=all_splits,
             embedding=embeddings,
             persist_directory=DB_PATH
         )
-        log.info("[RAG] 写入完成")
-    
+        log.info("写入完成")
+
     return len(all_splits)
 
 def get_retriever():

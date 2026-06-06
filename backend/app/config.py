@@ -17,6 +17,8 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
 TOP_K = int(os.getenv("TOP_K", "5"))
 FETCH_K = int(os.getenv("FETCH_K", "20"))
 ENABLE_RERANKER = os.getenv("ENABLE_RERANKER", "false").lower() == "true"
+MAX_KNOWLEDGE_BASE_CHUNKS = int(os.getenv("MAX_KNOWLEDGE_BASE_CHUNKS", "2000"))
+CHECKPOINT_MAX_AGE_DAYS = int(os.getenv("CHECKPOINT_MAX_AGE_DAYS", "7"))
 
 # Search
 TAVILY_MAX_RESULTS = int(os.getenv("TAVILY_MAX_RESULTS", "3"))

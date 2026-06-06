@@ -13,8 +13,36 @@ from collections import defaultdict
 from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.utils.logger import get_logger
+from app.config import CHECKPOINT_MAX_AGE_DAYS
 
 log = get_logger("routes")
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(CURRENT_DIR, "checkpoints.db")
+router = APIRouter()
+
+
+def cleanup_old_checkpoints(max_age_days: int = 7):
+    """清理过期的会话检查点，防止 SQLite 文件无限增长"""
+    try:
+        import sqlite3
+        if not os.path.exists(DB_PATH):
+            return
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        if 'checkpoints' in tables:
+            cutoff = int((time.time() - max_age_days * 86400) * 1000)
+            cursor.execute("DELETE FROM checkpoints WHERE created_at < ?", (cutoff,))
+            deleted = cursor.rowcount
+            conn.commit()
+            if deleted:
+                log.info(f"清理了 {deleted} 条过期检查点")
+                cursor.execute("VACUUM")
+        conn.close()
+    except Exception as e:
+        log.warning(f"清理检查点时出错: {e}")
 
 
 # --- 简单内存限流 ---
@@ -35,10 +63,6 @@ class RateLimiter:
 
 # 每个 IP 每分钟最多 5 次研究请求
 chat_limiter = RateLimiter(max_requests=5, window_seconds=60)
-
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(CURRENT_DIR, "checkpoints.db")
-router = APIRouter()
 
 
 class ChatRequest(BaseModel):
@@ -111,6 +135,11 @@ async def chat_endpoint(request: ChatRequest, req: Request):
     client_ip = req.client.host if req.client else "unknown"
     if not chat_limiter.is_allowed(client_ip):
         raise HTTPException(status_code=429, detail="请求太频繁，请稍后再试（每分钟最多 5 次）")
+
+    # 低概率触发检查点清理（避免每次请求都清理）
+    import random
+    if random.random() < 0.1:  # 10% 概率
+        cleanup_old_checkpoints(max_age_days=CHECKPOINT_MAX_AGE_DAYS)
 
     config = {"configurable": {"thread_id": request.thread_id}}
     async def event_generator():
