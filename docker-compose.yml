@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: iris-backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      - WORKERS=1
+      - LOG_LEVEL=info
+      - CREATION_DIR=/data/creation
+      - CHECKPOINT_DB=/data/checkpoints.db
+      - STORE_DB=/data/store.db
+      - DATA_DIR=/data
+    volumes:
+      - iris-data:/data
+    expose:
+      - "8000"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: iris-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  iris-data:

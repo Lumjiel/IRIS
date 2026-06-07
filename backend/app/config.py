@@ -29,7 +29,7 @@ MAX_UPLOAD_FILES = int(os.getenv("MAX_UPLOAD_FILES", "5"))
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "20"))
 
 # 创作目录（保存报告用）
-CREATION_DIR = os.getenv("CREATION_DIR", r"E:\claudecode\创作\projects\公众号\IRIS调研")
+CREATION_DIR = os.getenv("CREATION_DIR", os.path.join(DATA_DIR, "creation"))
 
 # Server
 HOST = os.getenv("HOST", "0.0.0.0")

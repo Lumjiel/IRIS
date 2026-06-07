@@ -17,5 +17,3 @@ langgraph-checkpoint-sqlite
 msgpack
 python-multipart
 pypdf
-pytest
-pytest-asyncio
