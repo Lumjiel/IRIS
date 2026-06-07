@@ -57,7 +57,11 @@ export function useChat(chatContainer) {
         const q = query.value.trim();
         if (!q || isLoading.value) return;
 
-        addMessage('user', 'text', q);
+        const fileNames = uploadedFiles.value.length > 0
+            ? uploadedFiles.value.map(f => f.name)
+            : [];
+
+        addMessage('user', 'text', q, { files: fileNames });
         currentQuery.value = q;
         query.value = '';
 

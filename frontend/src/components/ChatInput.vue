@@ -1,6 +1,18 @@
 <template>
   <div class="border-t border-gray-200 bg-white px-4 py-3 shrink-0">
     <div class="max-w-3xl mx-auto">
+      <!-- 文件信息 + 搜索模式 -->
+      <div v-if="uploadedFiles.length > 0" class="flex items-center gap-2 mb-2 px-1">
+        <div class="flex items-center gap-1.5 text-[11px] text-gray-500">
+          <svg class="w-3.5 h-3.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span>{{ uploadedFiles.length }} 个文档</span>
+        </div>
+        <div class="flex items-center gap-1 ml-auto">
+          <button @click="$emit('update:searchMode', 'hybrid')" class="px-2.5 py-0.5 rounded-full text-[10px] font-medium transition-colors" :class="searchMode === 'hybrid' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-400 hover:text-gray-600'">混合</button>
+          <button @click="$emit('update:searchMode', 'document')" class="px-2.5 py-0.5 rounded-full text-[10px] font-medium transition-colors" :class="searchMode === 'document' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400 hover:text-gray-600'">仅文档</button>
+        </div>
+      </div>
+      <!-- 输入框 -->
       <div class="flex items-end gap-2 bg-gray-50 rounded-2xl border border-gray-200 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 transition-all px-4 py-2">
         <textarea
           ref="inputBox"
@@ -37,9 +49,11 @@
 defineProps({
     modelValue: { type: String, default: '' },
     isLoading: Boolean,
+    uploadedFiles: { type: Array, default: () => [] },
+    searchMode: { type: String, default: 'hybrid' },
 });
 
-defineEmits(['update:modelValue', 'send', 'stop']);
+defineEmits(['update:modelValue', 'update:searchMode', 'send', 'stop']);
 
 const autoResize = (e) => {
     const el = e.target;

@@ -35,10 +35,6 @@
             </div>
           </div>
         </div>
-        <div v-if="uploadedFiles.length > 0" class="flex items-center gap-1 px-2 py-1.5">
-          <button @click="$emit('update:searchMode', 'hybrid')" class="flex-1 text-center text-[11px] rounded-lg py-1 transition-colors" :class="searchMode === 'hybrid' ? 'bg-purple-100 text-purple-700 font-bold' : 'bg-gray-100 text-gray-400 hover:text-gray-600'">混合模式</button>
-          <button @click="$emit('update:searchMode', 'document')" class="flex-1 text-center text-[11px] rounded-lg py-1 transition-colors" :class="searchMode === 'document' ? 'bg-blue-100 text-blue-700 font-bold' : 'bg-gray-100 text-gray-400 hover:text-gray-600'">仅文档</button>
-        </div>
       </template>
 
       <!-- 素材库 -->
@@ -71,13 +67,12 @@ import { ref } from 'vue';
 defineProps({
     sidebarOpen: Boolean,
     uploadedFiles: { type: Array, default: () => [] },
-    searchMode: { type: String, default: 'hybrid' },
     materials: { type: Array, default: () => [] },
     history: { type: Array, default: () => [] },
     activeHistoryId: { type: [String, Number, null], default: null },
 });
 
-defineEmits(['newChat', 'fileSelect', 'update:searchMode', 'loadMaterials', 'viewMaterial', 'deleteMaterial', 'viewHistory']);
+defineEmits(['newChat', 'fileSelect', 'loadMaterials', 'viewMaterial', 'deleteMaterial', 'viewHistory']);
 
 const activeTab = ref('kb');
 const tabs = [

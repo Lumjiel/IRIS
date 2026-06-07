@@ -50,8 +50,14 @@
 
         <div class="max-w-[85%] min-w-0" :class="msg.role === 'user' ? 'order-1' : ''">
           <!-- 用户消息 -->
-          <div v-if="msg.role === 'user'" class="bg-blue-600 text-white px-4 py-2.5 rounded-2xl rounded-br-md text-sm shadow-sm">
-            {{ msg.content }}
+          <div v-if="msg.role === 'user'">
+            <div class="bg-blue-600 text-white px-4 py-2.5 rounded-2xl rounded-br-md text-sm shadow-sm">
+              {{ msg.content }}
+            </div>
+            <div v-if="msg.files && msg.files.length" class="flex items-center gap-1 mt-1 ml-1">
+              <svg class="w-3 h-3 text-red-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span v-for="(f, i) in msg.files" :key="i" class="text-[10px] text-gray-400">{{ f }}</span>
+            </div>
           </div>
 
           <!-- 流式消息 -->

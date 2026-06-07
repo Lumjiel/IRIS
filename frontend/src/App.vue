@@ -3,13 +3,11 @@
     <ChatSidebar
       :sidebarOpen="sidebarOpen"
       :uploadedFiles="chat.uploadedFiles.value"
-      :searchMode="chat.searchMode.value"
       :materials="materials"
       :history="chat.history.value"
       :activeHistoryId="chat.activeHistoryId.value"
       @newChat="chat.newChat"
       @fileSelect="(e) => chat.handleFileSelect(e, showToast)"
-      @update:searchMode="(v) => chat.searchMode.value = v"
       @loadMaterials="loadMaterials"
       @viewMaterial="viewMaterial"
       @deleteMaterial="deleteMaterialItem"
@@ -37,6 +35,9 @@
       <ChatInput
         v-model="chat.query.value"
         :isLoading="chat.isLoading.value"
+        :uploadedFiles="chat.uploadedFiles.value"
+        :searchMode="chat.searchMode.value"
+        @update:searchMode="(v) => chat.searchMode.value = v"
         @send="() => chat.sendMessage(showToast)"
         @stop="chat.stopResearch"
       />
