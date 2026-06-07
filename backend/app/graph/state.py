@@ -1,5 +1,4 @@
-from typing import TypedDict, List, Annotated
-import operator
+from typing import TypedDict, List
 
 class AgentState(TypedDict):
     """
@@ -15,3 +14,12 @@ class AgentState(TypedDict):
     review_status: str        # "PASS" 或 "FAIL"
     search_mode: str          # 取值: "document" (只查文档) 或 "hybrid" (混合搜索)
     should_stop: bool         # 控制位
+
+    # === 记忆系统 ===
+    # conversation_summary: 运行摘要，由 writer/refiner 每轮增量更新
+    # 通过 checkpoint 自动持久化，不需要额外存储
+    conversation_summary: str
+
+    # === 用户偏好 ===
+    # preferences: {style, language}，从前端传递，影响 writer 输出风格
+    preferences: dict

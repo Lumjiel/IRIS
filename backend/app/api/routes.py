@@ -13,13 +13,68 @@ import shutil
 from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.utils.logger import get_logger
-from app.config import CHECKPOINT_MAX_AGE_DAYS, MAX_UPLOAD_FILES, MAX_FILE_SIZE_MB, CREATION_DIR, CHECKPOINT_DB
+from app.config import CHECKPOINT_MAX_AGE_DAYS, MAX_UPLOAD_FILES, MAX_FILE_SIZE_MB, CREATION_DIR, CHECKPOINT_DB, STORE_DB
 
 log = get_logger("routes")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = CHECKPOINT_DB
 router = APIRouter()
+
+
+def _read_checkpoint_state(thread_id: str) -> dict | None:
+    """从 SQLite checkpoint 中读取最新的 channel_values（msgpack 格式）"""
+    import sqlite3, msgpack
+    if not os.path.exists(DB_PATH):
+        return None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5)
+        conn.execute("PRAGMA journal_mode=WAL")
+        row = conn.execute(
+            "SELECT checkpoint FROM checkpoints WHERE thread_id = ? ORDER BY checkpoint_id DESC LIMIT 1",
+            (thread_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            return None
+        checkpoint = msgpack.unpackb(row[0], raw=False)
+        return checkpoint.get("channel_values", {})
+    except Exception as e:
+        log.debug(f"读取 checkpoint 失败: {e}")
+        return None
+
+
+def _reset_checkpoint_summary(thread_id: str) -> bool:
+    """将 checkpoint 中的 conversation_summary 清空（msgpack 格式）"""
+    import sqlite3, msgpack
+    if not os.path.exists(DB_PATH):
+        return False
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5)
+        conn.execute("PRAGMA journal_mode=WAL")
+        row = conn.execute(
+            "SELECT checkpoint_id, checkpoint FROM checkpoints WHERE thread_id = ? ORDER BY checkpoint_id DESC LIMIT 1",
+            (thread_id,)
+        ).fetchone()
+        if not row:
+            conn.close()
+            return False
+        ckpt_id, checkpoint_blob = row
+        checkpoint = msgpack.unpackb(checkpoint_blob, raw=False)
+        channel_values = checkpoint.get("channel_values", {})
+        if "conversation_summary" in channel_values:
+            channel_values["conversation_summary"] = ""
+        checkpoint["channel_values"] = channel_values
+        conn.execute(
+            "UPDATE checkpoints SET checkpoint = ? WHERE checkpoint_id = ?",
+            (msgpack.packb(checkpoint, use_bin_type=True), ckpt_id)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        log.warning(f"重置 checkpoint 摘要失败: {e}")
+        return False
 
 
 def cleanup_old_checkpoints(max_age_days: int = 7):
@@ -104,6 +159,8 @@ class ChatRequest(BaseModel):
     query: str
     search_mode: str = "hybrid"
     thread_id: str
+    style: str = "detailed"       # detailed / concise / formal / casual
+    language: str = "zh"          # zh / en
 
     @field_validator("query")
     @classmethod
@@ -190,6 +247,7 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 "query": request.query,
                 "revision_number": 0,
                 "search_mode": request.search_mode,
+                "preferences": {"style": request.style, "language": request.language},
                 # 以下字段必须重置，防止上一轮 session 的残留数据泄漏
                 "plan": [],
                 "search_results": [],
@@ -197,6 +255,7 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 "review_status": "PASS",
                 "should_stop": False,
                 # final_report 不重置：router 需要判断是否有已有报告来决定路由
+                # conversation_summary 不重置：由 checkpoint 持久化，跨轮保持
             }
 
             log.info(f"新任务开启 | 模式: {request.search_mode} | 问题: {request.query}")
@@ -267,6 +326,36 @@ async def chat_endpoint(request: ChatRequest, req: Request):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+# --- 会话记忆管理 ---
+@router.get("/memory/{thread_id}")
+async def get_memory(thread_id: str):
+    """获取指定会话的对话摘要"""
+    state = _read_checkpoint_state(thread_id)
+    if state is None:
+        return {"summary": "", "turns": 0, "searched_directions": [], "summary_length": 0, "summary_max": 2000}
+    summary = state.get("conversation_summary", "")
+    # 从摘要中提取已搜索的方向（格式: "搜索方向: X、Y、Z"）
+    import re
+    searched = re.findall(r"搜索方向: (.+)", summary)
+    turns = len(searched) if searched else (1 if summary else 0)
+    return {
+        "summary": summary,
+        "turns": turns,
+        "searched_directions": [d.strip() for d in searched] if searched else [],
+        "summary_length": len(summary),
+        "summary_max": 2000,
+    }
+
+
+@router.post("/memory/{thread_id}/reset")
+async def reset_memory(thread_id: str):
+    """清空指定会话的对话摘要（保留 final_report）"""
+    ok = _reset_checkpoint_summary(thread_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="会话不存在或无摘要")
+    return {"status": "success", "message": "对话记忆已清空"}
+
+
 # --- AI HOT 新闻代理 ---
 import httpx
 
@@ -287,7 +376,11 @@ async def aihot_news(mode: str = "selected", take: int = 20, q: str = None):
                 headers={"User-Agent": AIHOT_UA}
             )
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            # 打乱顺序，让「换一批」每次显示不同内容
+            if "items" in data:
+                random.shuffle(data["items"])
+            return data
     except Exception as e:
         log.error(f"AI HOT 请求失败: {e}")
         raise HTTPException(status_code=502, detail="AI 资讯服务暂时不可用")

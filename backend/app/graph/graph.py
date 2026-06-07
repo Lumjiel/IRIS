@@ -86,6 +86,6 @@ _workflow.add_conditional_edges(
 _workflow.add_edge("refiner", END)
 
 
-def create_graph(memory=None):
+def create_graph(memory=None, store=None):
     """编译图（仅执行 compile，不重建拓扑）"""
-    return _workflow.compile(checkpointer=memory)
+    return _workflow.compile(checkpointer=memory, store=store)

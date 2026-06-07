@@ -25,7 +25,7 @@ def route_query(state: AgentState):
     prompt = f"""
     当前系统已经生成了一份研究报告。
     用户的最新输入是: "{query}"。
-    用户最近一次生成的报告片段是："{state['final_report'][:50]}"
+    用户最近一次生成的报告片段是："{state['final_report'][:500]}"
 
     请判断用户的意图：
     1. "NEW_TOPIC": 用户想要开始一个全新的研究课题。

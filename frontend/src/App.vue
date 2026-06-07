@@ -6,19 +6,26 @@
       :materials="materials"
       :history="chat.history.value"
       :activeHistoryId="chat.activeHistoryId.value"
+      :memoryTurns="memoryTurns"
       @newChat="chat.newChat"
       @fileSelect="(e) => chat.handleFileSelect(e, showToast)"
       @loadMaterials="loadMaterials"
       @viewMaterial="viewMaterial"
       @deleteMaterial="deleteMaterialItem"
       @viewHistory="chat.viewHistory"
+      @clearMemory="clearMemory"
     />
 
     <div class="flex-1 flex flex-col min-w-0">
       <ChatHeader
         :currentQuery="chat.currentQuery.value"
         :isLoading="chat.isLoading.value"
+        :memoryTurns="memoryTurns"
+        :memorySummary="memorySummary"
+        :summaryLength="summaryLength"
+        :summaryMax="summaryMax"
         @toggleSidebar="sidebarOpen = !sidebarOpen"
+        @resetMemory="resetMemory"
       />
 
       <ChatMessages
@@ -53,10 +60,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
-import { fetchAihotNews, listMaterials, deleteMaterial, getMaterial } from './services/api';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { fetchAihotNews, listMaterials, deleteMaterial, getMaterial, getMemory, resetMemory as apiResetMemory } from './services/api';
 import { getHistory } from './services/history';
-import { getThreadId } from './services/api';
 import { useChat } from './composables/useChat';
 import ChatSidebar from './components/ChatSidebar.vue';
 import ChatHeader from './components/ChatHeader.vue';
@@ -69,6 +75,10 @@ const chat = useChat(chatContainer);
 const sidebarOpen = ref(false);
 const aiNews = ref([]);
 const materials = ref([]);
+const memoryTurns = ref(0);
+const memorySummary = ref('');
+const summaryLength = ref(0);
+const summaryMax = ref(2000);
 
 // === Toast ===
 const toastMsg = ref('');
@@ -116,7 +126,49 @@ const deleteMaterialItem = async (filename) => {
     } catch { showToast('删除失败', 'error'); }
 };
 
+// === 记忆管理 ===
+const loadMemory = async () => {
+    try {
+        const data = await getMemory(chat.getThreadId());
+        memoryTurns.value = data.turns || 0;
+        memorySummary.value = data.summary || '';
+        summaryLength.value = data.summary_length || 0;
+        summaryMax.value = data.summary_max || 2000;
+    } catch {
+        memoryTurns.value = 0;
+        memorySummary.value = '';
+        summaryLength.value = 0;
+    }
+};
+
+const resetMemory = async () => {
+    try {
+        await apiResetMemory(chat.getThreadId());
+        memoryTurns.value = 0;
+        memorySummary.value = '';
+        summaryLength.value = 0;
+        showToast('对话记忆已清空', 'success');
+    } catch {
+        showToast('清空记忆失败', 'error');
+    }
+};
+
+const clearMemory = () => {
+    chat.messages.value = [];
+    chat.currentQuery.value = '';
+    memoryTurns.value = 0;
+    memorySummary.value = '';
+    summaryLength.value = 0;
+    chat.newChat();
+    showToast('对话记忆已清除', 'success');
+};
+
 // === 生命周期 ===
+// 调研完成后自动刷新记忆状态
+watch(() => chat.isLoading.value, (loading, prev) => {
+    if (prev && !loading) loadMemory();
+});
+
 const handleKeydown = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -127,11 +179,9 @@ const handleKeydown = (e) => {
 onMounted(() => {
     chat.history.value = getHistory();
     loadAiNews();
-
-    const currentThreadId = getThreadId();
-    const recentSession = chat.history.value.find(s => s.threadId === currentThreadId);
-    if (recentSession) chat.viewHistory(recentSession);
-
+    loadMemory();
+    // 不再自动恢复旧 session — 始终从首页开始
+    // 旧会话可通过侧栏「历史」手动恢复
     document.addEventListener('keydown', handleKeydown);
 });
 

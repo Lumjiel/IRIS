@@ -85,6 +85,7 @@ export function useChat(chatContainer) {
             statuses: [{ text: '准备中...', active: true }],
             streamText: '',
             active: true,
+            rounds: [],  // 研究轨迹：每轮的搜索方向
         });
         let round = 0;
 
@@ -120,6 +121,8 @@ export function useChat(chatContainer) {
                     if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                     msg.statuses.push(status);
                     msg.streamText = '';
+                    // 记录研究轨迹
+                    msg.rounds.push({ number: round, directions: plans });
                     scrollToBottom();
                 }
                 else if (data.step === 'researcher') {
@@ -206,6 +209,7 @@ export function useChat(chatContainer) {
                         messages: messages.value.map(m => ({
                             role: m.role, type: m.type, content: m.content,
                             statuses: m.statuses, streamText: m.streamText,
+                            rounds: m.rounds,
                         })),
                     });
                     history.value = getHistory();
@@ -268,6 +272,7 @@ export function useChat(chatContainer) {
                 addMessage(m.role, m.type, m.content, {
                     statuses: m.statuses,
                     streamText: m.streamText,
+                    rounds: m.rounds || [],
                     active: false,
                 });
             });

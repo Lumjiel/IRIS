@@ -1,6 +1,7 @@
 from langchain_core.messages import HumanMessage
 from app.graph.state import AgentState
 from app.utils.llm import llm_invoke
+from app.utils.memory import update_conversation_summary
 from app.utils.logger import get_logger
 
 log = get_logger("refiner")
@@ -31,7 +32,15 @@ def refine_node(state: AgentState):
     response = llm_invoke([HumanMessage(content=prompt)])
     new_report = response.content
 
+    # 更新对话摘要，记录用户的修改指令
+    new_summary = update_conversation_summary(
+        old_summary=state.get("conversation_summary", ""),
+        query=query,
+        report=new_report,
+    )
+
     return {
         "final_report": new_report,
+        "conversation_summary": new_summary,
         "review_status": "PASS"
     }

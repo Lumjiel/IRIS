@@ -72,6 +72,8 @@ export async function clearContext() {
  * @param {function} onError - 错误回调
  */
 export async function streamChat(query, search_mode, onData, onDone, onError, signal) {
+  // 从 localStorage 读取用户偏好
+  const prefs = JSON.parse(localStorage.getItem('iris_preferences') || '{}');
   try {
       const response = await fetch(`${API_BASE}/chat`, {
           method: 'POST',
@@ -79,7 +81,9 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
           body: JSON.stringify({
               query: query,
               search_mode: search_mode,
-              thread_id: _threadId
+              thread_id: _threadId,
+              style: prefs.style || 'detailed',
+              language: prefs.language || 'zh',
           }),
           signal,
       });
@@ -163,5 +167,25 @@ export async function deleteMaterial(filename) {
 export async function getMaterial(filename) {
   const response = await fetch(`${API_BASE}/materials/${encodeURIComponent(filename)}`);
   if (!response.ok) throw new Error('Failed to get material');
+  return await response.json();
+}
+
+/**
+ * 获取会话记忆摘要
+ */
+export async function getMemory(threadId) {
+  const response = await fetch(`${API_BASE}/memory/${encodeURIComponent(threadId)}`);
+  if (!response.ok) return { summary: '', turns: 0 };
+  return await response.json();
+}
+
+/**
+ * 清空会话记忆摘要（保留报告）
+ */
+export async function resetMemory(threadId) {
+  const response = await fetch(`${API_BASE}/memory/${encodeURIComponent(threadId)}/reset`, {
+    method: 'POST'
+  });
+  if (!response.ok) throw new Error('Failed to reset memory');
   return await response.json();
 }

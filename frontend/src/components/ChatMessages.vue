@@ -100,6 +100,35 @@
                 <button @click="$emit('saveToLibrary', msg)" class="text-[10px] text-white bg-gradient-to-r from-blue-500 to-purple-500 px-2.5 py-1 rounded-full hover:shadow-md transition-all">💾 保存素材库</button>
               </div>
             </div>
+
+            <!-- 研究轨迹（多轮时显示） -->
+            <div v-if="msg.rounds && msg.rounds.length > 1" class="border-b border-gray-50">
+              <button @click="msg._trajectoryExpanded = !msg._trajectoryExpanded" class="w-full px-4 py-2 flex items-center gap-2 text-[11px] text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 transition-transform" :class="msg._trajectoryExpanded ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                <span>研究轨迹 · {{ msg.rounds.length }} 轮</span>
+              </button>
+              <Transition name="slide">
+                <div v-if="msg._trajectoryExpanded" class="px-4 pb-3">
+                  <div class="relative pl-4">
+                    <!-- 竖线 -->
+                    <div class="absolute left-[7px] top-1 bottom-1 w-px bg-gray-200"></div>
+                    <div v-for="(r, ri) in msg.rounds" :key="ri" class="relative mb-2 last:mb-0">
+                      <!-- 节点圆点 -->
+                      <div class="absolute -left-4 top-0.5 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center" :class="ri === msg.rounds.length - 1 ? 'bg-blue-500' : 'bg-gray-300'">
+                        <span class="text-[7px] text-white font-bold">{{ r.number }}</span>
+                      </div>
+                      <div class="ml-1">
+                        <span class="text-[10px] font-medium" :class="ri === msg.rounds.length - 1 ? 'text-blue-600' : 'text-gray-500'">第 {{ r.number }} 轮</span>
+                        <div class="mt-0.5 flex flex-wrap gap-1">
+                          <span v-for="(d, di) in r.directions" :key="di" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-500 border border-gray-100">{{ d }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Transition>
+            </div>
+
             <div class="prose prose-sm max-w-none p-5 leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
           </div>
 
@@ -154,3 +183,9 @@ const catLabel = (cat) => {
     return m[cat] || '';
 };
 </script>
+
+<style scoped>
+.slide-enter-active, .slide-leave-active { transition: all 0.2s ease; overflow: hidden; }
+.slide-enter-from, .slide-leave-to { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; }
+.slide-enter-to, .slide-leave-from { max-height: 300px; opacity: 1; }
+</style>
