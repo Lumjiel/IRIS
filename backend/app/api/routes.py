@@ -10,7 +10,6 @@ import glob
 import time
 import random
 import shutil
-from collections import defaultdict
 from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.utils.logger import get_logger
@@ -51,35 +50,54 @@ def cleanup_old_checkpoints(max_age_days: int = 7):
         log.warning(f"清理检查点时出错: {e}")
 
 
-# --- 简单内存限流 ---
+# --- SQLite 共享限流（多 worker 安全） ---
 class RateLimiter:
-    def __init__(self, max_requests: int = 5, window_seconds: int = 60):
+    """基于 SQLite 的滑动窗口限流器，多 worker 进程共享状态。"""
+
+    def __init__(self, db_path: str, max_requests: int = 5, window_seconds: int = 60):
+        self.db_path = db_path
         self.max_requests = max_requests
         self.window = window_seconds
-        self._requests: dict[str, list[float]] = defaultdict(list)
-        self._last_cleanup = time.time()
+        self._init_db()
+
+    def _init_db(self):
+        import sqlite3
+        conn = sqlite3.connect(self.db_path, timeout=5)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS rate_limits (
+                key TEXT NOT NULL,
+                ts REAL NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_key_ts ON rate_limits(key, ts)")
+        conn.commit()
+        conn.close()
 
     def is_allowed(self, key: str) -> bool:
+        import sqlite3
         now = time.time()
         cutoff = now - self.window
-        self._requests[key] = [t for t in self._requests[key] if t > cutoff]
-        if len(self._requests[key]) >= self.max_requests:
-            return False
-        self._requests[key].append(now)
-
-        # 每 5 分钟清理一次过期 IP
-        if now - self._last_cleanup > 300:
-            self._cleanup(cutoff)
-            self._last_cleanup = now
-        return True
-
-    def _cleanup(self, cutoff: float):
-        empty_keys = [k for k, v in self._requests.items() if not v or v[-1] < cutoff]
-        for k in empty_keys:
-            del self._requests[k]
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=5)
+            conn.execute("PRAGMA journal_mode=WAL")
+            # 清理过期记录
+            conn.execute("DELETE FROM rate_limits WHERE ts < ?", (cutoff,))
+            # 统计当前窗口内的请求数
+            row = conn.execute("SELECT COUNT(*) FROM rate_limits WHERE key = ? AND ts >= ?", (key, cutoff)).fetchone()
+            count = row[0] if row else 0
+            if count >= self.max_requests:
+                conn.close()
+                return False
+            conn.execute("INSERT INTO rate_limits (key, ts) VALUES (?, ?)", (key, now))
+            conn.commit()
+            conn.close()
+            return True
+        except sqlite3.OperationalError:
+            return True  # 数据库锁定时放行
 
 # 每个 IP 每分钟最多 5 次研究请求
-chat_limiter = RateLimiter(max_requests=5, window_seconds=60)
+chat_limiter = RateLimiter(db_path=CHECKPOINT_DB, max_requests=5, window_seconds=60)
 
 
 class ChatRequest(BaseModel):
@@ -136,6 +154,9 @@ async def upload_files(files: List[UploadFile] = File(...)):
 
         chunks_num = process_documents(saved_paths)
 
+        if chunks_num == 0:
+            raise HTTPException(status_code=400, detail="文档解析失败，请检查 PDF 文件是否损坏或缺少 pypdf 依赖")
+
         # 清理旧文件，防止磁盘爆满
         cleanup_old_uploads(max_age_hours=24)
 
@@ -168,7 +189,14 @@ async def chat_endpoint(request: ChatRequest, req: Request):
             initial_state = {
                 "query": request.query,
                 "revision_number": 0,
-                "search_mode": request.search_mode
+                "search_mode": request.search_mode,
+                # 以下字段必须重置，防止上一轮 session 的残留数据泄漏
+                "plan": [],
+                "search_results": [],
+                "critique": "",
+                "review_status": "PASS",
+                "should_stop": False,
+                # final_report 不重置：router 需要判断是否有已有报告来决定路由
             }
 
             log.info(f"新任务开启 | 模式: {request.search_mode} | 问题: {request.query}")

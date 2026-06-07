@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from app.api.routes import router
 from app.utils.logger import get_logger
-from app.config import HOST, PORT, CORS_ORIGINS, LOG_LEVEL
+from app.config import HOST, PORT, WORKERS, CORS_ORIGINS, LOG_LEVEL
 from app.utils.llm import PRIMARY_MODEL, FALLBACK_MODEL
 
 log = get_logger("main")
@@ -44,4 +44,4 @@ def health_check():
 
 if __name__ == "__main__":
     log.info("后端服务正在启动...")
-    uvicorn.run("main:app", host=HOST, port=PORT, reload=True)
+    uvicorn.run("main:app", host=HOST, port=PORT, reload=True, workers=1)

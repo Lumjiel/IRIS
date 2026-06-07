@@ -15,3 +15,6 @@ httpx
 dashscope
 langgraph-checkpoint-sqlite
 python-multipart
+pypdf
+pytest
+pytest-asyncio

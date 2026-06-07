@@ -19,5 +19,6 @@ RUN mkdir -p app/rag/chroma_db app/rag/uploads
 
 EXPOSE 8000
 
-# 生产启动：单 worker，不 reload
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--log-level", "info"]
+# 生产启动：默认单 worker，可通过 WORKERS 环境变量调整
+ENV WORKERS=1
+CMD uvicorn main:app --host 0.0.0.0 --port 8000 --workers $WORKERS --log-level info
