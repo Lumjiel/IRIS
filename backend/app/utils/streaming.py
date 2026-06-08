@@ -53,7 +53,7 @@ async def llm_stream_tokens(
         finally:
             asyncio.run_coroutine_threadsafe(channel.put(None), loop)  # 结束标记
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     import threading
     producer_thread = threading.Thread(target=_producer, daemon=True)
     producer_thread.start()

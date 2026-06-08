@@ -88,3 +88,31 @@ class TestRouteQuery:
         mock_llm.return_value = MagicMock(content="maybe")
         result = route_query(sample_state)
         assert result == "planner"
+
+
+class TestIsVague:
+    """_is_vague 模糊后续检测测试。"""
+
+    def test_vague_you_juede(self):
+        from app.graph.nodes.refiner import _is_vague
+        assert _is_vague("你觉得呢？") is True
+
+    def test_vague_ranhou_ne(self):
+        from app.graph.nodes.refiner import _is_vague
+        assert _is_vague("然后呢") is True
+
+    def test_vague_short_continue(self):
+        from app.graph.nodes.refiner import _is_vague
+        assert _is_vague("继续") is True
+
+    def test_not_vague_specific(self):
+        from app.graph.nodes.refiner import _is_vague
+        assert _is_vague("把第三段改详细一点，补充量子纠错的内容") is False
+
+    def test_not_vague_long(self):
+        from app.graph.nodes.refiner import _is_vague
+        assert _is_vague("你觉得这个报告怎么样，有什么需要改进的地方吗？") is False
+
+    def test_not_vague_new_topic(self):
+        from app.graph.nodes.refiner import _is_vague
+        assert _is_vague("帮我调研一下区块链技术") is False

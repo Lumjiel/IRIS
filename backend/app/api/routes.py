@@ -284,6 +284,9 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 graph_task = asyncio.create_task(_run_graph())
 
                 graph_finished = False
+                last_data_time = time.time()
+                HEARTBEAT_INTERVAL = 15  # 秒
+
                 while not graph_finished:
                     had_work = False
                     while True:
@@ -291,6 +294,7 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                             tok = token_queue.get_nowait()
                             yield f"data: {json.dumps(tok, ensure_ascii=False)}\n\n"
                             had_work = True
+                            last_data_time = time.time()
                         except asyncio.QueueEmpty:
                             break
 
@@ -301,8 +305,14 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                         else:
                             yield f"data: {g_ev}\n\n"
                             had_work = True
+                            last_data_time = time.time()
                     except asyncio.QueueEmpty:
                         pass
+
+                    # 心跳：防止 Nginx 等代理因空闲断开连接
+                    if not had_work and time.time() - last_data_time > HEARTBEAT_INTERVAL:
+                        yield ": heartbeat\n\n"
+                        last_data_time = time.time()
 
                     if not had_work:
                         await asyncio.sleep(0.01)
@@ -464,8 +474,9 @@ async def list_materials():
 @router.delete("/materials/{filename}")
 async def delete_material(filename: str):
     """删除素材库中的报告"""
-    filepath = os.path.join(CREATION_DIR, filename)
-    if not os.path.exists(filepath) or not filepath.startswith(CREATION_DIR):
+    # 防路径穿越：解析真实路径后校验前缀
+    filepath = os.path.realpath(os.path.join(CREATION_DIR, filename))
+    if not os.path.exists(filepath) or not filepath.startswith(os.path.realpath(CREATION_DIR)):
         raise HTTPException(status_code=404, detail="文件不存在")
     os.remove(filepath)
     return {"status": "success"}
@@ -474,8 +485,9 @@ async def delete_material(filename: str):
 @router.get("/materials/{filename}")
 async def get_material(filename: str):
     """读取单个素材内容"""
-    filepath = os.path.join(CREATION_DIR, filename)
-    if not os.path.exists(filepath) or not filepath.startswith(CREATION_DIR):
+    # 防路径穿越：解析真实路径后校验前缀
+    filepath = os.path.realpath(os.path.join(CREATION_DIR, filename))
+    if not os.path.exists(filepath) or not filepath.startswith(os.path.realpath(CREATION_DIR)):
         raise HTTPException(status_code=404, detail="文件不存在")
     with open(filepath, "r", encoding="utf-8") as f:
         content = f.read()

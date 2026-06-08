@@ -151,6 +151,7 @@ const formatSize = (bytes) => {
 const formatTime = (ts) => {
     const d = new Date(ts);
     const diff = Date.now() - ts;
+    if (diff < 60000) return '刚刚';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
     return `${d.getMonth() + 1}/${d.getDate()}`;

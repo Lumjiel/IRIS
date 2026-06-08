@@ -27,12 +27,12 @@
 
 ### 🧠 6 节点 Agent 状态机（LangGraph）
 
-- **Router** — 意图识别，判断"开新研究"还是"修改报告"
-- **Planner** — 任务规划，把研究主题拆成 3-5 个子问题
+- **Router** — 意图识别，判断"开新研究"还是"修改报告"，支持模糊后续检测
+- **Planner** — 任务规划，把研究主题拆成 3-5 个子问题；新主题自动清理旧状态
 - **Researcher** — 多源检索（本地文档 + 网络搜索），Relevance Grader 评估相关性
 - **Writer** — 基于检索结果撰写结构化报告
 - **Reviewer** — 质量审查，FAIL 时回跳 Planner 重新检索
-- **Refiner** — 局部修改，只改用户要求的部分
+- **Refiner** — 双模式：明确修改指令 → 全文修订；模糊后续（如"你觉得呢？"）→ 轻量分析追加到报告末尾
 
 ### 🛡️ 防幻觉熔断机制
 
@@ -68,7 +68,9 @@ Intent Router → 判断 NEW_TOPIC / REFINE
     │                          └── 相关   → Writer → Reviewer
     │                                         ├── FAIL → 回跳 Planner
     │                                         └── PASS → 输出报告
-    └── REFINE → Refiner → 直接修改已有报告
+    └── REFINE → Refiner
+                  ├── 模糊后续 → 轻量分析（追加到报告末尾）
+                  └── 明确修改 → 全文修订
 ```
 
 ---

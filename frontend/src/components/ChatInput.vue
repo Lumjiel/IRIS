@@ -46,6 +46,8 @@
 </template>
 
 <script setup>
+import { ref, watch, nextTick } from 'vue';
+
 defineProps({
     modelValue: { type: String, default: '' },
     isLoading: Boolean,
@@ -55,9 +57,17 @@ defineProps({
 
 defineEmits(['update:modelValue', 'update:searchMode', 'send', 'stop']);
 
+const inputBox = ref(null);
+
 const autoResize = (e) => {
-    const el = e.target;
+    const el = (e && e.target) || inputBox.value;
+    if (!el) return;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 };
+
+// 外部赋值（如点击灵感建议）时自动调高
+watch(() => inputBox.value, (el) => {
+    if (el) nextTick(() => autoResize({ target: el }));
+});
 </script>

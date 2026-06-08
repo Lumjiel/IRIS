@@ -83,10 +83,12 @@ const summaryMax = ref(2000);
 // === Toast ===
 const toastMsg = ref('');
 const toastType = ref('success');
+let toastTimer = null;
 const showToast = (msg, type = 'success') => {
+    if (toastTimer) clearTimeout(toastTimer);
     toastMsg.value = msg;
     toastType.value = type;
-    setTimeout(() => { toastMsg.value = ''; }, 3000);
+    toastTimer = setTimeout(() => { toastMsg.value = ''; }, 3000);
 };
 
 // === AI 新闻 ===
@@ -153,13 +155,15 @@ const resetMemory = async () => {
     }
 };
 
-const clearMemory = () => {
+const clearMemory = async () => {
+    // 先用旧 thread_id 清理服务端摘要，再 newChat 生成新 ID
+    try { await apiResetMemory(chat.getThreadId()); } catch {}
     chat.messages.value = [];
     chat.currentQuery.value = '';
+    chat.newChat();
     memoryTurns.value = 0;
     memorySummary.value = '';
     summaryLength.value = 0;
-    chat.newChat();
     showToast('对话记忆已清除', 'success');
 };
 

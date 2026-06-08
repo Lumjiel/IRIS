@@ -1,5 +1,5 @@
 <template>
-  <div ref="chatContainer" class="flex-1 overflow-y-auto">
+  <div data-chat-scroll class="flex-1 overflow-y-auto">
     <!-- 空状态 -->
     <div v-if="messages.length === 0 && !isLoading" class="h-full flex flex-col items-center justify-center px-4">
       <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4">

@@ -32,7 +32,8 @@ export function useChat(chatContainer) {
 
     const scrollToBottom = () => {
         nextTick(() => {
-            if (chatContainer?.value) chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+            const el = chatContainer?.value || document.querySelector('[data-chat-scroll]');
+            if (el) el.scrollTop = el.scrollHeight;
         });
     };
 
@@ -74,8 +75,6 @@ export function useChat(chatContainer) {
                 addMessage('assistant', 'error', `文件上传失败: ${e.message}`);
                 isLoading.value = false; return;
             }
-        } else {
-            try { await clearContext(); } catch {}
         }
 
         const actualMode = uploadedFiles.value.length === 0 ? 'hybrid' : searchMode.value;
@@ -102,9 +101,15 @@ export function useChat(chatContainer) {
                     }
                     return;
                 }
-                if (data.step === 'writer_token') {
+                if (data.step === 'writer_token' || data.step === 'refiner_token') {
                     if (!data.data.final && data.data.token) {
                         msg.streamText += data.data.token;
+                        // refiner 首次 token 时显示修订状态
+                        if (data.step === 'refiner_token' && !msg._refinerStatusShown) {
+                            msg._refinerStatusShown = true;
+                            if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                            msg.statuses.push({ text: '正在修订报告...', active: true });
+                        }
                         scrollToBottom();
                     }
                     return;
@@ -173,6 +178,7 @@ export function useChat(chatContainer) {
                     if (data.data.final_report) {
                         msg.type = 'report';
                         msg.content = data.data.final_report;
+                        msg.streamText = '';
                         msg.active = false;
                     }
                     scrollToBottom();
@@ -197,6 +203,9 @@ export function useChat(chatContainer) {
                     } else if (msg.type === 'stream' && !msg.streamText) {
                         msg.type = 'error';
                         msg.content = '未能生成报告，请重试';
+                    }
+                    if (msg.type === 'report') {
+                        msg.streamText = '';
                     }
                 }
                 const finalReport = msg?.streamText || msg?.content || '';
@@ -239,6 +248,31 @@ export function useChat(chatContainer) {
     const stopResearch = () => {
         if (currentAbortController) currentAbortController.abort();
         isLoading.value = false;
+        // 终结当前流式消息，防止卡在"流式中"状态
+        const activeMsg = messages.value.findLast(m => m.type === 'stream' && m.active);
+        if (activeMsg) {
+            finishStatuses(activeMsg.id);
+            activeMsg.statuses.push({ text: '已停止', active: false });
+            activeMsg.type = activeMsg.streamText ? 'report' : 'error';
+            activeMsg.content = activeMsg.streamText || '研究已停止';
+            activeMsg.streamText = '';
+            activeMsg.active = false;
+            // 保存会话（abort 后 onDone 不会调用）
+            if (currentQuery.value) {
+                saveSession({
+                    query: currentQuery.value,
+                    report: activeMsg.content || '',
+                    mode: searchMode.value,
+                    threadId: getThreadId(),
+                    messages: messages.value.map(m => ({
+                        role: m.role, type: m.type, content: m.content,
+                        statuses: m.statuses, streamText: m.streamText,
+                        rounds: m.rounds,
+                    })),
+                });
+                history.value = getHistory();
+            }
+        }
     };
 
     const copyReport = async (msg) => {
@@ -289,6 +323,7 @@ export function useChat(chatContainer) {
         activeHistoryId.value = null;
         if (isLoading.value) stopResearch();
         newThreadId();
+        try { clearContext(); } catch {}
     };
 
     return {

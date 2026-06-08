@@ -53,22 +53,32 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 # 前端
 cd frontend
 npm install
-npm run dev      # http://localhost:5173
+npm run dev      # http://localhost:5173，/api 代理到 localhost:8000
 npm run build    # 生产构建
+npm run preview  # 预览生产构建
 
-# Docker
+# 测试（backend）
+pip install -r requirements-dev.txt   # 首次运行需安装
+pytest                                # 全量运行
+pytest tests/test_router.py           # 单文件
+pytest -k "test_looks_like_refine"    # 单用例
+
+# Docker（全栈）
+docker compose up -d --build          # 构建并启动 backend + frontend(Nginx)
+
+# Docker（仅后端）
 cd backend
 docker build -t iris-backend .
 docker run -d --name iris -p 8000:8000 --memory=1g -v .env:/app/.env iris-backend
 ```
 
-**无测试、无 lint 配置。**
+**无 lint 配置。**
 
 ## ⚠️ 开发 Gotcha
 
 ### 混合同步/异步节点
 
-`planner` 和 `writer` 是 `async def`，其余节点（router/researcher/reviewer/refiner）是同步 `def`。异步节点通过 `get_token_queue()` 判断是否处于 SSE 流式模式，有 queue 则流式输出，否则降级为同步 `llm_invoke()`。
+`planner`、`writer`、`refiner` 是 `async def`，其余节点（router/researcher/reviewer）是同步 `def`。异步节点通过 `get_token_queue()` 判断是否处于 SSE 流式模式，有 queue 则流式输出，否则降级为同步 `llm_invoke()`。
 
 ### Graph 拓扑是模块级单例
 
@@ -83,6 +93,8 @@ docker run -d --name iris -p 8000:8000 --memory=1g -v .env:/app/.env iris-backen
 - **启动依赖检查**: `main.py` 启动时检查 `langgraph.checkpoint.sqlite` 等关键模块，缺包直接报错退出
 - **Researcher 熔断仅在 document 模式生效**: hybrid 模式下 `should_stop` 永远为 False
 - **Checkpoint 序列化是 msgpack**: LangGraph `AsyncSqliteSaver` 使用 msgpack（非 JSON/zlib），`channel_values` 在顶层（非 `data.channel_values`）。读写 checkpoint 必须用 `msgpack.packb/unpackb`，`requirements.txt` 需包含 `msgpack`
+- **素材接口路径穿越防御**: `get_material`/`delete_material` 使用 `os.path.realpath()` 解析路径后再校验前缀，防止 `../` 绕过
+- **SSE 心跳保活**: `routes.py` 事件循环中，超过 15 秒无数据时发送 `: heartbeat\n\n` 注释，防止 Nginx 等代理因空闲断开连接
 
 ## 架构要点
 
@@ -95,6 +107,10 @@ docker run -d --name iris -p 8000:8000 --memory=1g -v .env:/app/.env iris-backen
 ```
 
 多轮对话：第 1 次输入走 NEW_TOPIC，后续输入（同 thread_id 且已有报告）走 REFINE。
+
+**REFINE 路径双模式**：
+- **模糊后续**（如"你觉得呢？"）：`_is_vague()` 检测 → 轻量 prompt（只传报告前 2000 字摘要）→ 输出追加到报告末尾作为"AI 分析"
+- **明确修改**（如"把第三段改详细"）：全文报告 + 修改指令 → LLM 输出完整修订版
 
 ### AgentState（`graph/state.py`）
 
@@ -119,6 +135,7 @@ TypedDict，11 个字段：
 - `contextvars.ContextVar` 存储每请求的 token queue（`utils/streaming.py`）
 - 生产者-消费者模式：同步 `llm.stream()` 在线程中生产 token → `asyncio.Queue` → SSE 端点消费推送
 - `routes.py` 中 `app.astream()` 作为独立 task 运行图，主循环同时轮询图事件和 token queue
+- **SSE 心跳**: 15 秒无数据时发送 `: heartbeat\n\n` 注释，防止代理/负载均衡器断开空闲连接
 - 前端 token 即时渲染：SSE 回调直接修改 Vue 响应式对象，不经过队列/rAF 延迟
 
 ### 前端消息系统
@@ -134,7 +151,9 @@ TypedDict，11 个字段：
 - `thread_id` 存 `localStorage`，刷新后自动恢复
 - 历史记录保存完整 `messages[]`（含 statuses、streamText、rounds）
 - `onDone` 和 `onError` 回调都保存会话，防止出错丢数据
-- 点击「新建调研」生成新 `thread_id`
+- `stopResearch` 终止时也保存会话（abort 后 `onDone` 不会被调用）
+- 点击「新建调研」生成新 `thread_id`，同时调用 `clearContext()` 清空向量知识库
+- 追问时**不**调用 `clearContext()`，保留知识库上下文供 RAG 检索
 
 ### 会话记忆系统（`utils/memory.py`）
 
@@ -146,6 +165,8 @@ TypedDict，11 个字段：
   → writer 撰写报告 → 增量更新摘要（含搜索方向）
   → 通过 SQLite checkpoint 持久化（msgpack 格式）
 ```
+
+**新主题状态清理**：`planner` 在 `revision_number == 0`（首次进入，非审查重试）且 `final_report` 非空时，清空 `final_report` 和 `conversation_summary`，防止旧主题的搜索方向污染新主题。
 
 **核心函数**：
 - `update_conversation_summary()` — 增量追加本轮 query/报告/搜索方向，超过 2000 字符阈值时 LLM 压缩

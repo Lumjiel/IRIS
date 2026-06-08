@@ -44,4 +44,13 @@ async def plan_node(state: AgentState):
         response_text = response.content
 
     plans = [p.strip() for p in response_text.split(",")]
-    return {"plan": plans}
+
+    # 首次进入 planner（NEW_TOPIC）时清理旧报告状态
+    # revision_number > 0 表示是审查失败后的重试，不清
+    result = {"plan": plans}
+    if state.get("revision_number", 0) == 0:
+        if state.get("final_report", "").strip():
+            log.info("新主题：清理旧报告，防止污染新主题的搜索方向")
+            result["final_report"] = ""
+            result["conversation_summary"] = ""
+    return result
