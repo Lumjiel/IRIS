@@ -516,6 +516,9 @@ async def text_to_speech(request: TTSRequest):
         import dashscope
         from dashscope.audio.tts_v2 import SpeechSynthesizer
 
+        dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
+        dashscope.base_websocket_api_url = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+
         synthesizer = SpeechSynthesizer(model="cosyvoice-v3-flash", voice=request.voice)
         audio_data = synthesizer.call(request.text)
 
