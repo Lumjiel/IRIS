@@ -189,3 +189,23 @@ export async function resetMemory(threadId) {
   if (!response.ok) throw new Error('Failed to reset memory');
   return await response.json();
 }
+
+/**
+ * TTS 语音合成
+ * @param {string} text - 要合成的文本
+ * @param {string} voice - 音色名称
+ * @returns {Blob} 音频 Blob
+ */
+export async function ttsSynthesize(text, voice = 'longtian_v3') {
+  const response = await fetch(`${API_BASE}/tts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice })
+  });
+  if (!response.ok) {
+    let msg = '语音合成失败';
+    try { const d = await response.json(); msg = d.detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  return await response.blob();
+}

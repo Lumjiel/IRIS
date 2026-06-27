@@ -25,6 +25,7 @@ async def llm_stream_tokens(
     messages: list[BaseMessage],
     model_type: str = "fast",
     node_name: str = "",
+    node: str | None = None,
 ) -> str:
     """
     流式调用 LLM，token 逐个推入队列。
@@ -34,10 +35,10 @@ async def llm_stream_tokens(
 
     if queue is None:
         from app.utils.llm import llm_invoke
-        response = llm_invoke(messages, model_type=model_type)
+        response = llm_invoke(messages, model_type=model_type, node=node)
         return response.content or ""
 
-    llm = get_llm(model_type=model_type)
+    llm = get_llm(model_type=model_type, node=node)
     channel = asyncio.Queue()
     full_text = ""
 

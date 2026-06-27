@@ -492,3 +492,39 @@ async def get_material(filename: str):
     with open(filepath, "r", encoding="utf-8") as f:
         content = f.read()
     return {"filename": filename, "content": content}
+
+
+# --- TTS 语音合成（CosyVoice） ---
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "longtian_v3"
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, v):
+        if len(v) > 5000:
+            raise ValueError("文本不能超过 5000 字")
+        if not v.strip():
+            raise ValueError("文本不能为空")
+        return v
+
+
+@router.post("/tts")
+async def text_to_speech(request: TTSRequest):
+    """将文本转为语音（DashScope CosyVoice），返回音频流"""
+    try:
+        from dashscope.audio.tts_v2 import SpeechSynthesizer
+
+        synthesizer = SpeechSynthesizer(model="cosyvoice-v1", voice=request.voice)
+        audio_data = synthesizer.call(request.text)
+
+        if not audio_data:
+            raise HTTPException(status_code=500, detail="语音合成失败")
+
+        from fastapi.responses import Response
+        return Response(content=bytes(audio_data), media_type="audio/mpeg")
+    except ImportError:
+        raise HTTPException(status_code=500, detail="dashscope 未安装，请 pip install dashscope")
+    except Exception as e:
+        log.error(f"TTS 合成失败: {e}")
+        raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")

@@ -48,7 +48,7 @@ def review_node(state: AgentState):
 
     num = state.get("revision_number", 0)
 
-    response = llm_invoke([HumanMessage(content=REVIEW_PROMPT.format(query=query, report=report))], model_type="smart")
+    response = llm_invoke([HumanMessage(content=REVIEW_PROMPT.format(query=query, report=report))], model_type="smart", node="reviewer")
     raw = response.content
     content = _clean_json_text(raw)
 
@@ -64,7 +64,7 @@ def review_node(state: AgentState):
         用户问题：{query}
         报告：{report}
         '''
-        retry_response = llm_invoke([HumanMessage(content=retry_prompt)], model_type="smart")
+        retry_response = llm_invoke([HumanMessage(content=retry_prompt)], model_type="smart", node="reviewer")
         retry_content = _clean_json_text(retry_response.content)
         try:
             result = json.loads(retry_content)

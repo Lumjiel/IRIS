@@ -76,9 +76,10 @@ async def write_node(state: AgentState):
             [HumanMessage(content=prompt_text)],
             model_type="fast",
             node_name="writer",
+            node="writer",
         )
     else:
-        response = llm_invoke([HumanMessage(content=prompt_text)])
+        response = llm_invoke([HumanMessage(content=prompt_text)], node="writer")
         report = response.content or ""
 
     if not report.strip():

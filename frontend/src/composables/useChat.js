@@ -1,5 +1,5 @@
 import { ref, nextTick } from 'vue';
-import { uploadFiles, streamChat, clearContext, saveReport } from '../services/api';
+import { uploadFiles, streamChat, clearContext, saveReport, ttsSynthesize } from '../services/api';
 import { getHistory, saveSession } from '../services/history';
 import { getThreadId, setThreadId, newThreadId } from '../services/api';
 
@@ -296,6 +296,46 @@ export function useChat(chatContainer) {
         } catch { showToast('保存失败', 'error'); }
     };
 
+    // TTS 朗读
+    let _currentAudio = null;
+    const ttsReport = async (msg) => {
+        // 如果正在播放，停止
+        if (msg._ttsPlaying && _currentAudio) {
+            _currentAudio.pause();
+            _currentAudio = null;
+            msg._ttsPlaying = false;
+            return;
+        }
+        // 停止其他正在播放的
+        if (_currentAudio) {
+            _currentAudio.pause();
+            _currentAudio = null;
+            messages.value.forEach(m => { if (m._ttsPlaying) m._ttsPlaying = false; });
+        }
+        try {
+            msg._ttsPlaying = true;
+            // 截取前 3000 字（TTS 有长度限制）
+            const text = msg.content.substring(0, 3000);
+            const blob = await ttsSynthesize(text);
+            const url = URL.createObjectURL(blob);
+            _currentAudio = new Audio(url);
+            _currentAudio.onended = () => {
+                msg._ttsPlaying = false;
+                _currentAudio = null;
+                URL.revokeObjectURL(url);
+            };
+            _currentAudio.onerror = () => {
+                msg._ttsPlaying = false;
+                _currentAudio = null;
+                URL.revokeObjectURL(url);
+            };
+            _currentAudio.play();
+        } catch (e) {
+            msg._ttsPlaying = false;
+            console.error('TTS failed:', e);
+        }
+    };
+
     const viewHistory = (session) => {
         messages.value = [];
         currentQuery.value = session.query;
@@ -331,7 +371,7 @@ export function useChat(chatContainer) {
         uploadedFiles, history, activeHistoryId,
         addMessage, scrollToBottom, handleFileSelect,
         sendMessage, stopResearch, copyReport, downloadReport,
-        saveToLibrary, viewHistory, newChat,
+        saveToLibrary, ttsReport, viewHistory, newChat,
         getHistory, getThreadId,
     };
 }

@@ -37,6 +37,7 @@
         @copyReport="chat.copyReport"
         @downloadReport="chat.downloadReport"
         @saveToLibrary="(msg) => chat.saveToLibrary(msg, showToast)"
+        @ttsReport="chat.ttsReport"
       />
 
       <ChatInput

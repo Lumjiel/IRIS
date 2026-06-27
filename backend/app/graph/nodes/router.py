@@ -46,7 +46,7 @@ def route_query(state: AgentState):
     只输出 "NEW_TOPIC" 或 "REFINE"。
     """
 
-    result = llm_invoke([HumanMessage(content=prompt)]).content.strip().upper()
+    result = llm_invoke([HumanMessage(content=prompt)], node="router").content.strip().upper()
     log.info(f"LLM 判定结果: {result}")
 
     if result == "REFINE":

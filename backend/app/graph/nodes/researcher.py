@@ -40,7 +40,7 @@ def research_node(state: AgentState):
                 只输出 "YES" 或 "NO"，不要输出其他内容。
                 """
                 try:
-                    grade = llm_invoke([HumanMessage(content=grader_prompt)], model_type="smart").content.strip().upper()
+                    grade = llm_invoke([HumanMessage(content=grader_prompt)], model_type="smart", node="researcher").content.strip().upper()
                 except Exception as e:
                     log.warning(f"Grader LLM 调用失败: {e}，默认文档相关")
                     grade = "YES"  # grader 超时时保守地认为文档相关

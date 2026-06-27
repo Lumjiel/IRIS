@@ -98,6 +98,7 @@
                 <button @click="$emit('copyReport', msg)" class="text-[10px] text-gray-400 hover:text-blue-500 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">📋 复制</button>
                 <button @click="$emit('downloadReport', msg)" class="text-[10px] text-gray-400 hover:text-purple-500 px-2 py-1 rounded-lg hover:bg-purple-50 transition-colors">⬇️ 下载</button>
                 <button @click="$emit('saveToLibrary', msg)" class="text-[10px] text-white bg-gradient-to-r from-blue-500 to-purple-500 px-2.5 py-1 rounded-full hover:shadow-md transition-all">💾 保存素材库</button>
+                <button @click="$emit('ttsReport', msg)" class="text-[10px] text-gray-400 hover:text-green-500 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors" :class="{ 'text-green-500 bg-green-50 animate-pulse': msg._ttsPlaying }">{{ msg._ttsPlaying ? '⏹️ 停止' : '🔊 朗读' }}</button>
               </div>
             </div>
 
@@ -160,7 +161,7 @@ const props = defineProps({
     aiNews: { type: Array, default: () => [] },
 });
 
-defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'saveToLibrary']);
+defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'saveToLibrary', 'ttsReport']);
 
 const aiNewsCategory = ref('');
 

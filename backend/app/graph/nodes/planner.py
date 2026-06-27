@@ -38,9 +38,10 @@ async def plan_node(state: AgentState):
             [HumanMessage(content=prompt_text)],
             model_type="fast",
             node_name="planner",
+            node="planner",
         )
     else:
-        response = llm_invoke([HumanMessage(content=prompt_text)])
+        response = llm_invoke([HumanMessage(content=prompt_text)], node="planner")
         response_text = response.content
 
     plans = [p.strip() for p in response_text.split(",")]

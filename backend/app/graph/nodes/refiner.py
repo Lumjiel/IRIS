@@ -57,9 +57,10 @@ async def refine_node(state: AgentState):
             [HumanMessage(content=prompt)],
             model_type="fast",
             node_name="refiner",
+            node="refiner",
         )
     else:
-        response = llm_invoke([HumanMessage(content=prompt)])
+        response = llm_invoke([HumanMessage(content=prompt)], node="refiner")
         new_report = response.content
 
     # 模糊后续不修改原报告，在末尾追加分析
