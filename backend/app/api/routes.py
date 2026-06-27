@@ -513,9 +513,10 @@ class TTSRequest(BaseModel):
 async def text_to_speech(request: TTSRequest):
     """将文本转为语音（DashScope CosyVoice），返回音频流"""
     try:
+        import dashscope
         from dashscope.audio.tts_v2 import SpeechSynthesizer
 
-        synthesizer = SpeechSynthesizer(model="cosyvoice-v1", voice=request.voice)
+        synthesizer = SpeechSynthesizer(model="cosyvoice-v3-flash", voice=request.voice)
         audio_data = synthesizer.call(request.text)
 
         if not audio_data:
