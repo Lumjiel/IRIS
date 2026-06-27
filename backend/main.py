@@ -1,6 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import uvicorn
+import os
 from app.api.routes import router
 from app.utils.logger import get_logger
 from app.config import HOST, PORT, WORKERS, CORS_ORIGINS, LOG_LEVEL
@@ -34,13 +37,26 @@ app.add_middleware(
 
 app.include_router(router, prefix="/api")
 
-@app.get("/")
-def health_check():
-    return {
-        "status": "running",
-        "model": PRIMARY_MODEL,
-        "fallback_model": FALLBACK_MODEL,
-    }
+# 挂载前端静态文件
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.isdir(FRONTEND_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        """SPA fallback：非 /api 路径全部返回 index.html"""
+        file_path = os.path.join(FRONTEND_DIST, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+else:
+    @app.get("/")
+    def health_check():
+        return {
+            "status": "running",
+            "model": PRIMARY_MODEL,
+            "fallback_model": FALLBACK_MODEL,
+        }
 
 if __name__ == "__main__":
     log.info("后端服务正在启动...")
