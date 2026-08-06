@@ -706,3 +706,102 @@ async def delete_skill(name: str):
     except Exception as e:
         log.error(f"删除 Skill 失败: {e}")
         raise HTTPException(status_code=500, detail="删除失败")
+
+
+# --- 导出功能 ---
+
+class ExportPDFRequest(BaseModel):
+    report: str
+    filename: str = "report"
+
+
+@router.post("/export/pdf")
+async def export_pdf(request: ExportPDFRequest):
+    """将报告导出为 PDF 文件"""
+    try:
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+
+        # 尝试加载中文字体
+        font_path = None
+        for candidate in [
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        ]:
+            if os.path.exists(candidate):
+                font_path = candidate
+                break
+
+        if font_path:
+            pdf.add_font("NotoSansCJK", "", font_path, uni=True)
+            pdf.set_font("NotoSansCJK", size=10)
+        else:
+            pdf.set_font("Helvetica", size=10)
+
+        # 逐行写入报告
+        for line in request.report.split("\n"):
+            pdf.cell(0, 7, txt=line, ln=True)
+
+        pdf_content = pdf.output()
+        from fastapi.responses import Response
+        return Response(
+            content=bytes(pdf_content),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{request.filename}.pdf"'},
+        )
+    except ImportError:
+        raise HTTPException(status_code=500, detail="fpdf2 未安装，请 pip install fpdf2")
+    except Exception as e:
+        log.error(f"PDF 导出失败: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF 导出失败: {str(e)}")
+
+
+class ExportHTMLRequest(BaseModel):
+    report: str
+
+
+@router.post("/export/html")
+async def export_html(request: ExportHTMLRequest):
+    """将报告导出为带样式的 HTML 页面"""
+    try:
+        html_content = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IRIS 调研报告</title>
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; }}
+h1 {{ color: #1a1a2e; border-bottom: 2px solid #e94560; padding-bottom: 10px; }}
+h2 {{ color: #16213e; }}
+h3 {{ color: #0f3460; }}
+pre {{ background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; }}
+code {{ background: #f0f0f0; padding: 2px 4px; border-radius: 3px; font-size: 0.9em; }}
+blockquote {{ border-left: 4px solid #e94560; margin-left: 0; padding-left: 16px; color: #555; }}
+.footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 0.85em; }}
+</style>
+</head>
+<body>
+{request.report.replace(chr(10), "<br>")}
+<div class="footer">由 IRIS 智能调研系统生成</div>
+</body>
+</html>"""
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=html_content)
+    except Exception as e:
+        log.error(f"HTML 导出失败: {e}")
+        raise HTTPException(status_code=500, detail=f"HTML 导出失败: {str(e)}")
+
+
+# --- Token 用量统计 ---
+
+@router.get("/usage/tokens")
+async def get_token_usage():
+    """返回累计 token 消耗统计"""
+    from app.utils.llm import get_token_usage as _get_token_usage
+    return _get_token_usage()

@@ -3,7 +3,7 @@ from app.tools.registry import ToolRegistry
 from app.graph.state import AgentState
 from app.utils.llm import llm_invoke
 from app.utils.logger import get_logger
-from app.tools.search import search_tavily_structured
+from app.utils.credibility import CredibilityScorer
 
 log = get_logger("researcher")
 
@@ -112,5 +112,10 @@ def research_node(state: AgentState):
     # If all retrieval failed, give writer a hint
     if not results:
         results.append(f"[系统提示] 未能检索到关于「{query}」的外部资料。请基于你的知识直接回答，并在报告开头说明信息来源有限。")
+
+    # 可信度过滤：移除低质量来源
+    if sources:
+        scorer = CredibilityScorer()
+        sources = scorer.filter_results(sources)
 
     return {"search_results": results, "search_sources": sources}

@@ -2,6 +2,7 @@ from typing import List, Optional
 from app.memory.models import MemoryRecord
 from app.memory.store import MemoryStore
 from app.utils.logger import get_logger
+from app.utils.llm import get_token_usage
 
 log = get_logger("memory_extractor")
 
@@ -53,6 +54,16 @@ def extract_memories(
             metadata={"query": query, "plan": plan},
         )
         records.append(record)
+
+    # 记录 token 消耗
+    usage = get_token_usage()
+    if usage["total_tokens"] > 0:
+        store.add(
+            kind="procedural",
+            content=f"Token 消耗: prompt={usage['prompt_tokens']}, completion={usage['completion_tokens']}, total={usage['total_tokens']}",
+            thread_id=thread_id,
+            metadata={"token_usage": usage, "query": query},
+        )
 
     log.info(f"记忆提取完成: {len(records)} 条 (query={query[:30]})")
     return records

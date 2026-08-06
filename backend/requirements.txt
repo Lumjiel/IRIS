@@ -17,3 +17,4 @@ langgraph-checkpoint-sqlite
 msgpack
 python-multipart
 pypdf
+fpdf2

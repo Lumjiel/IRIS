@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage
 from app.config import LLM_TIMEOUT_FAST, LLM_TIMEOUT_SMART
@@ -25,6 +26,10 @@ NODE_MODELS = {
 _primary_exhausted = False
 _primary_exhausted_at = 0.0
 _EXHAUSTED_TTL = 300  # 5分钟后自动恢复尝试主模型
+
+# Token 统计
+_token_lock = threading.Lock()
+_token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 
 def _is_exhausted() -> bool:
@@ -65,6 +70,22 @@ def get_llm(model_type="fast", node=None):
     )
 
 
+def _record_usage(response):
+    """从 LLM 响应中提取 token 用量并累计。"""
+    usage = getattr(response, "response_metadata", {}).get("token_usage", {})
+    if usage:
+        with _token_lock:
+            _token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+            _token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+            _token_usage["total_tokens"] += usage.get("total_tokens", 0)
+
+
+def get_token_usage() -> dict:
+    """返回累计 token 消耗统计。"""
+    with _token_lock:
+        return dict(_token_usage)
+
+
 def llm_invoke(messages: list[BaseMessage], model_type="fast", node=None):
     """
     带降级的 LLM 调用。
@@ -85,7 +106,9 @@ def llm_invoke(messages: list[BaseMessage], model_type="fast", node=None):
                 api_key=os.getenv("OPENAI_API_KEY"),
                 request_timeout=timeout
             )
-            return llm.invoke(messages)
+            response = llm.invoke(messages)
+            _record_usage(response)
+            return response
         except Exception as e:
             global _primary_exhausted, _primary_exhausted_at
             err_msg = str(e).lower()
@@ -105,7 +128,9 @@ def llm_invoke(messages: list[BaseMessage], model_type="fast", node=None):
             api_key=os.getenv("OPENAI_API_KEY"),
             request_timeout=timeout
         )
-        return llm.invoke(messages)
+        response = llm.invoke(messages)
+        _record_usage(response)
+        return response
     except Exception as e:
         log.error(f"备用模型 {FALLBACK_MODEL} 也失败: {e}")
         raise
