@@ -95,14 +95,19 @@ def research_node(state: AgentState):
             }
     else:
         log.info("正在执行互联网搜索...")
+        from app.tools.search import search_tavily_structured
         for q in plans:
-            for tool in web_tools:
-                try:
-                    content = tool.func(query=q)
-                    label = tool.name
-                    results.append(f"### \U0001f310 网络搜索结果 [{label}] ({q})\n{content}\n")
-                except Exception as e:
-                    log.error(f"搜索 {q} via {tool.name} 失败: {e}")
+            try:
+                structured_results = search_tavily_structured(q)
+                for item in structured_results:
+                    url = item.get("url", "")
+                    title = item.get("title", "")
+                    content_text = item.get("content", "")
+                    if url:
+                        sources.append({"url": url, "title": title})
+                    results.append(f"### 🌐 网络搜索结果 ({q})\n**{title}**\n{content_text}\n")
+            except Exception as e:
+                log.error(f"搜索 {q} 失败: {e}")
 
     # If all retrieval failed, give writer a hint
     if not results:
