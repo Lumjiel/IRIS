@@ -43,3 +43,6 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
 
 CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", os.path.join(DATA_DIR, "checkpoints.db"))
 STORE_DB = os.getenv("STORE_DB", os.path.join(DATA_DIR, "store.db"))
+
+# Skills
+SKILLS_ROOT = os.getenv("SKILLS_ROOT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills"))

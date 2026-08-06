@@ -23,3 +23,7 @@ class AgentState(TypedDict):
     # === 用户偏好 ===
     # preferences: {style, language}，从前端传递，影响 writer 输出风格
     preferences: dict
+
+    # === Skill 系统 ===
+    # active_skill: 匹配到的 Skill 名称，为空表示使用默认策略
+    active_skill: str

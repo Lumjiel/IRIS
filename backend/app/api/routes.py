@@ -254,6 +254,7 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 "critique": "",
                 "review_status": "PASS",
                 "should_stop": False,
+                "active_skill": "",
                 # final_report 不重置：router 需要判断是否有已有报告来决定路由
                 # conversation_summary 不重置：由 checkpoint 持久化，跨轮保持
             }

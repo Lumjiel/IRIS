@@ -1,9 +1,13 @@
 from langchain_core.messages import HumanMessage
 from app.graph.state import AgentState
 from app.utils.llm import llm_invoke
+from app.skills.router import route_skill
 from app.utils.logger import get_logger
 
 log = get_logger("router")
+
+# 模块级缓存：query → active_skill（供 planner 读取）
+_skill_cache: dict = {}
 
 
 def looks_like_refine(q: str) -> bool:
@@ -25,6 +29,12 @@ def route_query(state: AgentState):
     has_report = bool(state.get("final_report", "").strip())
 
     log.info(f"正在分析意图: '{query}' (已有报告: {has_report})")
+
+    # Skill 匹配
+    active_skill = route_skill(query)
+    if active_skill:
+        log.info(f"Skill 匹配成功: {active_skill}")
+    _skill_cache[query] = active_skill
 
     if not has_report:
         return "planner"
@@ -55,3 +65,8 @@ def route_query(state: AgentState):
         return "planner"
     log.warning(f"非法输出: {result!r}，启用兜底规则")
     return "refiner" if looks_like_refine(query) else "planner"
+
+
+def pop_skill_cache(query: str) -> str:
+    """从缓存中取出并删除 skill 匹配结果，供 planner 调用。"""
+    return _skill_cache.pop(query, "")

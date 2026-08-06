@@ -3,6 +3,8 @@ from langchain_core.messages import HumanMessage
 from app.utils.llm import llm_invoke
 from app.utils.streaming import llm_stream_tokens, get_token_queue
 from app.utils.memory import build_conversation_context
+from app.graph.nodes.router import pop_skill_cache
+from app.skills.router import get_skill_prompt
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
 
@@ -29,8 +31,17 @@ async def plan_node(state: AgentState):
     # 组装对话上下文（含历史摘要、已搜方向避让、当前问题）
     conversation_context = build_conversation_context(state)
 
+    # Skill Prompt 注入（从 router 缓存中读取）
+    skill_prompt = ""
+    active_skill = pop_skill_cache(state["query"])
+    if active_skill:
+        skill_prompt_text = get_skill_prompt(active_skill)
+        if skill_prompt_text:
+            skill_prompt = f"\n\n## 调研策略\n{skill_prompt_text}"
+            log.info(f"注入 Skill Prompt: {active_skill}")
+
     prompt_text = PLAN_PROMPT.format(
-        conversation_context=conversation_context,
+        conversation_context=conversation_context + skill_prompt,
     )
 
     if get_token_queue() is not None:

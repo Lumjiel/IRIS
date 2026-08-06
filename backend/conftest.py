@@ -49,4 +49,5 @@ def sample_state():
         "review_status": "PASS",
         "search_mode": "hybrid",
         "should_stop": False,
+        "active_skill": "",
     }
