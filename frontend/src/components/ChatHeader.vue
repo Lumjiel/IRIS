@@ -44,6 +44,12 @@
       </Transition>
     </div>
 
+    <!-- Skill 指示器 -->
+    <div v-if="activeSkill" class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-[11px] font-medium">
+      <span>🎯</span>
+      <span>{{ activeSkill }}</span>
+    </div>
+
     <div v-if="isLoading" class="flex items-center gap-1.5 text-[11px] text-blue-500">
       <div class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
       调研中...
@@ -61,6 +67,7 @@ const props = defineProps({
     memorySummary: { type: String, default: '' },
     summaryLength: { type: Number, default: 0 },
     summaryMax: { type: Number, default: 2000 },
+    activeSkill: { type: String, default: '' },
 });
 
 defineEmits(['toggleSidebar', 'resetMemory']);

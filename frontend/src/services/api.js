@@ -209,3 +209,48 @@ export async function ttsSynthesize(text, voice = 'longtian_v3') {
   }
   return await response.blob();
 }
+
+// === Skill API ===
+export async function listSkills() {
+  const response = await fetch(`${API_BASE}/skills`);
+  if (!response.ok) return { skills: [] };
+  return await response.json();
+}
+
+export async function createSkill(skill) {
+  const response = await fetch(`${API_BASE}/skills`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(skill)
+  });
+  if (!response.ok) throw new Error('Failed to create skill');
+  return await response.json();
+}
+
+export async function deleteSkill(name) {
+  const response = await fetch(`${API_BASE}/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to delete skill');
+  return await response.json();
+}
+
+// === Memory Search API ===
+export async function searchMemory(q, kind = null) {
+  const params = new URLSearchParams({ q });
+  if (kind) params.set('kind', kind);
+  const response = await fetch(`${API_BASE}/memory/search?${params}`);
+  if (!response.ok) return { results: [] };
+  return await response.json();
+}
+
+export async function deleteMemoryItem(id) {
+  const response = await fetch(`${API_BASE}/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Failed to delete memory');
+  return await response.json();
+}
+
+// === Tools API ===
+export async function listTools() {
+  const response = await fetch(`${API_BASE}/tools`);
+  if (!response.ok) return { tools: [] };
+  return await response.json();
+}

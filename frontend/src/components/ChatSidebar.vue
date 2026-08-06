@@ -67,6 +67,82 @@
         </div>
       </template>
 
+      <!-- Skills -->
+      <template v-if="activeTab === 'skills'">
+        <div v-if="loadingSkills" class="text-center text-[11px] text-gray-400 py-8">加载中...</div>
+        <div v-else-if="skills.length === 0" class="text-center text-[11px] text-gray-300 py-8">暂无 Skills</div>
+        <div v-else class="space-y-2">
+          <div v-for="skill in skills" :key="skill.name" class="px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors group">
+            <div class="flex items-center justify-between">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <p class="text-[11px] font-medium text-gray-700 truncate">{{ skill.name }}</p>
+                  <span v-if="skill.builtin" class="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded-full">builtin</span>
+                </div>
+                <p class="text-[10px] text-gray-400 mt-0.5 truncate">{{ skill.description }}</p>
+              </div>
+              <button v-if="!skill.builtin" @click="handleDeleteSkill(skill.name)" class="text-[10px] text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all px-1">✕</button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- 记忆搜索 -->
+      <template v-if="activeTab === 'memory'">
+        <div class="space-y-2">
+          <div class="flex gap-1.5">
+            <input v-model="memoryQuery" @keyup.enter="handleSearchMemory" type="text" placeholder="搜索记忆..." class="flex-1 px-2.5 py-1.5 text-[11px] border border-gray-200 rounded-lg focus:outline-none focus:border-blue-400" />
+            <button @click="handleSearchMemory" class="px-2.5 py-1.5 text-[11px] bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">搜索</button>
+          </div>
+          <div class="flex gap-1.5">
+            <button @click="memoryKind = ''" class="px-2 py-1 text-[10px] rounded-full transition-colors" :class="memoryKind === '' ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-500 hover:text-gray-700'">全部</button>
+            <button @click="memoryKind = 'episodic'" class="px-2 py-1 text-[10px] rounded-full transition-colors" :class="memoryKind === 'episodic' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500 hover:text-gray-700'">情景</button>
+            <button @click="memoryKind = 'semantic'" class="px-2 py-1 text-[10px] rounded-full transition-colors" :class="memoryKind === 'semantic' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500 hover:text-gray-700'">语义</button>
+            <button @click="memoryKind = 'procedural'" class="px-2 py-1 text-[10px] rounded-full transition-colors" :class="memoryKind === 'procedural' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500 hover:text-gray-700'">程序</button>
+          </div>
+          <div v-if="searchingMemory" class="text-center text-[11px] text-gray-400 py-4">搜索中...</div>
+          <div v-else-if="memoryResults.length === 0 && memoryQuery" class="text-center text-[11px] text-gray-300 py-4">未找到相关记忆</div>
+          <div v-else class="space-y-2">
+            <div v-for="m in memoryResults" :key="m.id" class="px-3 py-2 rounded-lg bg-gray-50 group">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex-1 min-w-0">
+                  <p class="text-[11px] text-gray-600 leading-relaxed">{{ m.content }}</p>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span class="text-[9px] px-1.5 py-0.5 rounded-full" :class="{
+                      'bg-blue-100 text-blue-600': m.kind === 'episodic',
+                      'bg-green-100 text-green-600': m.kind === 'semantic',
+                      'bg-purple-100 text-purple-600': m.kind === 'procedural'
+                    }">{{ m.kind }}</span>
+                    <span class="text-[9px] text-gray-400">{{ m.created_at }}</span>
+                  </div>
+                </div>
+                <button @click="handleDeleteMemory(m.id)" class="text-[10px] text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all px-1">✕</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Tools -->
+      <template v-if="activeTab === 'tools'">
+        <div v-if="loadingTools" class="text-center text-[11px] text-gray-400 py-8">加载中...</div>
+        <div v-else-if="tools.length === 0" class="text-center text-[11px] text-gray-300 py-8">暂无工具</div>
+        <div v-else class="space-y-1">
+          <div v-for="tool in tools" :key="tool.name" class="rounded-lg transition-colors" :class="expandedTool === tool.name ? 'bg-gray-50' : 'hover:bg-gray-50'">
+            <button @click="toggleTool(tool.name)" class="w-full px-3 py-2 text-left">
+              <div class="flex items-center justify-between">
+                <p class="text-[11px] font-medium text-gray-700">{{ tool.name }}</p>
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-gray-400 transition-transform" :class="expandedTool === tool.name ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+              <p class="text-[10px] text-gray-400 mt-0.5">{{ tool.description }}</p>
+            </button>
+            <div v-if="expandedTool === tool.name && tool.parameters" class="px-3 pb-2">
+              <pre class="text-[10px] text-gray-500 bg-white p-2 rounded border border-gray-100 overflow-x-auto">{{ JSON.stringify(tool.parameters, null, 2) }}</pre>
+            </div>
+          </div>
+        </div>
+      </template>
+
       <!-- 设置 -->
       <template v-if="activeTab === 'settings'">
         <div class="space-y-3 py-1">
@@ -98,7 +174,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import { listSkills, deleteSkill, searchMemory, deleteMemoryItem, listTools } from '../services/api';
 
 defineProps({
     sidebarOpen: Boolean,
@@ -116,8 +193,75 @@ const tabs = [
     { key: 'kb', label: '知识库' },
     { key: 'materials', label: '素材库' },
     { key: 'history', label: '历史' },
+    { key: 'skills', label: 'Skills' },
+    { key: 'memory', label: '记忆' },
+    { key: 'tools', label: '工具' },
     { key: 'settings', label: '设置' },
 ];
+
+// === Skills ===
+const skills = ref([]);
+const loadingSkills = ref(false);
+const loadSkills = async () => {
+    loadingSkills.value = true;
+    try {
+        const data = await listSkills();
+        skills.value = data.skills || [];
+    } catch { skills.value = []; }
+    loadingSkills.value = false;
+};
+
+const handleDeleteSkill = async (name) => {
+    try {
+        await deleteSkill(name);
+        skills.value = skills.value.filter(s => s.name !== name);
+    } catch {}
+};
+
+// === Memory Search ===
+const memoryQuery = ref('');
+const memoryKind = ref('');
+const memoryResults = ref([]);
+const searchingMemory = ref(false);
+const handleSearchMemory = async () => {
+    if (!memoryQuery.value.trim()) return;
+    searchingMemory.value = true;
+    try {
+        const data = await searchMemory(memoryQuery.value, memoryKind.value || null);
+        memoryResults.value = data.results || [];
+    } catch { memoryResults.value = []; }
+    searchingMemory.value = false;
+};
+
+const handleDeleteMemory = async (id) => {
+    try {
+        await deleteMemoryItem(id);
+        memoryResults.value = memoryResults.value.filter(m => m.id !== id);
+    } catch {}
+};
+
+// === Tools ===
+const tools = ref([]);
+const loadingTools = ref(false);
+const expandedTool = ref('');
+const loadTools = async () => {
+    loadingTools.value = true;
+    try {
+        const data = await listTools();
+        tools.value = data.tools || [];
+    } catch { tools.value = []; }
+    loadingTools.value = false;
+};
+
+const toggleTool = (name) => {
+    expandedTool.value = expandedTool.value === name ? '' : name;
+};
+
+// Tab 切换时加载数据
+watch(activeTab, (tab) => {
+    if (tab === 'skills') loadSkills();
+    if (tab === 'tools') loadTools();
+});
 
 // === 用户偏好 ===
 const STORAGE_KEY = 'iris_preferences';

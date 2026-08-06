@@ -12,6 +12,7 @@ export function useChat(chatContainer) {
     const uploadedFiles = ref([]);
     const history = ref([]);
     const activeHistoryId = ref(null);
+    const activeSkill = ref('');
 
     let currentAbortController = null;
     let msgIdCounter = 0;
@@ -190,6 +191,10 @@ export function useChat(chatContainer) {
                     msg.active = false;
                     scrollToBottom();
                 }
+                // 跟踪激活的 Skill
+                if (data.data?.active_skill !== undefined) {
+                    activeSkill.value = data.data.active_skill || '';
+                }
             },
             () => {
                 isLoading.value = false;
@@ -361,6 +366,7 @@ export function useChat(chatContainer) {
         messages.value = [];
         currentQuery.value = '';
         activeHistoryId.value = null;
+        activeSkill.value = '';
         if (isLoading.value) stopResearch();
         newThreadId();
         try { clearContext(); } catch {}
@@ -368,7 +374,7 @@ export function useChat(chatContainer) {
 
     return {
         query, messages, isLoading, currentQuery, searchMode,
-        uploadedFiles, history, activeHistoryId,
+        uploadedFiles, history, activeHistoryId, activeSkill,
         addMessage, scrollToBottom, handleFileSelect,
         sendMessage, stopResearch, copyReport, downloadReport,
         saveToLibrary, ttsReport, viewHistory, newChat,

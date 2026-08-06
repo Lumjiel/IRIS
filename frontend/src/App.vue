@@ -24,6 +24,7 @@
         :memorySummary="memorySummary"
         :summaryLength="summaryLength"
         :summaryMax="summaryMax"
+        :activeSkill="chat.activeSkill.value"
         @toggleSidebar="sidebarOpen = !sidebarOpen"
         @resetMemory="resetMemory"
       />
