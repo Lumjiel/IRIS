@@ -136,6 +136,11 @@ class SkillRegistry:
         best_name = None
         best_score = 0
 
+        def _bigrams(text: str) -> set:
+            return {text[i:i+2] for i in range(len(text) - 1)}
+
+        query_bigrams = _bigrams(query_lower)
+
         for name, skill in self._skills.items():
             score = 0
             desc_lower = skill.description.lower()
@@ -143,6 +148,10 @@ class SkillRegistry:
             for token in desc_tokens:
                 if token and token in query_lower:
                     score += 2
+
+            if len(desc_lower) >= 2:
+                desc_bigrams = _bigrams(desc_lower)
+                score += len(desc_bigrams & query_bigrams)
 
             name_tokens = name.lower().replace("_", " ").split()
             for token in name_tokens:
