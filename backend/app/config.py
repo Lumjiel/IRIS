@@ -45,6 +45,9 @@ CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", os.path.join(DATA_DIR, "checkpoints.d
 STORE_DB = os.getenv("STORE_DB", os.path.join(DATA_DIR, "store.db"))
 MEMORY_DB = os.getenv("MEMORY_DB", os.path.join(DATA_DIR, "memory.db"))
 
+# Tools
+TOOLS_DIR = os.getenv("TOOLS_DIR", os.path.join(DATA_DIR, "tools"))
+
 # Skills
 SKILLS_ROOT = os.getenv("SKILLS_ROOT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills"))
 SKILLS_BUILTIN_DIR = os.getenv("SKILLS_BUILTIN_DIR", os.path.join(SKILLS_ROOT, "builtin"))

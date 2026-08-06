@@ -1,11 +1,12 @@
 from langchain_core.messages import HumanMessage
-from app.tools.search import search_tavily
+from app.tools.registry import ToolRegistry
 from app.graph.state import AgentState
-from app.rag.engine import get_retriever
 from app.utils.llm import llm_invoke
 from app.utils.logger import get_logger
 
 log = get_logger("researcher")
+
+
 def research_node(state: AgentState):
 
     mode = state.get("search_mode", "hybrid")
@@ -14,24 +15,44 @@ def research_node(state: AgentState):
     results = []
 
     log.info(f"开始搜索 | 模式: {mode}")
-    
-    retriever = get_retriever()
+
+    # --- resolve which tools to use ---
+    # If the active Skill declares required_tools, restrict to those;
+    # otherwise use all registered tools.
+    active_skill = state.get("active_skill", "")
+    if active_skill:
+        from app.skills.registry import SkillRegistry as _SR
+        # import skills registry singleton (imported lazily to avoid circular)
+        from app.config import SKILLS_BUILTIN_DIR, SKILLS_USER_DIR
+        _sr = _SR(SKILLS_BUILTIN_DIR, SKILLS_USER_DIR)
+        skill_obj = _sr.get(active_skill)
+        if skill_obj and skill_obj.required_tools:
+            tools = [ToolRegistry.get(t) for t in skill_obj.required_tools if ToolRegistry.get(t)]
+        else:
+            tools = ToolRegistry.list_all()
+    else:
+        tools = ToolRegistry.list_all()
+
+    # Separate doc_search from the rest
+    doc_tool = next((t for t in tools if t.name == "doc_search"), None)
+    web_tools = [t for t in tools if t.name != "doc_search"]
+
+    # --- document retrieval ---
     rag_content = ""
     is_doc_relevant = False
-    
-    if retriever:
+
+    if doc_tool:
         log.info("正在检索本地知识库...")
         try:
-            docs = retriever.invoke(query)
-            if docs:
-                raw_context = "\n\n".join([f"[文档片段]: {doc.page_content}" for doc in docs])
+            rag_content = doc_tool.func(query=query)
+            if rag_content and not rag_content.startswith("[系统提示]"):
                 log.info("正在进行文档相关性审计...")
                 grader_prompt = f"""
                 你是一个严格的文档相关性评估员。
 
                 用户问题: {query}
                 检索到的文档片段:
-                {raw_context[:2000]} (截取部分)
+                {rag_content[:2000]} (截取部分)
 
                 请判断：这些文档片段是否包含回答用户问题所需的信息？
                 - 如果文档完全不相关（例如问'吃什么'但文档是'深度学习'），请回答 "NO"。
@@ -43,57 +64,44 @@ def research_node(state: AgentState):
                     grade = llm_invoke([HumanMessage(content=grader_prompt)], model_type="smart", node="researcher").content.strip().upper()
                 except Exception as e:
                     log.warning(f"Grader LLM 调用失败: {e}，默认文档相关")
-                    grade = "YES"  # grader 超时时保守地认为文档相关
+                    grade = "YES"
                 if "YES" in grade:
                     is_doc_relevant = True
-                    rag_content = "\n\n".join([f"[文档片段]: {doc.page_content}" for doc in docs])
-                    results.append(f"### 📂 本地文档资料 (已核实相关)\n{rag_content}\n")
+                    results.append(f"### \U0001f4c2 本地文档资料 (已核实相关)\n{rag_content}\n")
                     log.info("文档通过相关性审计")
                 else:
                     log.warning(f"文档内容与问题 '{query}' 不相关，已自动忽略")
-
-                    results.append(f"[系统提示]: 检索了本地文档，但发现内容与问题不相关，已自动忽略。")
+                    results.append("[系统提示]: 检索了本地文档，但发现内容与问题不相关，已自动忽略。")
             else:
                 log.info("未找到相关内容")
         except Exception as e:
             log.error(f"检索出错: {e}")
     else:
         log.info("知识库为空，跳过")
-    
+
     if mode == "document":
         if is_doc_relevant:
             log.info("文档相关，按计划仅使用文档")
         else:
             log.warning("文档不相关，但 Document Only 模式")
-            log.warning("文档内容与问题不匹配，无法生成有效回答") 
-            results.append("【严重警告】：用户选择了 Document Only 模式，但上传的文档与问题完全无关。请直接在报告中诚实地告诉用户：“您上传的文档中没有关于此问题的说明”，不要编造答案。")
+            log.warning("文档内容与问题不匹配，无法生成有效回答")
+            results.append("【严重警告】：用户选择了 Document Only 模式，但上传的文档与问题完全无关。请直接在报告中诚实地告诉用户：\u201c您上传的文档中没有关于此问题的说明\u201d，不要编造答案。")
             return {
                 "search_results": results,
-                "should_stop": True 
+                "should_stop": True
             }
-
-
-    else: 
-        should_web_search = True
-        
-        if is_doc_relevant:
-
-            log.info("文档相关，启用混合增强模式 (Doc + Web)")
-        else:
-
-            log.info("文档不相关，自动切换为全网搜索模式")
-            log.info("本地文档与问题无关，系统已自动切换为全网搜索")
-
-        if should_web_search:
-            log.info("正在执行互联网搜索...")
-            for q in plans:
+    else:
+        log.info("正在执行互联网搜索...")
+        for q in plans:
+            for tool in web_tools:
                 try:
-                    content = search_tavily(q)
-                    results.append(f"### 🌐 网络搜索结果 ({q})\n{content}\n")
+                    content = tool.func(query=q)
+                    label = tool.name
+                    results.append(f"### \U0001f310 网络搜索结果 [{label}] ({q})\n{content}\n")
                 except Exception as e:
-                    log.error(f"搜索 {q} 失败: {e}")
+                    log.error(f"搜索 {q} via {tool.name} 失败: {e}")
 
-    # 如果所有检索都失败，给 writer 一个提示而非空内容
+    # If all retrieval failed, give writer a hint
     if not results:
         results.append(f"[系统提示] 未能检索到关于「{query}」的外部资料。请基于你的知识直接回答，并在报告开头说明信息来源有限。")
 

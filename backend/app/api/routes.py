@@ -567,6 +567,53 @@ async def text_to_speech(request: TTSRequest):
         raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")
 
 
+# --- Tool Registry API ---
+
+@router.get("/tools")
+async def list_tools():
+    """列出所有已注册的工具"""
+    from app.tools.registry import ToolRegistry
+    tools = ToolRegistry.list_all()
+    return {
+        "tools": [
+            {"name": t.name, "description": t.description, "parameters": t.parameters}
+            for t in tools
+        ]
+    }
+
+
+@router.get("/tools/{name}")
+async def get_tool(name: str):
+    """获取单个工具详情"""
+    from app.tools.registry import ToolRegistry
+    tool = ToolRegistry.get(name)
+    if tool is None:
+        raise HTTPException(status_code=404, detail=f"Tool '{name}' 不存在")
+    return {
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": tool.parameters,
+    }
+
+
+class ToolExecuteRequest(BaseModel):
+    query: str = ""
+
+@router.post("/tools/{name}/execute")
+async def execute_tool(name: str, request: ToolExecuteRequest = ToolExecuteRequest()):
+    """执行指定工具（调试用）"""
+    from app.tools.registry import ToolRegistry
+    tool = ToolRegistry.get(name)
+    if tool is None:
+        raise HTTPException(status_code=404, detail=f"Tool '{name}' 不存在")
+    try:
+        result = ToolRegistry.execute(name, query=request.query)
+        return {"status": "success", "result": str(result)}
+    except Exception as e:
+        log.error(f"工具执行失败 {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"执行失败: {str(e)}")
+
+
 # --- Skill 生命周期管理 ---
 
 class SkillCreateRequest(BaseModel):
