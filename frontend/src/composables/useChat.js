@@ -1,5 +1,5 @@
 import { ref, nextTick } from 'vue';
-import { uploadFiles, streamChat, clearContext, saveReport, ttsSynthesize } from '../services/api';
+import { uploadFiles, streamChat, clearContext, saveReport, ttsSynthesize, exportPdf } from '../services/api';
 import { getHistory, saveSession } from '../services/history';
 import { getThreadId, setThreadId, newThreadId } from '../services/api';
 
@@ -86,6 +86,7 @@ export function useChat(chatContainer) {
             streamText: '',
             active: true,
             rounds: [],  // 研究轨迹：每轮的搜索方向
+            currentPhase: 0,  // 研究进度阶段：0=准备 1=搜索 2=分析 3=撰写 4=完成
         });
         let round = 0;
 
@@ -118,6 +119,7 @@ export function useChat(chatContainer) {
 
                 if (data.step === 'planner') {
                     round++;
+                    msg.currentPhase = 1;
                     const plans = data.data.plan || [];
                     const status = {
                         text: `第 ${round} 轮 · 拆解了 ${plans.length} 个搜索方向`,
@@ -132,6 +134,7 @@ export function useChat(chatContainer) {
                     scrollToBottom();
                 }
                 else if (data.step === 'researcher') {
+                    msg.currentPhase = 2;
                     const results = data.data.search_results || [];
                     const sources = results.map(r => {
                         const m = r.match(/### .+?[（(]([^)）]+)[)）]/) || r.match(/### (.+)/);
@@ -147,6 +150,7 @@ export function useChat(chatContainer) {
                     scrollToBottom();
                 }
                 else if (data.step === 'writer') {
+                    msg.currentPhase = 3;
                     if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                     msg.statuses.push({ text: '正在撰写报告...', active: true });
                     if (data.data.final_report) msg.streamText = data.data.final_report;
@@ -166,6 +170,7 @@ export function useChat(chatContainer) {
                         if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                         msg.statuses.push({ text: '审查通过，报告完成 ✓', active: false });
                         finishStatuses(sMsg.id);
+                        msg.currentPhase = 4;
                         msg.type = 'report';
                         msg.content = msg.streamText || '';
                         msg.active = false;
@@ -173,6 +178,7 @@ export function useChat(chatContainer) {
                     scrollToBottom();
                 }
                 else if (data.step === 'refiner') {
+                    msg.currentPhase = 4;
                     if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                     msg.statuses.push({ text: '修订完成 ✓', active: false });
                     finishStatuses(sMsg.id);
@@ -294,6 +300,20 @@ export function useChat(chatContainer) {
         URL.revokeObjectURL(url);
     };
 
+    const downloadPdf = async (msg) => {
+        try {
+            const blob = await exportPdf(msg.content, currentQuery.value || 'report');
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `IRIS-${currentQuery.value || 'report'}.pdf`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error('PDF export failed:', e);
+        }
+    };
+
     const saveToLibrary = async (msg, showToast) => {
         try {
             await saveReport(currentQuery.value, msg.content);
@@ -376,7 +396,7 @@ export function useChat(chatContainer) {
         query, messages, isLoading, currentQuery, searchMode,
         uploadedFiles, history, activeHistoryId, activeSkill,
         addMessage, scrollToBottom, handleFileSelect,
-        sendMessage, stopResearch, copyReport, downloadReport,
+        sendMessage, stopResearch, copyReport, downloadReport, downloadPdf,
         saveToLibrary, ttsReport, viewHistory, newChat,
         getHistory, getThreadId,
     };

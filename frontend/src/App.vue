@@ -37,6 +37,7 @@
         @useAiNews="(title) => { chat.query.value = title; }"
         @copyReport="chat.copyReport"
         @downloadReport="chat.downloadReport"
+        @downloadPdf="chat.downloadPdf"
         @saveToLibrary="(msg) => chat.saveToLibrary(msg, showToast)"
         @ttsReport="chat.ttsReport"
       />
@@ -46,6 +47,7 @@
         :isLoading="chat.isLoading.value"
         :uploadedFiles="chat.uploadedFiles.value"
         :searchMode="chat.searchMode.value"
+        :hasMessages="chat.messages.value.length > 0"
         @update:searchMode="(v) => chat.searchMode.value = v"
         @send="() => chat.sendMessage(showToast)"
         @stop="chat.stopResearch"

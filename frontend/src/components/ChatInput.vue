@@ -1,6 +1,15 @@
 <template>
   <div class="border-t border-gray-200 bg-white px-4 py-3 shrink-0">
     <div class="max-w-3xl mx-auto">
+      <!-- 示例建议 -->
+      <div v-if="!hasMessages" class="flex flex-wrap gap-2 mb-3">
+        <span class="text-xs text-gray-400">💡 试试：</span>
+        <button v-for="example in examples" :key="example"
+          @click="$emit('update:modelValue', example)"
+          class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+          {{ example }}
+        </button>
+      </div>
       <!-- 文件信息 + 搜索模式 -->
       <div v-if="uploadedFiles.length > 0" class="flex items-center gap-2 mb-2 px-1">
         <div class="flex items-center gap-1.5 text-[11px] text-gray-500">
@@ -53,11 +62,19 @@ defineProps({
     isLoading: Boolean,
     uploadedFiles: { type: Array, default: () => [] },
     searchMode: { type: String, default: 'hybrid' },
+    hasMessages: Boolean,
 });
 
 defineEmits(['update:modelValue', 'update:searchMode', 'send', 'stop']);
 
 const inputBox = ref(null);
+
+const examples = [
+    '公众号如何写爆款文章',
+    'React vs Vue 技术选型',
+    '2026年AI行业趋势分析',
+    '数据库选型：PostgreSQL vs MySQL',
+];
 
 const autoResize = (e) => {
     const el = (e && e.target) || inputBox.value;

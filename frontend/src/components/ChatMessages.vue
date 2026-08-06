@@ -62,6 +62,16 @@
 
           <!-- 流式消息 -->
           <div v-else-if="msg.type === 'stream'" class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+            <!-- 研究进度指示器 -->
+            <div v-if="msg.active && currentPhase > 0" class="flex items-center gap-2 px-4 pt-3 pb-1">
+              <div class="flex gap-1">
+                <span :class="currentPhase >= 1 ? 'text-blue-600' : 'text-gray-300'">🔍</span>
+                <span :class="currentPhase >= 2 ? 'text-blue-600' : 'text-gray-300'">📊</span>
+                <span :class="currentPhase >= 3 ? 'text-blue-600' : 'text-gray-300'">✍️</span>
+                <span :class="currentPhase >= 4 ? 'text-green-600' : 'text-gray-300'">✅</span>
+              </div>
+              <span class="text-xs text-gray-600">{{ phaseText }}</span>
+            </div>
             <div v-if="msg.statuses && msg.statuses.length" class="px-4 pt-3 pb-1 space-y-1.5">
               <div v-for="(s, i) in msg.statuses" :key="i">
                 <div class="flex items-center gap-2 text-[11px]">
@@ -131,6 +141,14 @@
             </div>
 
             <div class="prose prose-sm max-w-none p-5 leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
+            <div class="px-5 pb-4 flex gap-2">
+              <button @click="$emit('copyReport', msg)" class="px-3 py-1.5 text-xs rounded-lg border border-gray-200 hover:bg-gray-50 flex items-center gap-1 text-gray-600 transition-colors">
+                📋 复制报告
+              </button>
+              <button @click="$emit('downloadPdf', msg)" class="px-3 py-1.5 text-xs rounded-lg border border-gray-200 hover:bg-gray-50 flex items-center gap-1 text-gray-600 transition-colors">
+                📥 下载 PDF
+              </button>
+            </div>
           </div>
 
           <!-- 错误消息 -->
@@ -161,7 +179,18 @@ const props = defineProps({
     aiNews: { type: Array, default: () => [] },
 });
 
-defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'saveToLibrary', 'ttsReport']);
+defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'downloadPdf', 'saveToLibrary', 'ttsReport']);
+
+// 研究进度阶段
+const activeStreamMsg = computed(() => {
+    if (!props.isLoading) return null;
+    return [...props.messages].reverse().find(m => m.type === 'stream' && m.active);
+});
+const currentPhase = computed(() => activeStreamMsg.value?.currentPhase ?? 0);
+const phaseText = computed(() => {
+    const t = { 0: '准备中...', 1: '搜索中', 2: '分析中', 3: '撰写中', 4: '完成' };
+    return t[currentPhase.value] || '';
+});
 
 const aiNewsCategory = ref('');
 
@@ -189,4 +218,64 @@ const catLabel = (cat) => {
 .slide-enter-active, .slide-leave-active { transition: all 0.2s ease; overflow: hidden; }
 .slide-enter-from, .slide-leave-to { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; }
 .slide-enter-to, .slide-leave-from { max-height: 300px; opacity: 1; }
+
+/* 报告 Markdown 渲染样式 */
+:deep(.prose table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.8125rem;
+}
+:deep(.prose thead th) {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+}
+:deep(.prose tbody td) {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 0.75rem;
+  color: #4b5563;
+}
+:deep(.prose tbody tr:nth-child(even)) {
+  background: #f9fafb;
+}
+:deep(.prose pre) {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+:deep(.prose code) {
+  font-size: 0.8125rem;
+}
+:deep(.prose :not(pre) > code) {
+  background: #f1f5f9;
+  color: #e11d48;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+}
+:deep(.prose blockquote) {
+  border-left: 3px solid #93c5fd;
+  background: #eff6ff;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: #1e40af;
+  font-size: 0.875rem;
+}
+:deep(.prose sup) {
+  color: #6366f1;
+  font-weight: 600;
+}
+:deep(.prose hr) {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 1.5rem 0;
+}
 </style>

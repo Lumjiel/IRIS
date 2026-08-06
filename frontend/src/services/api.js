@@ -254,3 +254,16 @@ export async function listTools() {
   if (!response.ok) return { tools: [] };
   return await response.json();
 }
+
+/**
+ * 导出报告为 PDF
+ */
+export async function exportPdf(report, filename = 'report') {
+  const response = await fetch(`${API_BASE}/export/pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report, filename }),
+  });
+  if (!response.ok) throw new Error('PDF 导出失败');
+  return await response.blob();
+}
