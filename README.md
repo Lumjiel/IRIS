@@ -32,9 +32,12 @@ IRIS 是一个**通用深度调研引擎**，不是一个单一功能的工具�
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         前端 (Vue 3 + Tailwind)                      │
-│  ┌──────────┐  ┌──────────────┐  �───────────┐  ┌────────────────┐  │
-│  │ 输入区域  │  │ 研究轨迹时间线 │  │ 报告渲染   │  │ 素材库/历史    │  │
+│  ┌──────────┐  ┌──────────────┐  ┌───────────┐  ┌────────────────┐  │
+│  │ 输入区域  │  │ 研究进度指示  │  │ 报告渲染   │  │ 素材库/历史    │  │
 │  └──────────┘  └──────────────┘  └───────────┘  └────────────────┘  │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │ Skill 管理 │ 记忆搜索 │ 工具浏览 │ 使用统计 │ 示例建议       │  │
+│  └────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │ SSE 流式推送
 ┌──────────────────────────────▼──────────────────────────────────────┐
@@ -42,6 +45,9 @@ IRIS 是一个**通用深度调研引擎**，不是一个单一功能的工具�
 │  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │
 │  │ 聊天端点 │  │ 文件上传  │  │ 素材管理  │  │ 会话记忆管理         │  │
 │  └─────────┘  └──────────┘  └──────────┘  └──────────────────────┘  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │
+│  │ Skill API │  │ 记忆 API  │  │ 工具 API  │  │ 导出/统计 API       │  │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────────────────┘  │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
 ┌──────────────────────────────▼──────────────────────────────────────┐
@@ -69,7 +75,8 @@ IRIS 是一个**通用深度调研引擎**，不是一个单一功能的工具�
 │  │                   AgentState (TypedDict)                     │   │
 │  │  query, plan, search_results, final_report, critique,        │   │
 │  │  revision_number, review_status, search_mode, should_stop,   │   │
-│  │  conversation_summary, preferences                           │   │
+│  │  conversation_summary, preferences, active_skill,            │   │
+│  │  search_sources                                             │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
@@ -78,6 +85,14 @@ IRIS 是一个**通用深度调研引擎**，不是一个单一功能的工具�
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
 │  │ LLM 工厂     │  │ RAG 引擎     │  │ 会话持久化               │  │
 │  │ (主/备降级)   │  │ (ChromaDB)   │  │ (SQLite Checkpoint)      │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────────┘  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
+│  │ Skill 注册   │  │ 记忆存储     │  │ 工具注册                 │  │
+│  │ (SKILL.md)   │  │ (SQLite)     │  │ (动态注册)               │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────────┘  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
+│  │ 引用格式化   │  │ 可信度评分   │  │ Token 追踪               │  │
+│  │ (Citation)   │  │ (域名权威)   │  │ (用量统计)               │  │
 │  └──────────────┘  └──────────────┘  └──────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -100,20 +115,41 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 - 对比固定 prompt 重试：如果 Writer 没写好，重试大概率还是写不好——因为信息本身就不完整
 - 回跳让系统能从"信息收集"层面解决问题，而不是在"文字修饰"层面死循环
 
-#### 决策 2：模糊后续 vs 明确修改的双模式
+#### 决策 2：Skill 体系 — 场景化策略可插拔
 
-用户说"你觉得呢？"和"把第三段改详细"是两种完全不同的意图：
+不同调研场景需要不同的策略。IRIS 通过 Skill 体系实现场景化适配：
 
-| 类型 | 处理方式 | 原因 |
-|------|---------|------|
-| 模糊后续 | 轻量分析，追加到报告末尾 | 用户只是想要一个观点补充，没必要全文重写 |
-| 明确修改 | 全文修订，保持 Markdown 结构 | 用户有具体的修改意图 |
+- 每个 Skill 是一个 `SKILL.md` 文件（YAML frontmatter + Prompt 模板）
+- 系统根据用户查询自动匹配最相关的 Skill
+- 新增场景只需加一个 SKILL.md，零代码改动
+- 内置 Skill：`content_research`（公众号内容创作）
 
-#### 决策 3：文档相关性熔断
+#### 决策 3：四层记忆架构
+
+| 记忆层 | 存储内容 | 生命周期 | 存储介质 |
+|--------|---------|---------|---------|
+| Working | 当前会话上下文 | 单次会话 | LangGraph Checkpointer |
+| Episodic | 每次研究的完整记录 | 永久 | SQLite |
+| Semantic | 用户偏好和领域知识 | 永久 | SQLite |
+| Procedural | 成功的研究模式 | 永久 | SQLite |
+
+#### 决策 4：文档相关性熔断
 
 当用户上传文档但文档与问题无关时，系统不会编造信息：
 - **纯文档模式**：文档不相关 → 熔断终止，诚实告知用户
 - **混合模式**：文档不相关 → 自动降级为全网搜索
+
+#### 决策 5：可信度评分
+
+每个来源按域名权威打分（0.0-1.0），低于阈值（0.4）的直接丢弃：
+
+| 域名类型 | 可信度 | 示例 |
+|---------|--------|------|
+| 学术机构 | 1.0 | .edu, .ac.uk |
+| 政府 | 1.0 | .gov, .europa.eu |
+| 权威媒体 | 0.9 | BBC, Reuters, NYT |
+| 科技媒体 | 0.8 | TechCrunch, TheVerge |
+| 其他 | 0.5 | 未知域名 |
 
 ---
 
@@ -128,8 +164,7 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 - 用 LLM 判断意图，输出 NEW_TOPIC 或 REFINE
 - LLM 输出非法时，启用关键词兜底规则
 - 模糊后续（"你觉得呢"、"然后呢"）默认走 REFINE
-
-**状态读写**：无（纯路由判断）
+- **Skill 匹配**：同时匹配最相关的 Skill，存入 state
 
 ### 3.2 Planner — 任务规划器
 
@@ -137,13 +172,10 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 
 **设计要点**：
 - 读取对话摘要，获取已搜索方向避让列表
+- 读取 Semantic 记忆（用户偏好）
+- 如果存在 active_skill，注入 Skill 的 Prompt 模板
 - 如果存在审查意见，针对意见中提到的缺失信息生成搜索方向
-- 新主题（revision_number == 0）时自动清理旧报告状态
-- 输出格式：逗号分隔的关键词
-
-**状态读写**：
-- 读：`conversation_summary`, `query`, `critique`
-- 写：`plan`, `final_report` (清理), `conversation_summary` (清理)
+- 新主题时自动清理旧报告状态
 
 ### 3.3 Researcher — 多源检索器
 
@@ -154,10 +186,9 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 - 网络搜索：Tavily API，带重试机制
 - 三种模式：document（纯文档）、hybrid（混合）、全网搜索
 - 熔断机制：纯文档模式下文档不相关则终止
-
-**状态读写**：
-- 读：`query`, `plan`, `search_mode`
-- 写：`search_results`, `should_stop`
+- **Skill 工具选择**：根据 Skill 的 required_tools 决定使用哪些工具
+- **可信度过滤**：搜索结果按域名权威评分，过滤低质量来源
+- **来源追踪**：保留 URL 和标题，供引用标注使用
 
 ### 3.4 Writer — 报告撰写器
 
@@ -165,13 +196,11 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 
 **设计要点**：
 - 接收搜索内容 + 对话上下文 + 审查意见 + 用户偏好
-- 用户偏好支持：写作风格（detailed/concise/formal/causal）+ 报告语言（zh/en）
+- 用户偏好支持：写作风格（detailed/concise/formal/casual）+ 报告语言（zh/en）
 - 流式输出：SSE 逐 token 推送，打字机效果
 - 每轮增量更新对话摘要（含搜索方向，供 Planner 避让）
-
-**状态读写**：
-- 读：`search_results`, `query`, `critique`, `conversation_summary`, `preferences`, `plan`
-- 写：`final_report`, `conversation_summary`
+- **引用标注**：自动追加参考文献列表
+- **记忆提取**：研究完成后自动写入 Episodic 记忆
 
 ### 3.5 Reviewer — 质量审查器
 
@@ -184,10 +213,6 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 - 使用 smart 模型（temperature 0），确保审查一致性
 - 最大重试次数由 `MAX_REVISIONS` 控制
 
-**状态读写**：
-- 读：`query`, `final_report`, `revision_number`
-- 写：`critique`, `revision_number`, `review_status`
-
 ### 3.6 Refiner — 报告精修器
 
 **职责**：处理用户的后续交互（模糊评价 or 明确修改）
@@ -197,106 +222,129 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 - 模糊后续 → 轻量分析，追加到报告末尾（不破坏原报告）
 - 明确修改 → 全文修订，保持 Markdown 结构
 
-**状态读写**：
-- 读：`query`, `final_report`
-- 写：`final_report`, `conversation_summary`, `review_status`
+---
+
+## 四、Skill 体系
+
+### 4.1 Skill 定义
+
+每个 Skill 是一个 `SKILL.md` 文件：
+
+```markdown
+---
+name: content_research
+description: 公众号内容创作调研
+tools: [web_search, doc_search]
+memory_policy: read_episodic
+---
+
+你是一个资深公众号内容编辑。用户给你一个选题，你要：
+
+1. 搜公众号文章（site:mp.weixin.qq.com）
+2. 搜技术资料（官方文档、技术博客）
+3. 对比不同观点，客观呈现
+4. 带引用标注 [1][2]
+5. 结尾给出写作角度建议
+```
+
+### 4.2 Skill 生命周期
+
+| 操作 | API | 说明 |
+|------|-----|------|
+| 列出 | `GET /api/skills` | 列出所有 Skill |
+| 创建 | `POST /api/skills` | 创建新 Skill |
+| 查看 | `GET /api/skills/{name}` | 获取详情 |
+| 更新 | `PUT /api/skills/{name}` | 更新 Skill |
+| 删除 | `DELETE /api/skills/{name}` | 删除 Skill（内置 Skill 返回 403） |
+
+### 4.3 Skill 匹配
+
+系统根据用户查询自动匹配最相关的 Skill：
+- 使用 bigram（双字符）匹配算法，支持中文
+- 匹配失败时使用默认策略，行为与不加 Skill 时完全一致
 
 ---
 
-## 四、记忆系统
+## 五、记忆系统
 
-### 4.1 当前实现：运行摘要
+### 5.1 四层记忆架构
 
-```
-conversation_summary (字符串，最大 2000 字符)
-```
+| 记忆层 | 读时机 | 写时机 | 存储 |
+|--------|--------|--------|------|
+| Working | 每个节点执行前 | 每个节点执行后 | LangGraph Checkpointer |
+| Episodic | 用户发起新研究时 | 研究完成后 | SQLite |
+| Semantic | Planner 规划时 | 研究完成后异步提炼 | SQLite |
+| Procedural | 路由决策时 | 成功任务完成后 | SQLite |
 
-**结构**：
-```
-用户: [本轮问题]
-搜索方向: [方向1]、[方向2]、[方向3]
-报告要点: [前 300 字摘要]
-审查意见: [如有]
-```
+### 5.2 Memory API
 
-**更新策略**：
-- 每轮增量追加
-- 超过 2000 字符时 LLM 压缩
-- 压缩失败时按句子边界截断（句号→逗号→硬切）
-
-**应用场景**：
-- Planner 读取摘要，提取已搜索方向，避免重复搜索
-- Writer 读取摘要，保持上下文连贯性
-
-### 4.2 持久化：SQLite Checkpoint
-
-- 使用 LangGraph `AsyncSqliteSaver`
-- 序列化格式：msgpack（非 JSON）
-- WAL 模式 + timeout，避免 locked 错误
-- 自动清理：7 天过期，低概率触发（10%）
+| 端点 | 说明 |
+|------|------|
+| `GET /api/memory/search?q={query}&kind={kind}` | 搜索记忆 |
+| `GET /api/memory/{memory_id}` | 获取单条记忆 |
+| `DELETE /api/memory/{memory_id}` | 删除记忆 |
 
 ---
 
-## 五、工具系统
+## 六、工具系统
 
-### 5.1 内置工具
+### 6.1 Tool Registry
 
-| 工具 | 实现 | 作用 |
-|------|------|------|
-| `search_tavily` | Tavily API 封装 | 网络搜索，支持重试 |
-| `get_retriever` | ChromaDB + DashScope Embedding | 本地文档向量检索 |
-| `RerankRetriever` | CrossEncoder 精排 | 可选，增加 ~400MB 内存 |
+所有工具动态注册到 ToolRegistry：
 
-### 5.2 LLM 工厂
+| 工具 | 说明 |
+|------|------|
+| `web_search` | 互联网搜索（Tavily） |
+| `doc_search` | 本地文档检索（ChromaDB） |
+| `citation_search` | 带引用标注的搜索 |
 
-**模型分配策略**：
-- `fast` 模式（temperature 0.7）：router, planner, writer, refiner
-- `smart` 模式（temperature 0）：researcher grader, reviewer
+### 6.2 Tool API
 
-**降级机制**：
-- 主模型（qwen3.7-plus）额度耗尽 → 自动切换备用（deepseek-v4-flash）
-- 5 分钟后自动恢复尝试主模型
-- 节点级模型配置：每个节点可独立指定模型
+| 端点 | 说明 |
+|------|------|
+| `GET /api/tools` | 列出所有工具 |
+| `GET /api/tools/{name}` | 获取工具详情 |
+| `POST /api/tools/{name}/execute` | 执行工具（调试） |
 
 ---
 
-## 六、流式架构
+## 七、引用系统
 
+### 7.1 引用标注
+
+报告中引用的地方标注 `[1]`，末尾自动追加：
+
+```markdown
+---
+
+**参考文献**
+
+[1] 文章标题 — https://example.com/article
+[2] 另一篇文章 — https://example.com/other
 ```
-LLM.stream() ──▶ 线程内生产 token ──▶ asyncio.Queue ──▶ SSE 端点消费
-                                          ▲
-                                          │
-                                    ContextVar 存储
-                                    每请求独立的 token_queue
-```
 
-**关键设计**：
-- `ContextVar` 存储每请求的 token queue，实现请求级隔离
-- 生产者（线程）写入 channel，消费者（async）读取并推入 queue
-- SSE 心跳：15 秒无数据时发送 `: heartbeat\n\n`，防止代理断开
-- 前端 token 即时渲染：SSE 回调直接修改 Vue 响应式对象
+### 7.2 可信度评分
+
+每个来源按域名权威打分，低于 0.4 的直接丢弃。
 
 ---
 
-## 七、API 端点
+## 八、导出与统计
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/api/chat` | POST | SSE 流式聊天（核心端点） |
-| `/api/upload` | POST | 上传 PDF，构建向量知识库 |
-| `/api/clear` | POST | 重置知识库 |
-| `/api/memory/{thread_id}` | GET | 获取会话记忆 |
-| `/api/memory/{thread_id}/reset` | POST | 清空会话摘要 |
-| `/api/save-report` | POST | 保存报告到素材库 |
-| `/api/materials` | GET | 列出素材 |
-| `/api/materials/{filename}` | GET | 读取素材内容 |
-| `/api/materials/{filename}` | DELETE | 删除素材 |
-| `/api/aihot/news` | GET | AI HOT 新闻代理 |
-| `/api/tts` | POST | 语音合成（CosyVoice） |
+### 8.1 报告导出
+
+| 端点 | 说明 |
+|------|------|
+| `POST /api/export/pdf` | 导出 PDF |
+| `POST /api/export/html` | 导出 HTML |
+
+### 8.2 Token 追踪
+
+LLM 调用自动统计 token 用量，存储在内存中。
 
 ---
 
-## 八、技术栈
+## 九、技术栈
 
 | 层 | 技术 |
 |----|------|
@@ -314,7 +362,7 @@ LLM.stream() ──▶ 线程内生产 token ──▶ asyncio.Queue ──▶ S
 
 ---
 
-## 九、快速开始
+## 十、快速开始
 
 ### 环境要求
 
@@ -342,18 +390,12 @@ npm run dev  # http://localhost:5173
 ### Docker 部署
 
 ```bash
-# 全栈
 docker compose up -d --build
-
-# 仅后端
-cd backend
-docker build -t iris-backend .
-docker run -d --name iris -p 8000:8000 --memory=1g -v .env:/app/.env iris-backend
 ```
 
 ---
 
-## 十、项目结构
+## 十一、项目结构
 
 ```
 IRIS/
@@ -361,16 +403,35 @@ IRIS/
 │   ├── main.py                     # FastAPI 入口
 │   ├── app/
 │   │   ├── config.py               # 集中配置
-│   │   ├── api/routes.py           # API 端点
+│   │   ├── api/routes.py           # API 端点（22 个）
 │   │   ├── graph/
 │   │   │   ├── graph.py            # StateGraph 拓扑
 │   │   │   ├── state.py            # AgentState 定义
 │   │   │   └── nodes/              # 6 个 Agent 节点
+│   │   ├── skills/                 # Skill 体系
+│   │   │   ├── registry.py         # SkillRegistry
+│   │   │   ├── lifecycle.py        # CRUD 操作
+│   │   │   ├── models.py           # Skill 数据类
+│   │   │   ├── router.py           # Skill 路由
+│   │   │   └── builtin/            # 内置 Skill
+│   │   │       └── content_research/SKILL.md
+│   │   ├── memory/                 # 记忆系统
+│   │   │   ├── store.py            # MemoryStore
+│   │   │   ├── models.py           # MemoryRecord
+│   │   │   └── extractor.py        # 记忆提取
+│   │   ├── tools/                  # 工具系统
+│   │   │   ├── registry.py         # ToolRegistry
+│   │   │   ├── builtin/            # 内置工具
+│   │   │   │   ├── search.py       # web_search
+│   │   │   │   ├── doc_search.py   # doc_search
+│   │   │   │   └── citation.py     # citation_search
+│   │   │   └── search.py           # Tavily 封装
 │   │   ├── rag/engine.py           # RAG 引擎
-│   │   ├── tools/search.py         # Tavily 搜索封装
 │   │   └── utils/
-│   │       ├── llm.py              # LLM 工厂 + 降级
-│   │       ├── memory.py           # 会话记忆
+│   │       ├── llm.py              # LLM 工厂 + 降级 + Token 追踪
+│   │       ├── memory.py           # 会话记忆（原有）
+│   │       ├── credibility.py      # 可信度评分
+│   │       ├── citations.py        # 引用格式化
 │   │       ├── streaming.py        # 流式输出
 │   │       └── logger.py           # 日志
 │   └── requirements.txt
@@ -378,56 +439,67 @@ IRIS/
 │   └── src/
 │       ├── App.vue                 # 根组件
 │       ├── components/             # UI 组件
-│       ├── composables/            # 组合式函数
-│       └── services/              # API 客户端
+│       │   ├── ChatHeader.vue      # 顶栏 + Skill 指示器
+│       │   ├── ChatMessages.vue    # 消息流 + 进度指示器
+│       │   ├── ChatInput.vue       # 输入框 + 示例建议
+│       │   └── ChatSidebar.vue     # 侧栏 + 统计面板
+│       ├── composables/
+│       │   ├── useChat.js          # 聊天逻辑
+│       │   └── useStats.js         # 统计逻辑
+│       └── services/
+│           └── api.js              # API 客户端
 ├── docker-compose.yml
 └── docs/                           # 文档
 ```
 
 ---
 
-## 十一、当前局限 & 演进方向
+## 十二、API 端点
 
-### 11.1 已知局限
+### 聊天与调研
 
-| 局限 | 影响 | 优先级 |
-|------|------|--------|
-| 记忆系统是单一字符串，非结构化 | 长期会话信息丢失，无法支持复杂上下文 | 🔴 高 |
-| 工具系统硬编码，无注册扩展机制 | 新增工具需改代码，无法动态适配不同场景 | 🔴 高 |
-| 无 Skill 体系 | 不同场景用同一套 prompt，无法做场景化优化 | 🟡 中 |
-| Agent 是函数调用，非独立实例 | 无法单独升级某个 Agent，无法做 Agent 间解耦 | 🟡 中 |
-| 无评估/可观测性 | 无法量化质量，调试困难 | 🟢 低 |
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/chat` | POST | SSE 流式聊天 |
+| `/api/upload` | POST | 上传 PDF |
+| `/api/clear` | POST | 重置知识库 |
 
-### 11.2 演进路线图
+### Skill 管理
 
-```
-V1.0 (当前)
-  └─ 6 节点状态机 + 基础记忆 + 单一工具 + SSE 流式
-       │
-       ▼
-V1.5 (记忆系统升级)
-  └─ 四层记忆架构：Working / Episodic / Semantic / Procedural
-       │
-       ▼
-V2.0 (工具 + Skill 体系)
-  └─ Tool Registry 动态注册
-  └─ Skill = Prompt + Tools + Memory Policy 的可插拔打包
-  └─ Skill Router 自动匹配场景
-       │
-       ▼
-V2.5 (多 Agent 重构)
-  └─ 独立 Agent 实例 + MessageBus 通信
-  └─ Agent 可独立升级/替换
-       │
-       ▼
-V3.0 (可观测性 + 评估)
-  └─ LangSmith / LangFuse 集成
-  └─ 自动化评估 Pipeline
-```
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/skills` | GET | 列出所有 Skill |
+| `/api/skills` | POST | 创建 Skill |
+| `/api/skills/{name}` | GET | 获取详情 |
+| `/api/skills/{name}` | PUT | 更新 |
+| `/api/skills/{name}` | DELETE | 删除 |
+
+### 记忆管理
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/memory/search` | GET | 搜索记忆 |
+| `/api/memory/{memory_id}` | GET | 获取详情 |
+| `/api/memory/{memory_id}` | DELETE | 删除 |
+
+### 工具管理
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/tools` | GET | 列出所有工具 |
+| `/api/tools/{name}` | GET | 获取详情 |
+| `/api/tools/{name}/execute` | POST | 执行工具 |
+
+### 导出
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/export/pdf` | POST | 导出 PDF |
+| `/api/export/html` | POST | 导出 HTML |
 
 ---
 
-## 十二、研发心得
+## 十三、研发心得
 
 ### 为什么选择 LangGraph 而不是 CrewAI/AutoGen？
 
@@ -441,11 +513,27 @@ IRIS 的核心需求是**"审查不通过就回跳"这种精确的拓扑控制**
 
 ### 状态机的模块级单例模式
 
-`graph.py` 中 StateGraph 在 import 时构建一次，每次请求只调用 `compile(memory)` 挂载 checkpointer。这样做的好处：
+`graph.py` 中 StateGraph 在 import 时构建一次，每次请求只调用 `compile(memory)` 挂载 checkpointer。好处：
 - 避免每次请求重建拓扑的开销
 - 拓扑定义与运行时解耦
 
 代价：增删节点需重启服务。这是可接受的 trade-off。
+
+### 中文 Skill 匹配的 bigram 方案
+
+最初用 substring 匹配，"公众号内容创作调研" 无法匹配 "公众号如何写爆款文章"。改用 bigram（双字符）交集评分后解决：
+
+```
+description bigrams: {"众号", "号内", "内容", "容创", "创作", "作调", "调研"}
+query bigrams:       {"众号", "号如", "何写", "写爆", "爆款", "款文", "文章"}
+交集: {"众号"} → score=1，匹配成功
+```
+
+### 真实使用数据
+
+- 单篇产出时间：从 6 小时 → 2 小时
+- 已撰写文章：5 篇
+- 平均调研耗时：12 分钟
 
 ---
 
