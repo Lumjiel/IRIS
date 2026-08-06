@@ -495,6 +495,38 @@ async def get_material(filename: str):
     return {"filename": filename, "content": content}
 
 
+# --- 四层记忆系统 API ---
+
+@router.get("/memory/search")
+async def search_memory(q: str = "", kind: str = None, limit: int = 10):
+    """搜索记忆库"""
+    from app.memory.extractor import search_memories
+    results = search_memories(query=q, kind=kind, limit=limit)
+    return {"results": results}
+
+
+@router.get("/memory/{memory_id}")
+async def get_memory_record(memory_id: str):
+    """获取单条记忆"""
+    from app.memory.store import MemoryStore
+    store = MemoryStore()
+    record = store.get(memory_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return record.to_dict()
+
+
+@router.delete("/memory/{memory_id}")
+async def delete_memory_record(memory_id: str):
+    """删除单条记忆"""
+    from app.memory.store import MemoryStore
+    store = MemoryStore()
+    deleted = store.delete(memory_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return {"status": "success"}
+
+
 # --- TTS 语音合成（CosyVoice） ---
 class TTSRequest(BaseModel):
     text: str

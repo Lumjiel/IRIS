@@ -3,6 +3,7 @@ from app.graph.state import AgentState
 from app.utils.llm import llm_invoke
 from app.skills.router import route_skill
 from app.utils.logger import get_logger
+from app.memory.store import MemoryStore
 
 log = get_logger("router")
 
@@ -36,6 +37,16 @@ def route_query(state: AgentState):
         log.info(f"Skill 匹配成功: {active_skill}")
     _skill_cache[query] = active_skill
 
+    # 读取 Procedural 记忆（成功模式）辅助路由判断
+    memory_hint = ""
+    try:
+        store = MemoryStore()
+        proc_records = store.search(query, kind="procedural", limit=3)
+        if proc_records:
+            memory_hint = "（系统检测到类似主题的历史研究记录）"
+    except Exception as e:
+        log.debug(f"读取 Procedural 记忆失败: {e}")
+
     if not has_report:
         return "planner"
 
@@ -43,6 +54,7 @@ def route_query(state: AgentState):
     当前系统已经生成了一份研究报告。
     用户的最新输入是: "{query}"。
     用户最近一次生成的报告片段是："{state['final_report'][:500]}"
+    {memory_hint}
 
     请判断用户的意图：
     1. "NEW_TOPIC": 用户明确提出了一个与现有报告无关的全新研究课题。

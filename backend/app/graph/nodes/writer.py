@@ -5,6 +5,7 @@ from app.utils.streaming import llm_stream_tokens, get_token_queue
 from app.utils.memory import update_conversation_summary, build_conversation_context
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
+from app.memory.extractor import extract_memories
 
 log = get_logger("writer")
 
@@ -94,5 +95,17 @@ async def write_node(state: AgentState):
         critique=critique,
         search_directions=state.get("plan", []),
     )
+
+    thread_id = state.get("thread_id") or state.get("preferences", {}).get("thread_id")
+    try:
+        extract_memories(
+            query=query,
+            plan=state.get("plan", []),
+            report=report,
+            thread_id=thread_id,
+            preferences=state.get("preferences"),
+        )
+    except Exception as e:
+        log.warning(f"记忆提取失败（不影响主流程）: {e}")
 
     return {"final_report": report, "conversation_summary": new_summary}

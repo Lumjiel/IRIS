@@ -7,6 +7,7 @@ from app.graph.nodes.router import pop_skill_cache
 from app.skills.router import get_skill_prompt
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
+from app.memory.store import MemoryStore
 
 log = get_logger("planner")
 
@@ -28,6 +29,17 @@ PLAN_PROMPT = ChatPromptTemplate.from_template(
 async def plan_node(state: AgentState):
     log.info("正在规划搜索路径")
 
+    # 读取 Semantic 记忆（用户偏好）注入 prompt
+    memory_context = ""
+    try:
+        store = MemoryStore()
+        prefs_records = store.search("", kind="semantic", limit=3)
+        if prefs_records:
+            prefs_text = "\n".join(f"- {r.content}" for r in prefs_records)
+            memory_context = f"\n\n## 用户历史偏好\n{prefs_text}"
+    except Exception as e:
+        log.debug(f"读取 Semantic 记忆失败: {e}")
+
     # 组装对话上下文（含历史摘要、已搜方向避让、当前问题）
     conversation_context = build_conversation_context(state)
 
@@ -41,7 +53,7 @@ async def plan_node(state: AgentState):
             log.info(f"注入 Skill Prompt: {active_skill}")
 
     prompt_text = PLAN_PROMPT.format(
-        conversation_context=conversation_context + skill_prompt,
+        conversation_context=conversation_context + skill_prompt + memory_context,
     )
 
     if get_token_queue() is not None:
