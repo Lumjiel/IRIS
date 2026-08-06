@@ -170,6 +170,21 @@
         </div>
       </template>
     </div>
+
+    <!-- 本会话统计 -->
+    <div class="border-t border-gray-200 p-3 mt-auto">
+      <div class="text-[10px] text-gray-400 mb-1">📊 本会话统计</div>
+      <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+        <div class="text-gray-500">研究次数</div>
+        <div class="text-gray-700 font-medium">{{ stats.researchCount }}</div>
+        <div class="text-gray-500">生成报告</div>
+        <div class="text-gray-700 font-medium">{{ stats.reportCount }}</div>
+        <div class="text-gray-500">平均耗时</div>
+        <div class="text-gray-700 font-medium">{{ avgTime }}分钟</div>
+        <div class="text-gray-500">引用来源</div>
+        <div class="text-gray-700 font-medium">{{ stats.sourceCount }}</div>
+      </div>
+    </div>
   </aside>
 </template>
 
@@ -184,6 +199,8 @@ defineProps({
     history: { type: Array, default: () => [] },
     activeHistoryId: { type: [String, Number, null], default: null },
     memoryTurns: { type: Number, default: 0 },
+    stats: { type: Object, default: () => ({ researchCount: 0, reportCount: 0, totalTime: 0, sourceCount: 0 }) },
+    avgTime: { type: Number, default: 0 },
 });
 
 defineEmits(['newChat', 'fileSelect', 'loadMaterials', 'viewMaterial', 'deleteMaterial', 'viewHistory', 'clearMemory', 'updatePreference']);

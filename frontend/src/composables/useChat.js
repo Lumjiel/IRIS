@@ -2,6 +2,7 @@ import { ref, nextTick } from 'vue';
 import { uploadFiles, streamChat, clearContext, saveReport, ttsSynthesize, exportPdf } from '../services/api';
 import { getHistory, saveSession } from '../services/history';
 import { getThreadId, setThreadId, newThreadId } from '../services/api';
+import { useStats } from './useStats';
 
 export function useChat(chatContainer) {
     const query = ref('');
@@ -14,8 +15,10 @@ export function useChat(chatContainer) {
     const activeHistoryId = ref(null);
     const activeSkill = ref('');
 
+    const { stats, avgTime, recordResearch } = useStats();
     let currentAbortController = null;
     let msgIdCounter = 0;
+    let streamStartTime = 0;
 
     const getMsgById = (id) => messages.value.find(m => m.id === id);
 
@@ -70,6 +73,7 @@ export function useChat(chatContainer) {
         isLoading.value = true;
         activeHistoryId.value = null;
         currentAbortController = new AbortController();
+        streamStartTime = Date.now();
 
         if (uploadedFiles.value.length > 0) {
             try { await uploadFiles(uploadedFiles.value); } catch (e) {
@@ -204,6 +208,7 @@ export function useChat(chatContainer) {
             },
             () => {
                 isLoading.value = false;
+                const durationSeconds = Math.round((Date.now() - streamStartTime) / 1000);
                 const msg = getMsgById(sMsg.id);
                 if (msg) {
                     finishStatuses(sMsg.id);
@@ -220,6 +225,10 @@ export function useChat(chatContainer) {
                     }
                 }
                 const finalReport = msg?.streamText || msg?.content || '';
+                if (msg?.type === 'report' && finalReport) {
+                    const sourceMatches = finalReport.match(/\[\d+\]/g);
+                    recordResearch(durationSeconds, sourceMatches ? sourceMatches.length : 0);
+                }
                 if (currentQuery.value) {
                     saveSession({
                         query: currentQuery.value,
@@ -395,6 +404,7 @@ export function useChat(chatContainer) {
     return {
         query, messages, isLoading, currentQuery, searchMode,
         uploadedFiles, history, activeHistoryId, activeSkill,
+        stats, avgTime,
         addMessage, scrollToBottom, handleFileSelect,
         sendMessage, stopResearch, copyReport, downloadReport, downloadPdf,
         saveToLibrary, ttsReport, viewHistory, newChat,

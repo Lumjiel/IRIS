@@ -7,6 +7,8 @@
       :history="chat.history.value"
       :activeHistoryId="chat.activeHistoryId.value"
       :memoryTurns="memoryTurns"
+      :stats="chat.stats.value"
+      :avgTime="chat.avgTime.value"
       @newChat="chat.newChat"
       @fileSelect="(e) => chat.handleFileSelect(e, showToast)"
       @loadMaterials="loadMaterials"
