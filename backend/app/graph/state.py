@@ -16,8 +16,8 @@ class AgentState(TypedDict):
     should_stop: bool         # 控制位
 
     # === 记忆系统 ===
-    # conversation_summary: 运行摘要，由 writer/refiner 每轮增量更新
-    # 通过 checkpoint 自动持久化，不需要额外存储
+    # conversation_summary: @deprecated — 四层记忆系统（Episodic/Semantic/Procedural）已替代此字段
+    # 保留字段以维持 LangGraph checkpoint 兼容性，不再由 writer/refiner 更新
     conversation_summary: str
 
     # === 用户偏好 ===
@@ -31,3 +31,5 @@ class AgentState(TypedDict):
     # === 引用系统 ===
     # search_sources: 搜索来源列表，由 researcher 填充，writer 用于生成引用标注
     search_sources: List[dict]
+    # citation_refs: 累积的引用标注文本，跨轮持久化（审查 FAIL 回跳后保留前轮引用）
+    citation_refs: str

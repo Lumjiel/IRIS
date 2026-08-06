@@ -71,6 +71,19 @@ def research_node(state: AgentState):
                     is_doc_relevant = True
                     results.append(f"### \U0001f4c2 本地文档资料 (已核实相关)\n{rag_content}\n")
                     log.info("文档通过相关性审计")
+                    try:
+                        from app.rag.engine import get_retriever
+                        retriever = get_retriever()
+                        if retriever:
+                            docs = retriever.invoke(query)
+                            seen_sources = set()
+                            for doc in docs:
+                                source_name = doc.metadata.get("source", doc.metadata.get("filename", "本地文档"))
+                                if source_name not in seen_sources:
+                                    seen_sources.add(source_name)
+                                    sources.append({"url": "", "title": source_name, "snippet": doc.page_content[:200]})
+                    except Exception as e:
+                        log.warning(f"提取文档来源元数据失败: {e}")
                 else:
                     log.warning(f"文档内容与问题 '{query}' 不相关，已自动忽略")
                     results.append("[系统提示]: 检索了本地文档，但发现内容与问题不相关，已自动忽略。")

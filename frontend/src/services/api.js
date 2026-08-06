@@ -233,6 +233,20 @@ export async function deleteSkill(name) {
   return await response.json();
 }
 
+export async function updateSkill(name, data) {
+  const response = await fetch(`${API_BASE}/skills/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) {
+    let msg = 'Failed to update skill';
+    try { const d = await response.json(); msg = d.detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  return await response.json();
+}
+
 // === Memory Search API ===
 export async function searchMemory(q, kind = null) {
   const params = new URLSearchParams({ q });
@@ -248,11 +262,64 @@ export async function deleteMemoryItem(id) {
   return await response.json();
 }
 
+export async function createMemory(content, kind = 'episodic') {
+  const response = await fetch(`${API_BASE}/memory`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, kind }),
+  });
+  if (!response.ok) throw new Error('Failed to create memory');
+  return await response.json();
+}
+
+export async function updateMemory(id, data) {
+  const response = await fetch(`${API_BASE}/memory/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to update memory');
+  return await response.json();
+}
+
 // === Tools API ===
 export async function listTools() {
   const response = await fetch(`${API_BASE}/tools`);
   if (!response.ok) return { tools: [] };
   return await response.json();
+}
+
+export async function executeTool(name, query, signal) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const combinedSignal = signal ? combineAbortSignals(signal, controller.signal) : controller.signal;
+  try {
+    const response = await fetch(`${API_BASE}/tools/${encodeURIComponent(name)}/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+      signal: combinedSignal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      if (response.status === 404) throw new Error('工具不存在');
+      let msg = '执行失败';
+      try { const d = await response.json(); msg = d.detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    return await response.json();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') throw new Error('执行超时，请简化查询');
+    throw err;
+  }
+}
+
+function combineAbortSignals(s1, s2) {
+  const controller = new AbortController();
+  s1.addEventListener('abort', () => controller.abort(s1.reason));
+  s2.addEventListener('abort', () => controller.abort(s2.reason));
+  return controller.signal;
 }
 
 /**

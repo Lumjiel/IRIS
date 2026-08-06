@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
-from typing import List
+from typing import List, Optional
 from app.graph.graph import create_graph
 import json
 import asyncio
@@ -527,6 +527,39 @@ async def delete_memory_record(memory_id: str):
     return {"status": "success"}
 
 
+class MemoryUpdateRequest(BaseModel):
+    content: Optional[str] = None
+    kind: Optional[str] = None
+
+
+@router.patch("/memory/{memory_id}")
+async def update_memory_record(memory_id: str, request: MemoryUpdateRequest):
+    """更新单条记忆"""
+    from app.memory.store import MemoryStore
+    store = MemoryStore()
+    record = store.update(memory_id, content=request.content, kind=request.kind)
+    if record is None:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return {"status": "success", "memory": record.to_dict()}
+
+
+class MemoryCreateRequest(BaseModel):
+    content: str
+    kind: str = "episodic"  # episodic | semantic | procedural
+
+
+@router.post("/memory")
+async def create_memory(request: MemoryCreateRequest):
+    """手动创建记忆"""
+    from app.memory.store import MemoryStore
+    store = MemoryStore()
+    try:
+        record = store.add(kind=request.kind, content=request.content)
+        return {"status": "success", "memory": record.to_dict()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
+
+
 # --- TTS 语音合成（CosyVoice） ---
 class TTSRequest(BaseModel):
     text: str
@@ -706,6 +739,14 @@ async def delete_skill(name: str):
     except Exception as e:
         log.error(f"删除 Skill 失败: {e}")
         raise HTTPException(status_code=500, detail="删除失败")
+
+
+@router.post("/skills/reload")
+async def reload_skills():
+    """重新扫描所有 Skill 目录（管理用）"""
+    from app.skills.lifecycle import reload_skills as _reload
+    count = _reload()
+    return {"status": "success", "count": count}
 
 
 # --- 导出功能 ---

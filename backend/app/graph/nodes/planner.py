@@ -74,7 +74,7 @@ async def plan_node(state: AgentState):
     result = {"plan": plans}
     if state.get("revision_number", 0) == 0:
         if state.get("final_report", "").strip():
-            log.info("新主题：清理旧报告，防止污染新主题的搜索方向")
+            log.info("新主题：清理旧报告和引用，防止污染新主题的搜索方向")
             result["final_report"] = ""
-            result["conversation_summary"] = ""
+            result["citation_refs"] = ""
     return result

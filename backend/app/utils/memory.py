@@ -1,8 +1,7 @@
 """
-会话记忆管理：摘要 + 压缩
-- conversation_summary: 运行摘要（通过 checkpoint 持久化）
-- writer/refiner 每轮增量更新摘要
-- 摘要记录：搜索方向 + 核心发现 + 用户关注点，供 planner 避免重复搜索
+会话记忆管理（已简化）
+- build_conversation_context: 组装对话上下文供 planner/writer 使用
+- update_conversation_summary: @deprecated — 四层记忆系统已替代此字段
 """
 from app.utils.llm import llm_invoke
 from app.utils.logger import get_logger
@@ -107,25 +106,8 @@ def update_conversation_summary(
 def build_conversation_context(state: dict) -> str:
     """
     组装对话上下文，注入到 planner/writer 的 prompt 中。
-    从摘要中提取已搜索方向，供 planner 显式避让。
+    简化版：只提供当前问题，已搜索方向避让由四层记忆系统（Episodic）提供。
     """
-    import re
     parts = []
-
-    summary = state.get("conversation_summary", "")
-    if summary:
-        parts.append(f"[对话历史]\n{summary}")
-
-        # 提取已搜索方向，生成避让指令
-        searched = re.findall(r"搜索方向: (.+)", summary)
-        if searched:
-            all_directions = []
-            for line in searched:
-                all_directions.extend([d.strip() for d in line.split("、") if d.strip()])
-            if all_directions:
-                dedup = list(dict.fromkeys(all_directions))  # 去重保序
-                parts.append(f"[已搜索方向（请勿重复，请从新角度切入）]\n" + "\n".join(f"- {d}" for d in dedup))
-
     parts.append(f"[当前问题] {state.get('query', '')}")
-
     return "\n\n".join(parts)

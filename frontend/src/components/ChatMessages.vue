@@ -8,6 +8,23 @@
       <h2 class="text-lg font-semibold text-gray-800 mb-1">有什么想调研的？</h2>
       <p class="text-sm text-gray-400 mb-6">输入主题开始深度调研，或试试下方灵感</p>
 
+      <!-- Skill 快捷入口 -->
+      <div v-if="skills && skills.length > 0" class="w-full max-w-xl mb-6">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-5 h-5 rounded-lg bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <span class="text-sm font-semibold text-gray-700">快捷技能</span>
+          <button @click="$emit('switchTab', 'skills')" class="text-[11px] text-gray-400 hover:text-blue-500 transition-colors ml-auto">查看全部</button>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button v-for="skill in skills.slice(0, 4)" :key="skill.name" @click="$emit('useSkill', skill)" class="group px-3 py-2 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-md hover:shadow-blue-50 transition-all duration-200 text-left max-w-[200px]">
+            <p class="text-[11px] font-medium text-gray-700 group-hover:text-blue-600 transition-colors truncate">{{ skill.name }}</p>
+            <p class="text-[10px] text-gray-400 mt-0.5 truncate">{{ skill.description || '自定义技能' }}</p>
+          </button>
+        </div>
+      </div>
+
       <!-- 推文灵感 -->
       <div class="w-full max-w-xl">
         <div class="flex items-center justify-between mb-4">
@@ -63,28 +80,36 @@
           <!-- 流式消息 -->
           <div v-else-if="msg.type === 'stream'" class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
             <!-- 研究进度指示器 -->
-            <div v-if="msg.active && currentPhase > 0" class="flex items-center gap-2 px-4 pt-3 pb-1">
-              <div class="flex gap-1">
-                <span :class="currentPhase >= 1 ? 'text-blue-600' : 'text-gray-300'">🔍</span>
-                <span :class="currentPhase >= 2 ? 'text-blue-600' : 'text-gray-300'">📊</span>
-                <span :class="currentPhase >= 3 ? 'text-blue-600' : 'text-gray-300'">✍️</span>
-                <span :class="currentPhase >= 4 ? 'text-green-600' : 'text-gray-300'">✅</span>
+            <div v-if="msg.active && currentPhase > 0" class="px-4 pt-3 pb-1">
+              <div class="flex items-center gap-3">
+                <div class="flex gap-1">
+                  <span class="transition-all duration-300" :class="currentPhase >= 1 ? (currentPhase === 1 ? 'text-blue-600 scale-110' : 'text-blue-500') : 'text-gray-300'">🔍</span>
+                  <span class="transition-all duration-300" :class="currentPhase >= 2 ? (currentPhase === 2 ? 'text-purple-600 scale-110 animate-pulse' : 'text-purple-500') : 'text-gray-300'">📊</span>
+                  <span class="transition-all duration-300" :class="currentPhase >= 3 ? (currentPhase === 3 ? 'text-amber-600 scale-110 animate-pulse' : 'text-amber-500') : 'text-gray-300'">✍️</span>
+                  <span class="transition-all duration-300" :class="currentPhase >= 4 ? 'text-green-600 scale-110' : 'text-gray-300'">✅</span>
+                </div>
+                <span class="text-[11px] text-gray-600 font-medium">{{ phaseText }}</span>
+                <span v-if="phaseElapsed" class="text-[10px] text-gray-400">{{ phaseElapsed }}</span>
+                <span v-if="totalElapsed && currentPhase >= 2" class="text-[10px] text-gray-300">· 总计 {{ totalElapsed }}</span>
               </div>
-              <span class="text-xs text-gray-600">{{ phaseText }}</span>
             </div>
             <div v-if="msg.statuses && msg.statuses.length" class="px-4 pt-3 pb-1 space-y-1.5">
               <div v-for="(s, i) in msg.statuses" :key="i">
-                <div class="flex items-center gap-2 text-[11px]">
-                  <span class="w-4 h-4 rounded-full flex items-center justify-center shrink-0" :class="s.active ? 'bg-blue-100' : 'bg-green-50'">
-                    <span v-if="s.active" class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+                <div class="flex items-center gap-2 text-[11px]" :class="s.detail && s.detail.includes('审查') ? '' : ''">
+                  <span class="w-4 h-4 rounded-full flex items-center justify-center shrink-0" :class="s.active ? (s.detail ? 'bg-red-100' : 'bg-blue-100') : 'bg-green-50'">
+                    <span v-if="s.active" class="w-1.5 h-1.5 rounded-full animate-pulse" :class="s.detail ? 'bg-red-500' : 'bg-blue-500'"></span>
                     <span v-else class="text-green-500 text-[9px]">✓</span>
                   </span>
-                  <span :class="s.active ? 'text-blue-600 font-medium' : 'text-gray-400'">{{ s.text }}</span>
+                  <span :class="s.active ? (s.detail ? 'text-red-600 font-medium' : 'text-blue-600 font-medium') : 'text-gray-400'">{{ s.text }}</span>
                 </div>
-                <div v-if="s.items && s.items.length" class="ml-6 mt-0.5 space-y-0.5">
-                  <div v-for="(item, j) in s.items" :key="j" class="text-[10px] text-gray-400 leading-relaxed">→ {{ item }}</div>
+                <!-- 搜索方向卡片 -->
+                <div v-if="s.items && s.items.length" class="ml-6 mt-1 flex flex-wrap gap-1">
+                  <span v-for="(item, j) in s.items" :key="j" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{{ item }}</span>
                 </div>
-                <div v-if="s.detail" class="ml-6 mt-0.5 text-[10px] text-gray-400 leading-relaxed">{{ s.detail }}</div>
+                <!-- 审查意见（红色警告） -->
+                <div v-if="s.detail" class="ml-6 mt-1 px-2.5 py-1.5 rounded-lg text-[10px] leading-relaxed" :class="s.detail.includes('审查') ? 'bg-red-50 text-red-600 border border-red-100' : 'text-gray-400'">
+                  {{ s.detail }}
+                </div>
               </div>
             </div>
             <div v-if="msg.streamText" class="px-4 pb-3 pt-1">
@@ -170,16 +195,17 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { renderMarkdown } from '../utils/markdown';
 
 const props = defineProps({
     messages: { type: Array, default: () => [] },
     isLoading: Boolean,
     aiNews: { type: Array, default: () => [] },
+    skills: { type: Array, default: () => [] },
 });
 
-defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'downloadPdf', 'saveToLibrary', 'ttsReport']);
+defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'downloadPdf', 'saveToLibrary', 'ttsReport', 'useSkill', 'switchTab']);
 
 // 研究进度阶段
 const activeStreamMsg = computed(() => {
@@ -190,6 +216,36 @@ const currentPhase = computed(() => activeStreamMsg.value?.currentPhase ?? 0);
 const phaseText = computed(() => {
     const t = { 0: '准备中...', 1: '搜索中', 2: '分析中', 3: '撰写中', 4: '完成' };
     return t[currentPhase.value] || '';
+});
+
+// 阶段计时
+const phaseTimestamps = ref({});
+watch(currentPhase, (phase, oldPhase) => {
+    if (phase > 0 && phase !== oldPhase) {
+        phaseTimestamps.value[phase] = Date.now();
+    }
+});
+const phaseElapsed = computed(() => {
+    const phase = currentPhase.value;
+    if (phase <= 1) return '';
+    const start = phaseTimestamps.value[phase];
+    if (!start) return '';
+    const secs = Math.floor((Date.now() - start) / 1000);
+    return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m${secs % 60}s`;
+});
+const totalElapsed = computed(() => {
+    const start = phaseTimestamps.value[1];
+    if (!start) return '';
+    const secs = Math.floor((Date.now() - start) / 1000);
+    return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m${secs % 60}s`;
+});
+
+// 定时刷新耗时显示
+const tick = ref(0);
+let tickInterval = null;
+watch(() => props.isLoading, (v) => {
+    if (v && !tickInterval) tickInterval = setInterval(() => tick.value++, 1000);
+    else if (!v && tickInterval) { clearInterval(tickInterval); tickInterval = null; }
 });
 
 const aiNewsCategory = ref('');

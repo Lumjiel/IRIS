@@ -98,6 +98,23 @@ class MemoryStore:
         ).fetchone()
         return self._row_to_record(row) if row else None
 
+    def update(self, memory_id: str, content: Optional[str] = None, kind: Optional[str] = None) -> Optional[MemoryRecord]:
+        existing = self.get(memory_id)
+        if existing is None:
+            return None
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        new_content = content if content is not None else existing.content
+        new_kind = kind if kind is not None else existing.kind
+        conn = self._get_conn()
+        conn.execute(
+            "UPDATE memories SET content = ?, kind = ?, updated_at = ? WHERE id = ?",
+            (new_content, new_kind, now, memory_id),
+        )
+        conn.commit()
+        log.info(f"记忆更新: id={memory_id[:8]}")
+        return self.get(memory_id)
+
     def delete(self, memory_id: str) -> bool:
         conn = self._get_conn()
         cursor = conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
