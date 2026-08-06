@@ -533,3 +533,97 @@ async def text_to_speech(request: TTSRequest):
     except Exception as e:
         log.error(f"TTS 合成失败: {e}")
         raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")
+
+
+# --- Skill 生命周期管理 ---
+
+class SkillCreateRequest(BaseModel):
+    name: str
+    description: str
+    prompt_template: str
+    tools: List[str] = []
+    memory_policy: str = "none"
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
+        if not v or not v.isalnum() and not all(c.isalnum() or c == "_" for c in v):
+            raise ValueError("Skill 名称只能包含字母、数字和下划线")
+        return v
+
+class SkillUpdateRequest(BaseModel):
+    description: str | None = None
+    prompt_template: str | None = None
+    tools: List[str] | None = None
+    memory_policy: str | None = None
+
+
+@router.get("/skills")
+async def list_skills():
+    """列出所有 Skill"""
+    from app.skills.lifecycle import list_skills as _list_skills
+    skills = _list_skills()
+    return {"skills": [s.to_dict() for s in skills]}
+
+
+@router.post("/skills")
+async def create_skill(request: SkillCreateRequest):
+    """创建新 Skill"""
+    from app.skills.lifecycle import create_skill as _create_skill
+    try:
+        skill = _create_skill(
+            name=request.name,
+            description=request.description,
+            prompt_template=request.prompt_template,
+            tools=request.tools,
+            memory_policy=request.memory_policy,
+        )
+        return {"status": "success", "skill": skill.to_dict()}
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        log.error(f"创建 Skill 失败: {e}")
+        raise HTTPException(status_code=500, detail="创建失败")
+
+
+@router.get("/skills/{name}")
+async def get_skill(name: str):
+    """获取单个 Skill 详情"""
+    from app.skills.lifecycle import get_skill as _get_skill
+    skill = _get_skill(name)
+    if skill is None:
+        raise HTTPException(status_code=404, detail=f"Skill '{name}' 不存在")
+    return {"skill": skill.to_dict()}
+
+
+@router.put("/skills/{name}")
+async def update_skill(name: str, request: SkillUpdateRequest):
+    """更新 Skill"""
+    from app.skills.lifecycle import update_skill as _update_skill
+    try:
+        kwargs = {k: v for k, v in request.model_dump().items() if v is not None}
+        skill = _update_skill(name, **kwargs)
+        if skill is None:
+            raise HTTPException(status_code=404, detail=f"Skill '{name}' 不存在")
+        return {"status": "success", "skill": skill.to_dict()}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        log.error(f"更新 Skill 失败: {e}")
+        raise HTTPException(status_code=500, detail="更新失败")
+
+
+@router.delete("/skills/{name}")
+async def delete_skill(name: str):
+    """删除 Skill（内置 Skill 返回 403）"""
+    from app.skills.lifecycle import delete_skill as _delete_skill
+    try:
+        ok = _delete_skill(name)
+        if not ok:
+            raise HTTPException(status_code=404, detail=f"Skill '{name}' 不存在")
+        return {"status": "success"}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        log.error(f"删除 Skill 失败: {e}")
+        raise HTTPException(status_code=500, detail="删除失败")

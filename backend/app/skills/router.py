@@ -3,7 +3,7 @@ Skill 路由 — 基于 SkillRegistry 的便捷入口。
 
 在 router 节点中调用 route_skill()，返回匹配的 skill name（或空字符串）。
 """
-from app.config import SKILLS_ROOT
+from app.config import SKILLS_BUILTIN_DIR, SKILLS_USER_DIR
 from app.skills.registry import SkillRegistry
 from app.utils.logger import get_logger
 
@@ -16,7 +16,7 @@ _registry: SkillRegistry | None = None
 def _get_registry() -> SkillRegistry:
     global _registry
     if _registry is None:
-        _registry = SkillRegistry(SKILLS_ROOT)
+        _registry = SkillRegistry(SKILLS_BUILTIN_DIR, SKILLS_USER_DIR)
     return _registry
 
 
