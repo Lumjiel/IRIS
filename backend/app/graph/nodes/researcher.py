@@ -3,6 +3,7 @@ from app.tools.registry import ToolRegistry
 from app.graph.state import AgentState
 from app.utils.llm import llm_invoke
 from app.utils.logger import get_logger
+from app.tools.search import search_tavily_structured
 
 log = get_logger("researcher")
 
@@ -13,6 +14,7 @@ def research_node(state: AgentState):
     query = state["query"]
     plans = state["plan"]
     results = []
+    sources = []
 
     log.info(f"开始搜索 | 模式: {mode}")
 
@@ -88,6 +90,7 @@ def research_node(state: AgentState):
             results.append("【严重警告】：用户选择了 Document Only 模式，但上传的文档与问题完全无关。请直接在报告中诚实地告诉用户：\u201c您上传的文档中没有关于此问题的说明\u201d，不要编造答案。")
             return {
                 "search_results": results,
+                "search_sources": [],
                 "should_stop": True
             }
     else:
@@ -105,4 +108,4 @@ def research_node(state: AgentState):
     if not results:
         results.append(f"[系统提示] 未能检索到关于「{query}」的外部资料。请基于你的知识直接回答，并在报告开头说明信息来源有限。")
 
-    return {"search_results": results}
+    return {"search_results": results, "search_sources": sources}

@@ -50,4 +50,7 @@ def sample_state():
         "search_mode": "hybrid",
         "should_stop": False,
         "active_skill": "",
+        "search_sources": [],
+        "conversation_summary": "",
+        "preferences": {},
     }

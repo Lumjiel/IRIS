@@ -6,6 +6,7 @@ from app.utils.memory import update_conversation_summary, build_conversation_con
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
 from app.memory.extractor import extract_memories
+from app.utils.citations import CitationFormatter
 
 log = get_logger("writer")
 
@@ -86,6 +87,14 @@ async def write_node(state: AgentState):
     if not report.strip():
         log.warning("LLM 返回空报告，生成兜底内容")
         report = f"## {query}\n\n基于现有信息，关于「{query}」的研究报告暂时无法完整生成。建议稍后重试或调整研究方向。"
+
+    # 追加引用标注和参考文献列表
+    citation_fmt = CitationFormatter()
+    for src in state.get("search_sources", []):
+        citation_fmt.add_source_from_search_result(src)
+    references = citation_fmt.format_references()
+    if references:
+        report = report + references
 
     # 更新对话摘要（增量追加本轮，含搜索方向供 planner 避免重复）
     new_summary = update_conversation_summary(

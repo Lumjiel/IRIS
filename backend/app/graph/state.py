@@ -27,3 +27,7 @@ class AgentState(TypedDict):
     # === Skill 系统 ===
     # active_skill: 匹配到的 Skill 名称，为空表示使用默认策略
     active_skill: str
+
+    # === 引用系统 ===
+    # search_sources: 搜索来源列表，由 researcher 填充，writer 用于生成引用标注
+    search_sources: List[dict]

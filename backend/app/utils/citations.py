@@ -37,6 +37,18 @@ class CitationFormatter:
                 lines.append(f"[{i}] {title}")
         return "\n".join(lines)
 
+    def add_source_from_search_result(self, result: dict) -> int:
+        """Register a source from a Tavily search result dict.
+
+        Accepts ``{"url": "...", "title": "...", "content": "..."}``.
+        Returns its 1-based citation index.
+        """
+        return self.add_source(
+            url=result.get("url", ""),
+            title=result.get("title", ""),
+            snippet=result.get("content", ""),
+        )
+
     @property
     def sources(self) -> List[dict]:
         return list(self._sources)

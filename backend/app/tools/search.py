@@ -13,6 +13,33 @@ if not _tavily_key:
 tavily = TavilyClient(api_key=_tavily_key) if _tavily_key else None
 
 
+def search_tavily_structured(query: str):
+    """搜索并返回结构化结果（含 URL 和标题），用于引用标注。"""
+    if not tavily:
+        raise RuntimeError("Tavily API 未配置")
+
+    log.info(f"正在搜索(结构化): {query}")
+
+    for attempt in range(TAVILY_MAX_RETRIES):
+        try:
+            response = tavily.search(query=query, search_depth="basic", max_results=TAVILY_MAX_RESULTS)
+            return [
+                {
+                    "url": r.get("url", ""),
+                    "title": r.get("title", ""),
+                    "content": r.get("content", ""),
+                }
+                for r in response["results"]
+            ]
+        except Exception as e:
+            if attempt < TAVILY_MAX_RETRIES - 1:
+                log.warning(f"搜索失败 (第{attempt+1}次): {e}，2秒后重试")
+                time.sleep(2)
+            else:
+                log.error(f"搜索所有尝试均失败: {e}")
+                raise
+
+
 def search_tavily(query: str):
     """使用 Tavily 搜索网络"""
     if not tavily:
