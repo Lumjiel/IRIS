@@ -59,6 +59,19 @@ EMPTY_CONTENT_FALLBACK = """## 调研结果
 3. 上传相关 PDF 文档后再试
 """
 
+# 搜索服务整体不可用（API key 失效/网络/配额）时的明确提示
+SEARCH_UNAVAILABLE_FALLBACK = """## 调研结果
+
+**搜索服务当前不可用**（所有网络搜索均失败，可能是 API Key 失效、网络异常或配额耗尽）。
+
+为避免编造不实信息，本次未生成具体报告内容。
+
+请检查：
+1. 后端 `TAVILY_API_KEY` 是否有效
+2. 网络连接 / Tavily 服务状态
+3. 之后重新发起调研
+"""
+
 async def write_node(state: AgentState):
     log.info("正在撰写报告")
     query = state["query"]
@@ -70,12 +83,13 @@ async def write_node(state: AgentState):
     # 防幻觉门禁：无任何实际检索内容时，不生成虚构报告，诚实说明信息不足
     if not (content or "").strip():
         log.warning("无任何检索资料，启用防幻觉兜底（不生成虚构内容）")
+        fallback = SEARCH_UNAVAILABLE_FALLBACK if state.get("search_error") else EMPTY_CONTENT_FALLBACK
         queue = get_token_queue()
         if queue is not None:
-            for token in EMPTY_CONTENT_FALLBACK:
+            for token in fallback:
                 await queue.put({"step": "writer_token", "data": {"token": token}})
             await queue.put({"step": "writer_token", "data": {"token": "", "final": True}})
-        return {"final_report": EMPTY_CONTENT_FALLBACK, "grounded": False}
+        return {"final_report": fallback, "grounded": False, "search_error": state.get("search_error", False)}
 
     critique = state.get("critique", "")
     critique_section = ""

@@ -9,14 +9,16 @@ from app.utils.credibility import CredibilityScorer
 log = get_logger("researcher")
 
 
-async def _search_one(query: str) -> list:
-    """在后台线程执行一次 Tavily 搜索（阻塞调用包到线程，实现并行）。"""
+async def _search_one(query: str):
+    """在后台线程执行一次 Tavily 搜索。返回 (results, failed)。
+    failed=True 表示基础设施/网络/API key 原因导致的失败，区别于正常无结果。"""
     try:
         from app.tools.search import search_tavily_structured
-        return await asyncio.to_thread(search_tavily_structured, query)
+        results = await asyncio.to_thread(search_tavily_structured, query)
+        return results, False
     except Exception as e:
         log.error(f"搜索 {query} 失败: {e}")
-        return []
+        return [], True
 
 
 async def research_node(state: AgentState):
@@ -31,6 +33,7 @@ async def research_node(state: AgentState):
     results = []
     sources = []
     findings = []
+    search_error = False
 
     log.info(f"开始搜索 | 模式: {mode} | 子任务数: {len(plan_structure)}")
 
@@ -126,13 +129,18 @@ async def research_node(state: AgentState):
             }
     else:
         log.info("正在并行执行互联网搜索...")
+        total_queries = 0
+        failed_queries = 0
         for item in plan_structure:
             subtask = item.get("subtask", "")
             queries = item.get("queries", [])
             # 并行执行该子任务下所有查询
             per_query = await asyncio.gather(*[_search_one(q) for q in queries])
+            total_queries += len(queries)
             subtask_findings = []
-            for q, structured in zip(queries, per_query):
+            for q, (structured, failed) in zip(queries, per_query):
+                if failed:
+                    failed_queries += 1
                 for s in structured:
                     url = s.get("url", "")
                     title = s.get("title", "")
@@ -142,6 +150,10 @@ async def research_node(state: AgentState):
                     results.append(f"### 🌐 网络搜索结果 ({q})\n**{title}**\n{content_text}\n")
                     subtask_findings.append({"query": q, "url": url, "title": title, "content": content_text})
             findings.append({"subtask": subtask, "items": subtask_findings})
+        # 全部搜索因基础设施原因失败（API key 失效/网络/配额）=> 标记搜索服务不可用
+        search_error = total_queries > 0 and failed_queries >= total_queries
+        if search_error:
+            log.warning("所有网络搜索均失败，判定搜索服务不可用")
 
     # If all retrieval failed, give writer a hint
     if not results:
@@ -156,4 +168,5 @@ async def research_node(state: AgentState):
         "search_results": results,
         "search_sources": sources,
         "research_findings": findings,
+        "search_error": search_error,
     }
