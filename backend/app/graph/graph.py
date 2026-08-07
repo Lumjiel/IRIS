@@ -12,8 +12,10 @@ from app.graph.nodes.sql import sql_node
 from app.graph.nodes.tool_call import tool_call_node
 from app.graph.nodes.tool_execute import tool_execute_node
 from app.graph.nodes.clarify import clarify_node
+from app.graph.nodes.hitl_gate import hitl_gate_node
+from app.graph.nodes.apply_hitl import apply_hitl_node
 from app.utils.logger import get_logger
-from app.config import MAX_REVISIONS
+from app.config import MAX_REVISIONS, HITL_ON_REVIEW_FAIL
 
 log = get_logger("graph")
 
@@ -35,7 +37,7 @@ def route_after_research(state: AgentState):
 
 
 def should_continue(state: AgentState):
-    """Reviewer 审查后的路由：FAIL 回跳 planner，PASS 结束"""
+    """Reviewer 审查后的路由：FAIL -> HITL门禁(首次)/planner，PASS -> 结束"""
     current_revision = state.get("revision_number", 0)
     if current_revision >= MAX_REVISIONS:
         log.info(f"已达到最大重试次数 {MAX_REVISIONS}，强制结束")
@@ -45,11 +47,21 @@ def should_continue(state: AgentState):
     critique = state.get("critique", "")
 
     if review_status == "FAIL":
+        # HITL：首次 FAIL 且开启时，暂停等用户决策，不自动重规划
+        if HITL_ON_REVIEW_FAIL and current_revision <= 1 and not state.get("pending_hitl"):
+            log.info(f"[路由] 首次审查未通过，进入 Human-in-the-loop (意见: {critique[:60]})")
+            return "hitl_gate"
         log.info(f"[路由] 审查未通过 (意见: {critique}) -> 返回规划节点")
         return "planner"
     else:
         log.info("[路由] 审查通过 -> 结束")
         return END
+
+
+def after_apply_hitl(state: AgentState):
+    """apply_hitl 后的路由：用户选重规划则回 planner，否则（定稿/未知）结束。"""
+    mode = state.get("hitl_mode", "end")
+    return "planner" if mode == "planner" else END
 
 
 # 模块级构建一次拓扑（不含编译）
@@ -69,6 +81,8 @@ _workflow.add_node("sql", sql_node)
 _workflow.add_node("tool_call", tool_call_node)
 _workflow.add_node("tool_execute", tool_execute_node)
 _workflow.add_node("clarify", clarify_node)
+_workflow.add_node("hitl_gate", hitl_gate_node)
+_workflow.add_node("apply_hitl", apply_hitl_node)
 
 # === 入口：router 节点 -> 按意图条件路由 ===
 _workflow.set_entry_point("router")
@@ -82,6 +96,7 @@ _workflow.add_conditional_edges(
         "tool_call": "tool_call",   # TOOL_CALL -> ReAct 循环(tool_call⇄tool_execute)
         "refine": "refiner",        # REFINE -> refiner -> END
         "clarify": "clarify",       # CLARIFY -> clarify -> END
+        "apply_hitl": "apply_hitl", # HITL 决策回复 -> apply_hitl
     }
 )
 
@@ -102,8 +117,17 @@ _workflow.add_conditional_edges(
     should_continue,
     {
         "planner": "planner",
+        "hitl_gate": "hitl_gate",
         END: END
     }
+)
+_workflow.add_edge("hitl_gate", END)
+
+# === HITL 决策应用 ===
+_workflow.add_conditional_edges(
+    "apply_hitl",
+    after_apply_hitl,
+    {"planner": "planner", END: END}
 )
 
 # === ReAct 工具循环 ===

@@ -14,6 +14,8 @@ MAX_REVISIONS = int(os.getenv("MAX_REVISIONS", "3"))
 RESEARCH_TIMEOUT = int(os.getenv("RESEARCH_TIMEOUT", "300"))
 # ReAct 工具调用最大迭代轮数（每轮 = 决策 + 执行）
 MAX_TOOL_ITERATIONS = int(os.getenv("MAX_TOOL_ITERATIONS", "5"))
+# Human-in-the-loop：reviewer 首次 FAIL 时暂停问用户选方向（而非自动重规划）
+HITL_ON_REVIEW_FAIL = os.getenv("HITL_ON_REVIEW_FAIL", "true").lower() == "true"
 
 # RAG
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))

@@ -38,6 +38,7 @@
         @ttsReport="chat.ttsReport"
         @useSkill="(skill) => { chat.activeSkill.value = skill.name; chat.query.value = ''; }"
         @switchTab="(tab) => { sidebarOpen = true; }"
+        @sendHitlChoice="(choice) => chat.sendHitlChoice(choice)"
       />
 
       <ChatInput

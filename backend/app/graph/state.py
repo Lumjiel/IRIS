@@ -42,6 +42,16 @@ class AgentState(TypedDict):
     # grounded: writer 的报告是否有实际检索内容支撑（true=有据可依, false=信息不足诚实说明）
     grounded: bool
 
+    # === Human-in-the-loop ===
+    # pending_hitl: reviewer 首次 FAIL 后是否暂停等用户决策
+    pending_hitl: bool
+    # hitl_choice: 前端传回的 HITL 决策（retry / use_existing / redirect）
+    hitl_choice: str
+    # hitl_question: hitl_gate 节点抛给用户的澄清问题/选项
+    hitl_question: str
+    # hitl_mode: apply_hitl 的临时路由信号（planner=重规划 / end=定稿）
+    hitl_mode: str
+
     # === ReAct 工具调用 ===
     # tool_messages: ReAct 推理轨迹 [{role, content}]，tool_call/tool_execute 读写
     tool_messages: list
