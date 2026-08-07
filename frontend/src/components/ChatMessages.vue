@@ -199,6 +199,22 @@
             </div>
           </div>
 
+          <!-- Human-in-the-loop 决策卡片 -->
+          <div v-else-if="msg.hitl" class="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3.5 shadow-sm">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="w-5 h-5 rounded-lg bg-indigo-500 flex items-center justify-center">
+                <svg class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </span>
+              <span class="text-[11px] font-bold text-indigo-700">需要你决定下一步</span>
+            </div>
+            <p class="text-[12px] text-indigo-900 whitespace-pre-line leading-relaxed mb-3">{{ msg.hitl.question }}</p>
+            <div class="flex flex-wrap gap-2">
+              <button @click="$emit('sendHitlChoice', '重试')" class="px-3 py-1.5 text-[11px] rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors">🔄 重试搜索</button>
+              <button @click="$emit('sendHitlChoice', '就用当前内容定稿')" class="px-3 py-1.5 text-[11px] rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors">✅ 就用当前内容</button>
+              <button @click="$emit('sendHitlChoice', '换个方向')" class="px-3 py-1.5 text-[11px] rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors">🧭 换个方向</button>
+            </div>
+          </div>
+
           <!-- 澄清消息 -->
           <div v-else-if="msg.type === 'clarify'" class="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 shadow-sm">
             <div class="flex items-start gap-2">
@@ -239,7 +255,7 @@ const props = defineProps({
     skills: { type: Array, default: () => [] },
 });
 
-defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'downloadPdf', 'saveToLibrary', 'ttsReport', 'useSkill', 'switchTab']);
+defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'downloadPdf', 'saveToLibrary', 'ttsReport', 'useSkill', 'switchTab', 'sendHitlChoice']);
 
 // 研究进度阶段
 const activeStreamMsg = computed(() => {

@@ -14,6 +14,7 @@ export function useChat(chatContainer) {
     const history = ref([]);
     const activeHistoryId = ref(null);
     const activeSkill = ref('');
+    const pendingHitlResponse = ref('');  // 用户点击 HITL 按钮后待发送的决策
 
     const { stats, avgTime, recordResearch } = useStats();
     let currentAbortController = null;
@@ -226,7 +227,7 @@ export function useChat(chatContainer) {
                         const critique = data.data.critique || '需要补充信息';
                         if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                         msg.statuses.push({
-                            text: `第 ${round} 轮审查未通过，启动第 ${round + 1} 轮`,
+                            text: `第 ${round} 轮审查未通过，等待你的决定`,
                             active: true,
                             detail: `审查意见：${critique.slice(0, 100)}${critique.length > 100 ? '...' : ''}`,
                         });
@@ -242,6 +243,20 @@ export function useChat(chatContainer) {
                     }
                     scrollToBottom();
                 }
+                else if (data.step === 'hitl_token') {
+                    if (!data.data.final && data.data.token) {
+                        msg.hitlText = (msg.hitlText || '') + data.data.token;
+                    }
+                    return;
+                }
+                else if (data.step === 'hitl_gate') {
+                    finishStatuses(sMsg.id);
+                    msg.hitl = { question: data.data.hitl_question || msg.hitlText || '报告未通过审查' };
+                    msg.active = false;
+                    msg._hitlPending = true;
+                    return;
+                }
+
                 else if (data.step === 'refiner') {
                     msg.currentPhase = 4;
                     if (msg.statuses) msg.statuses.forEach(s => s.active = false);
@@ -324,7 +339,9 @@ export function useChat(chatContainer) {
             },
             currentAbortController?.signal,
             activeSkill.value,
+            pendingHitlResponse.value,
         );
+        pendingHitlResponse.value = '';
     };
 
     const stopResearch = () => {
@@ -458,6 +475,7 @@ export function useChat(chatContainer) {
         currentQuery.value = '';
         activeHistoryId.value = null;
         activeSkill.value = '';
+        pendingHitlResponse.value = '';
         if (isLoading.value) stopResearch();
         newThreadId();
         try { clearContext(); } catch {}
@@ -465,13 +483,19 @@ export function useChat(chatContainer) {
 
     const clearSkill = () => { activeSkill.value = ''; };
 
+    const sendHitlChoice = (choice) => {
+        pendingHitlResponse.value = choice;
+        query.value = choice;
+        sendMessage(() => {});
+    };
+
     return {
         query, messages, isLoading, currentQuery, searchMode,
         uploadedFiles, history, activeHistoryId, activeSkill,
         stats, avgTime,
         addMessage, scrollToBottom, handleFileSelect,
         sendMessage, stopResearch, copyReport, downloadReport, downloadPdf,
-        saveToLibrary, ttsReport, viewHistory, newChat, clearSkill,
+        saveToLibrary, ttsReport, viewHistory, newChat, clearSkill, sendHitlChoice,
         getHistory, getThreadId,
     };
 }

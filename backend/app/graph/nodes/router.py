@@ -162,6 +162,10 @@ def _llm_classify(query: str, has_report: bool, summary: str, skill_catalog: str
 
 def route_node(state: AgentState) -> dict:
     """意图识别节点：分类并写回 state。"""
+    # HITL 决策回复：跳过意图分类，直接路由到 apply_hitl
+    if (state.get("hitl_choice") or "").strip():
+        return {"intent": "apply_hitl", "intent_confidence": 1.0, "active_skill": state.get("active_skill", "")}
+
     query = state["query"]
     has_report = bool(state.get("final_report", "").strip())
     summary = state.get("conversation_summary", "")
@@ -238,8 +242,8 @@ def route_node(state: AgentState) -> dict:
 def route_intent(state: AgentState) -> str:
     """根据 state['intent'] 路由到具体节点（router 节点之后的条件边）。"""
     intent = state.get("intent", "").lower()
-    if intent not in {"research", "chat", "sql", "tool_call", "refine", "clarify"}:
-        # 理论上不会走到这里：router 节点已约束 intent，这里兜底回 planner
-        log.warning(f"未知意图 {intent!r}，兜底到 research")
-        return "research"
-    return intent
+    if intent in {"research", "chat", "sql", "tool_call", "refine", "clarify", "apply_hitl"}:
+        return intent
+    # 理论上不会走到这里：router 节点已约束 intent，这里兜底回 planner
+    log.warning(f"未知意图 {intent!r}，兜底到 research")
+    return "research"

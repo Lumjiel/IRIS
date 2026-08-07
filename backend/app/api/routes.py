@@ -162,6 +162,7 @@ class ChatRequest(BaseModel):
     style: str = "detailed"       # detailed / concise / formal / casual
     language: str = "zh"          # zh / en
     active_skill: str = ""        # 用户强制指定使用的 Skill（覆盖自动匹配），空则自动
+    hitl_choice: str = ""         # Human-in-the-loop 决策（retry/use_existing/redirect），非空则路由到 apply_hitl
 
     @field_validator("query")
     @classmethod
@@ -257,6 +258,7 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 "review_status": "PASS",
                 "should_stop": False,
                 "active_skill": request.active_skill,  # 用户强制指定或空（router 自动匹配）
+                "hitl_choice": request.hitl_choice,    # HITL 决策（若有）
                 "intent": "",  # 意图分类结果，由 router 填充
                 # final_report 不重置：router 需要判断是否有已有报告来决定路由
                 # conversation_summary 不重置：由 checkpoint 持久化，跨轮保持
