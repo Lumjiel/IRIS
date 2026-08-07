@@ -24,21 +24,40 @@ LANGUAGE_MODIFIERS = {
 }
 
 WRITE_PROMPT = ChatPromptTemplate.from_template(
-    """你是一个专业的技术撰稿人。
-    基于以下的调研资料，回答用户的问题：{query}
+    """你是一个专业的技术撰稿人，**严格遵守"有据可依"（grounded）原则**：
 
-    调研资料：
-    {content}
+- 只基于下方【调研资料】撰写，**严禁编造资料中没有的事实、数据、观点或来源**
+- 每个结论必须能在【调研资料】中找到对应证据；资料支撑不足的，明确写"信息不足"
+- 资料里没出现的数字、百分比、案例、公司名，一律不写
+- 引用 [n] 只标注资料里真实出现的来源
+- 宁可少写，也不编造
 
-    {conversation_context}
+基于以下调研资料，回答用户的问题：{query}
 
-    审查意见（如果有）：
-    {critique_section}
-    不能捏造事实，每个结论都要对应资料里的证据点。
-    {style_instruction}
-    {language_instruction}
-    """
+【调研资料】
+{content}
+
+{conversation_context}
+
+审查意见（如果有）：
+{critique_section}
+{style_instruction}
+{language_instruction}
+"""
 )
+
+# 无任何检索资料时的防幻觉兜底：诚实说明信息不足，绝不凭空编造报告
+EMPTY_CONTENT_FALLBACK = """## 调研结果
+
+抱歉，本次**未能检索到可支撑该主题的外部资料**（网络搜索未返回有效结果，也未上传相关文档）。
+
+为避免编造不实信息，本报告不生成虚构内容。
+
+建议：
+1. 检查搜索服务是否可用（可能需要有效 API Key）
+2. 换个更具体的关键词重新调研
+3. 上传相关 PDF 文档后再试
+"""
 
 async def write_node(state: AgentState):
     log.info("正在撰写报告")
@@ -47,6 +66,16 @@ async def write_node(state: AgentState):
     synthesis = state.get("synthesis", "")
     raw_results = "\n\n".join(state.get("search_results", []))
     content = synthesis if synthesis.strip() else raw_results
+
+    # 防幻觉门禁：无任何实际检索内容时，不生成虚构报告，诚实说明信息不足
+    if not (content or "").strip():
+        log.warning("无任何检索资料，启用防幻觉兜底（不生成虚构内容）")
+        queue = get_token_queue()
+        if queue is not None:
+            for token in EMPTY_CONTENT_FALLBACK:
+                await queue.put({"step": "writer_token", "data": {"token": token}})
+            await queue.put({"step": "writer_token", "data": {"token": "", "final": True}})
+        return {"final_report": EMPTY_CONTENT_FALLBACK, "grounded": False}
 
     critique = state.get("critique", "")
     critique_section = ""
@@ -119,4 +148,4 @@ async def write_node(state: AgentState):
     except Exception as e:
         log.warning(f"记忆提取失败（不影响主流程）: {e}")
 
-    return {"final_report": report, "citation_refs": references}
+    return {"final_report": report, "citation_refs": references, "grounded": True}

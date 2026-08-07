@@ -202,3 +202,46 @@ class TestWriteNode:
 
         result = await write_node(sample_state)
         assert "报告内容" in result["final_report"]
+
+    @pytest.mark.asyncio
+    @patch("app.graph.nodes.writer.extract_memories")
+    @patch("app.graph.nodes.writer.CitationFormatter")
+    @patch("app.graph.nodes.writer.get_token_queue", return_value=None)
+    @patch("app.graph.nodes.writer.llm_invoke")
+    @patch("app.graph.nodes.writer.build_conversation_context", return_value="[当前问题] test")
+    async def test_grounded_empty_content_no_hallucination(
+        self, mock_ctx, mock_llm, mock_queue, mock_citation_cls, mock_extract
+    ):
+        """防幻觉：无任何检索内容时，不调用 LLM 编造报告，返回诚实兜底 + grounded=False。"""
+        from app.graph.nodes.writer import write_node, EMPTY_CONTENT_FALLBACK
+
+        state = _base_state(synthesis="", search_results=[], research_findings=[])
+        result = await write_node(state)
+        assert result["grounded"] is False
+        assert "未能检索到" in result["final_report"]
+        # 关键：绝不调 LLM 凭空生成
+        mock_llm.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("app.graph.nodes.writer.extract_memories")
+    @patch("app.graph.nodes.writer.CitationFormatter")
+    @patch("app.graph.nodes.writer.get_token_queue", return_value=None)
+    @patch("app.graph.nodes.writer.llm_invoke")
+    @patch("app.graph.nodes.writer.build_conversation_context", return_value="[当前问题] test")
+    async def test_grounded_prompt_rules_injected(
+        self, mock_ctx, mock_llm, mock_queue, mock_citation_cls, mock_extract
+    ):
+        """正常生成时注入"有据可依"防幻觉规则。"""
+        from app.graph.nodes.writer import write_node
+
+        mock_llm.return_value = MagicMock(content="有据可依的报告")
+        mock_citation = MagicMock()
+        mock_citation.format_references.return_value = ""
+        mock_citation_cls.return_value = mock_citation
+
+        result = await write_node(_base_state())
+        assert result["grounded"] is True
+        call_args = mock_llm.call_args[0][0]
+        prompt_text = call_args[0].content
+        assert "有据可依" in prompt_text
+        assert "严禁编造" in prompt_text
