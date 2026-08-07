@@ -38,6 +38,10 @@ class AgentState(TypedDict):
     # clarify_question: router 判为 CLARIFY 时，clarify 节点向用户抛出的澄清问题
     clarify_question: str
 
+    # === 防幻觉 (Grounded) ===
+    # grounded: writer 的报告是否有实际检索内容支撑（true=有据可依, false=信息不足诚实说明）
+    grounded: bool
+
     # === ReAct 工具调用 ===
     # tool_messages: ReAct 推理轨迹 [{role, content}]，tool_call/tool_execute 读写
     tool_messages: list
