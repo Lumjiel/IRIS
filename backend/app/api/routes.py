@@ -241,7 +241,8 @@ async def chat_endpoint(request: ChatRequest, req: Request):
     if random.random() < 0.1:
         cleanup_old_checkpoints(max_age_days=CHECKPOINT_MAX_AGE_DAYS)
 
-    config = {"configurable": {"thread_id": request.thread_id}}
+    from app.utils.tracing import build_trace_config
+    config = build_trace_config({"configurable": {"thread_id": request.thread_id}})
     async def event_generator():
         try:
             initial_state = {
