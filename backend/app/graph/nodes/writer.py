@@ -43,7 +43,10 @@ WRITE_PROMPT = ChatPromptTemplate.from_template(
 async def write_node(state: AgentState):
     log.info("正在撰写报告")
     query = state["query"]
-    content = "\n\n".join(state["search_results"])
+    # 优先使用 Synthesize 节点汇总后的结构化发现，避免被原始片段淹没
+    synthesis = state.get("synthesis", "")
+    raw_results = "\n\n".join(state.get("search_results", []))
+    content = synthesis if synthesis.strip() else raw_results
 
     critique = state.get("critique", "")
     critique_section = ""

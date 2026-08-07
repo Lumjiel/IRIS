@@ -22,7 +22,7 @@ backend/
   app/api/routes.py           # 全部 API 端点 + checkpoint 读写（msgpack）
   app/graph/graph.py          # LangGraph StateGraph 拓扑（模块级单例）
   app/graph/state.py          # AgentState TypedDict（11 字段）
-  app/graph/nodes/            # 6 个节点：router/planner/researcher/writer/reviewer/refiner
+  app/graph/nodes/            # 12 个节点：router/planner/researcher/synthesize/writer/reviewer/refiner/chat/sql/tool_call/tool_execute/clarify
   app/rag/engine.py           # RAG 引擎：ChromaDB + DashScope embedding + 可选 CrossEncoder
   app/tools/search.py         # Tavily 搜索封装（带重试）
   app/utils/llm.py            # LLM 工厂 + 自动降级
@@ -78,7 +78,7 @@ docker run -d --name iris -p 8000:8000 --memory=1g -v .env:/app/.env iris-backen
 
 ### 混合同步/异步节点
 
-`planner`、`writer`、`refiner` 是 `async def`，其余节点（router/researcher/reviewer）是同步 `def`。异步节点通过 `get_token_queue()` 判断是否处于 SSE 流式模式，有 queue 则流式输出，否则降级为同步 `llm_invoke()`。
+`planner`、`researcher`、`synthesize`、`writer`、`refiner`、`clarify` 是 `async def`，其余节点（chat/sql/tool_executor/reviewer）是同步 `def`。异步节点通过 `get_token_queue()` 判断是否处于 SSE 流式模式，有 queue 则流式输出，否则降级为同步 `llm_invoke()`。`researcher` 用 `asyncio.gather` + `asyncio.to_thread` 并行执行子查询。
 
 ### Graph 拓扑是模块级单例
 
@@ -100,13 +100,23 @@ docker run -d --name iris -p 8000:8000 --memory=1g -v .env:/app/.env iris-backen
 
 ### 状态机工作流
 
+`router` 是**真正的 LangGraph 节点**（写回 state），其后的 `route_intent` 条件边按意图路由：
+
 ```
-入口 → router
-  ├── NEW_TOPIC → planner → researcher → (should_stop? → END : writer) → reviewer → (FAIL? → planner : END)
-  └── REFINE → refiner → END
+入口 → router(意图识别节点) → 条件边 route_intent
+  ├── research   → planner → researcher(并行) → synthesize → writer → reviewer → (FAIL? → planner : END)
+  ├── chat       → chat
+  ├── sql        → sql
+  ├── tool_call  → ReAct 循环(tool_call ⇄ tool_execute)  ← 决策→执行→再决策，直到出答案或达 MAX_TOOL_ITERATIONS
+  ├── refine     → refiner
+  └── clarify    → clarify      ← 意图不明时反问澄清，不硬塞 RESEARCH
 ```
 
-多轮对话：第 1 次输入走 NEW_TOPIC，后续输入（同 thread_id 且已有报告）走 REFINE。
+**ReAct 工具循环**：`tool_call` 节点让 LLM 结构化决策（`{"action":"tool","tool":"X","arguments":{...}}` 或 `{"action":"answer","answer":"..."}`），有工具请求则 `after_tool_call` 条件边进 `tool_execute` 执行并追加结果到 `tool_messages`，再回到 `tool_call`；无工具请求则 END。工具带 JSON-schema `parameters`，`tool_execute` 在参数名不匹配时回退 `query` 重试。`MAX_TOOL_ITERATIONS`（env，默认 5）封顶。
+
+多轮对话：第 1 次输入走 RESEARCH，后续输入（同 thread_id 且已有报告）经 follow-up 识别走 REFINE。
+
+**目标规划（Orchestrator-Worker）**：planner 拆解为结构化 `plan_structure: [{subtask, queries}]` → researcher 对每个子任务并行执行其查询 → synthesize 把分散结果汇总成结构化发现摘要 → writer 基于汇总撰写。`plan` 仍保留为拍平字符串列表（向后兼容 extractor）。
 
 **REFINE 路径双模式**：
 - **模糊后续**（如"你觉得呢？"）：`_is_vague()` 检测 → 轻量 prompt（只传报告前 2000 字摘要）→ 输出追加到报告末尾作为"AI 分析"
@@ -114,21 +124,31 @@ docker run -d --name iris -p 8000:8000 --memory=1g -v .env:/app/.env iris-backen
 
 ### AgentState（`graph/state.py`）
 
-TypedDict，11 个字段：
+TypedDict，意图识别 + 规划 + Skill/引用/记忆相关字段：
 
 | 字段 | 类型 | 读写节点 | 说明 |
 |------|------|---------|------|
 | `query` | str | 全部 | 用户原始问题 |
-| `plan` | List[str] | planner/writer | 规划的搜索步骤 |
-| `search_results` | List[str] | researcher/writer | 搜索到的具体内容 |
+| `intent` | str | router | 意图：research/chat/sql/tool_call/refine/clarify |
+| `intent_confidence` | float | router | 分类置信度 0.0-1.0 |
+| `is_followup` | bool | router | 是否续聊 |
+| `entities` | list | router | 抽取的关键实体 |
+| `active_skill` | str | router/planner/researcher | 匹配的 Skill 名，空为默认策略 |
+| `plan` | List[str] | planner | 拍平的搜索子问题（向后兼容） |
+| `plan_structure` | list | planner | 结构化计划 [{subtask, queries}] |
+| `search_results` | List[str] | researcher/writer | 搜索到的具体内容（Markdown） |
+| `research_findings` | list | researcher/synthesize | 按子任务分组的结构化检索结果 |
+| `synthesis` | str | synthesize/writer | 汇总后的关键发现摘要 |
 | `final_report` | str | writer/reviewer/refiner | 最终生成的报告 |
 | `critique` | str | reviewer/planner | 审查意见 |
 | `revision_number` | int | reviewer | 当前修改到了第几版 |
 | `review_status` | str | reviewer | "PASS" 或 "FAIL" |
 | `search_mode` | str | router | "document" 或 "hybrid" |
 | `should_stop` | bool | researcher | 控制位 |
-| `conversation_summary` | str | writer/refiner | 运行摘要，通过 checkpoint 持久化 |
+| `clarify_question` | str | clarify | 意图不明时抛出的澄清问题 |
+| `conversation_summary` | str | - | @deprecated，四层记忆系统已替代，仅保留 checkpoint 兼容 |
 | `preferences` | dict | writer | 用户偏好 {style, language} |
+| `search_sources` / `citation_refs` | list / str | researcher/writer | 引用来源与累积引用标注 |
 
 ### 流式架构
 
@@ -166,7 +186,9 @@ TypedDict，11 个字段：
   → 通过 SQLite checkpoint 持久化（msgpack 格式）
 ```
 
-**新主题状态清理**：`planner` 在 `revision_number == 0`（首次进入，非审查重试）且 `final_report` 非空时，清空 `final_report` 和 `conversation_summary`，防止旧主题的搜索方向污染新主题。
+**新主题状态清理**：`planner` 在 `revision_number == 0`（首次进入，非审查重试）且 `final_report` 非空时，清空 `final_report` 和 `citation_refs`，防止旧主题的搜索方向污染新主题。
+
+> ⚠️ `conversation_summary` 已废弃：四层记忆系统（`app/memory/`）已替代，保留字段仅为 checkpoint 兼容。跨轮上下文现在由 Episodic/Semantic 记忆 + `build_conversation_context` 提供。
 
 **核心函数**：
 - `update_conversation_summary()` — 增量追加本轮 query/报告/搜索方向，超过 2000 字符阈值时 LLM 压缩
@@ -179,6 +201,25 @@ TypedDict，11 个字段：
 - `ChatMessages` 报告卡片内显示研究轨迹时间线（多轮时可折叠展开）
 
 **Checkpoint 格式**：LangGraph 使用 **msgpack** 序列化（非 JSON），`channel_values` 在顶层。读写需用 `msgpack.packb/unpackb`。`routes.py` 中 `_read_checkpoint_state` 和 `_reset_checkpoint_summary` 直接操作 SQLite 绕过 LangGraph saver 上下文。
+
+### 四层记忆语义检索（`app/memory/store.py`）
+
+`MemoryStore` 支持**混合检索**，替代旧的纯 LIKE：
+- **写入时**：懒加载 `DashScopeEmbeddings`（`text-embedding-v4`）对内容求向量，存 `embedding` 列（候选上限 `_SEM_CANDIDATE_LIMIT=300`）
+- **搜索时**：关键词命中给 1.0 基础分 + 查询向量与各条记忆的余弦相似度（0-1），取 max 排序返回 top `limit`
+- **空查询**：直接返回最近记录（列表语义）
+- **降级**：embedding 不可用（未配 key / 依赖缺失）时无损回退到关键词 LIKE，不阻塞
+- 嵌入直接使用 `langchain_community.embeddings.DashScopeEmbeddings`，**不依赖重型 RAG 引擎**（chromadb/huggingface），与向量库解耦
+
+### Skill 打通记忆 (memory_policy)
+
+`Skill` 的 `memory_policy` 字段真正生效于 planner：
+- `read_episodic`：planner 读取与该 topic 相关的历史 Episodic 记忆注入 prompt（"历史研究参考，避免重复调研"）
+- 取值：`read_episodic` / `write_semantic` / `none`（默认）。内置 `content_research` 已设 `read_episodic`
+
+### Skill 打通工具 (required_tools)
+
+`researcher` 用 `Skill.required_tools` 真正约束可用工具：仅加载声明的工具；声明但未注册的工具记 warning 跳过；全部不可用时回退到所有工具。复用 `app/skills/router.py` 的 registry 单例（避免每次 new 一个新 registry 重扫磁盘）。
 
 ### 用户偏好系统
 
@@ -237,7 +278,8 @@ TypedDict，11 个字段：
 ## 容错机制
 
 - **模型降级**: 主模型失败 → 备用模型，5 分钟 TTL 自动恢复
-- **Router 兜底**: LLM 输出非法 → `looks_like_refine()` 关键词匹配
+- **Router 兜底**: LLM 结构化输出失败 → 关键词规则（`looks_like_refine`/`_looks_like_research`/`_looks_like_chat`）→ 仍无信号则 CLARIFY 反问，而非默认 RESEARCH
+- **Router 意图约束**: 无报告时强制排除 refine；低置信度 + 无明显信号才走 clarify
 - **Reviewer 兜底**: JSON 解析失败 → 重试 → fail-closed
 - **搜索重试**: Tavily 调用失败 → 2 次重试
 - **上传校验**: 文件类型（PDF）+ 大小（20MB）+ 数量（5 个）

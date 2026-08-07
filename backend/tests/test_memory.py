@@ -240,6 +240,48 @@ class TestMemoryStore:
         results = tmp_store.search("", kind="episodic", limit=3)
         assert len(results) == 3
 
+    def test_empty_query_returns_recent(self, tmp_store):
+        """空查询返回最近记录。"""
+        tmp_store.add(kind="episodic", content="A")
+        tmp_store.add(kind="episodic", content="B")
+        results = tmp_store.search("", limit=1)
+        assert len(results) == 1
+
+
+class TestMemorySemanticSearch:
+    """内存语义检索（embedding 余弦打分）测试。"""
+
+    def test_cosine_pure(self):
+        from app.memory.store import _cosine
+        assert _cosine([1.0, 0.0], [1.0, 0.0]) == pytest.approx(1.0)
+        assert _cosine([1.0, 0.0], [0.0, 1.0]) == pytest.approx(0.0)
+        assert _cosine(None, [1.0]) == 0.0
+        assert _cosine([1.0], None) == 0.0
+
+    def test_semantic_ranks_by_cosine(self, tmp_path):
+        from app.memory.store import MemoryStore
+        store = MemoryStore(db_path=str(tmp_path / "sem.db"))
+
+        # 模拟嵌入：含"量子"的文本向量指向 [1,0]，其余指向 [0,1]
+        fake_embed = lambda t: [1.0, 0.0] if "量子" in t else [0.0, 1.0]
+        with patch("app.memory.store._embed", side_effect=fake_embed):
+            store.add(kind="episodic", content="量子计算报告")
+            store.add(kind="episodic", content="区块链报告")
+            results = store.search("量子相关", kind="episodic", limit=1)
+        assert results[0].content == "量子计算报告"
+
+    def test_semantic_fallback_to_keyword_when_embed_none(self, tmp_path):
+        """嵌入不可用时（_embed 返回 None）无损回退到关键词。"""
+        from app.memory.store import MemoryStore
+        store = MemoryStore(db_path=str(tmp_path / "kw.db"))
+        store.add(kind="episodic", content="量子计算研究")
+        store.add(kind="episodic", content="区块链技术")
+
+        with patch("app.memory.store._embed", return_value=None):
+            results = store.search("量子", kind="episodic", limit=5)
+        contents = [r.content for r in results]
+        assert "量子计算研究" in contents
+
 
 class TestExtractMemories:
     """extract_memories 测试。"""

@@ -91,6 +91,7 @@ export function useChat(chatContainer) {
             active: true,
             rounds: [],  // 研究轨迹：每轮的搜索方向
             currentPhase: 0,  // 研究进度阶段：0=准备 1=搜索 2=分析 3=撰写 4=完成
+            intent: '', intentConfidence: null, entities: [], toolTrace: [],
         });
         let round = 0;
 
@@ -99,6 +100,62 @@ export function useChat(chatContainer) {
             (data) => {
                 const msg = getMsgById(sMsg.id);
                 if (!msg) return;
+
+                // 意图识别结果（router 节点）
+                if (data.step === 'router') {
+                    msg.intent = data.data.intent || '';
+                    msg.intentConfidence = data.data.intent_confidence ?? null;
+                    msg.entities = data.data.entities || [];
+                    if (data.data.active_skill) activeSkill.value = data.data.active_skill;
+                    return;
+                }
+
+                // ReAct 工具调用轨迹
+                if (data.step === 'tool_call') {
+                    if (data.data.tool_call_request) {
+                        const t = data.data.tool_call_request;
+                        msg.toolTrace.push({ tool: t.tool, arguments: t.arguments, status: 'calling' });
+                        if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                        msg.statuses.push({ text: `正在调用工具 ${t.tool}...`, active: true });
+                        msg.currentPhase = 2;
+                    } else {
+                        if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                        msg.statuses.push({ text: '工具结果已整合，生成回答 ✓', active: false });
+                        finishStatuses(sMsg.id);
+                        msg.type = 'report';
+                        msg.content = msg.streamText || data.data.final_report || '';
+                        msg.active = false;
+                    }
+                    return;
+                }
+                if (data.step === 'tool_execute') {
+                    const last = msg.toolTrace[msg.toolTrace.length - 1];
+                    if (last) { last.status = 'done'; }
+                    return;
+                }
+
+                // 意图澄清（clarify）
+                if (data.step === 'clarify_token') {
+                    if (!data.data.final && data.data.token) {
+                        msg.streamText += data.data.token;
+                        scrollToBottom();
+                    }
+                    return;
+                }
+                if (data.step === 'clarify') {
+                    finishStatuses(sMsg.id);
+                    msg.type = 'clarify';
+                    msg.content = msg.streamText || data.data.clarify_question || '';
+                    msg.active = false;
+                    return;
+                }
+
+                // 汇总节点
+                if (data.step === 'synthesize') {
+                    if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                    msg.statuses.push({ text: '正在汇总检索结果...', active: true });
+                    return;
+                }
 
                 if (data.step === 'planner_token') {
                     if (!data.data.final && data.data.token) {
@@ -125,13 +182,17 @@ export function useChat(chatContainer) {
                     round++;
                     msg.currentPhase = 1;
                     const plans = data.data.plan || [];
+                    const subtasks = data.data.plan_structure || [];
                     const status = {
                         text: `第 ${round} 轮 · 拆解了 ${plans.length} 个搜索方向`,
                         active: true,
                         items: plans,
+                        subtasks: subtasks,
                     };
                     if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                     msg.statuses.push(status);
+                    // 记录子任务（供卡片展示）
+                    msg.subtasks = subtasks;
                     msg.streamText = '';
                     // 记录研究轨迹
                     msg.rounds.push({ number: round, directions: plans });
@@ -261,7 +322,8 @@ export function useChat(chatContainer) {
                     history.value = getHistory();
                 }
             },
-            currentAbortController?.signal
+            currentAbortController?.signal,
+            activeSkill.value,
         );
     };
 
@@ -401,13 +463,15 @@ export function useChat(chatContainer) {
         try { clearContext(); } catch {}
     };
 
+    const clearSkill = () => { activeSkill.value = ''; };
+
     return {
         query, messages, isLoading, currentQuery, searchMode,
         uploadedFiles, history, activeHistoryId, activeSkill,
         stats, avgTime,
         addMessage, scrollToBottom, handleFileSelect,
         sendMessage, stopResearch, copyReport, downloadReport, downloadPdf,
-        saveToLibrary, ttsReport, viewHistory, newChat,
+        saveToLibrary, ttsReport, viewHistory, newChat, clearSkill,
         getHistory, getThreadId,
     };
 }

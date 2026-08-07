@@ -13,7 +13,7 @@ import shutil
 from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.utils.logger import get_logger
-from app.config import CHECKPOINT_MAX_AGE_DAYS, MAX_UPLOAD_FILES, MAX_FILE_SIZE_MB, CREATION_DIR, CHECKPOINT_DB, STORE_DB
+from app.config import CHECKPOINT_MAX_AGE_DAYS, MAX_UPLOAD_FILES, MAX_FILE_SIZE_MB, CREATION_DIR, CHECKPOINT_DB, STORE_DB, RESEARCH_TIMEOUT
 
 log = get_logger("routes")
 
@@ -161,6 +161,7 @@ class ChatRequest(BaseModel):
     thread_id: str
     style: str = "detailed"       # detailed / concise / formal / casual
     language: str = "zh"          # zh / en
+    active_skill: str = ""        # 用户强制指定使用的 Skill（覆盖自动匹配），空则自动
 
     @field_validator("query")
     @classmethod
@@ -254,7 +255,8 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 "critique": "",
                 "review_status": "PASS",
                 "should_stop": False,
-                "active_skill": "",
+                "active_skill": request.active_skill,  # 用户强制指定或空（router 自动匹配）
+                "intent": "",  # 意图分类结果，由 router 填充
                 # final_report 不重置：router 需要判断是否有已有报告来决定路由
                 # conversation_summary 不重置：由 checkpoint 持久化，跨轮保持
             }
@@ -270,12 +272,24 @@ async def chat_endpoint(request: ChatRequest, req: Request):
 
                 graph_queue: asyncio.Queue = asyncio.Queue()
 
+                async def _consume_graph():
+                    """消费 app.astream 的所有事件并推入 graph_queue。"""
+                    async for event in app.astream(initial_state, config=config):
+                        for node_name, state_update in event.items():
+                            ev = json.dumps({"step": node_name, "data": state_update}, ensure_ascii=False)
+                            await graph_queue.put(ev)
+                    return True
+
                 async def _run_graph():
                     try:
-                        async for event in app.astream(initial_state, config=config):
-                            for node_name, state_update in event.items():
-                                ev = json.dumps({"step": node_name, "data": state_update}, ensure_ascii=False)
-                                await graph_queue.put(ev)
+                        # 总超时保护：多轮 reviewer 回跳等链路被硬性限制，防止无限挂起
+                        await asyncio.wait_for(_consume_graph(), timeout=RESEARCH_TIMEOUT)
+                    except asyncio.TimeoutError:
+                        log.error(f"研究请求超时（>{RESEARCH_TIMEOUT}s），强制终止")
+                        await graph_queue.put(json.dumps(
+                            {"step": "error", "data": {"message": f"研究超时（{RESEARCH_TIMEOUT} 秒），请精简问题或稍后重试"}},
+                            ensure_ascii=False,
+                        ))
                     except Exception as e:
                         log.error(f"Graph error: {type(e).__name__}: {e}", exc_info=True)
                         await graph_queue.put(json.dumps({"step": "error", "data": {"message": f"研究过程中发生错误: {type(e).__name__}: {e}"}}, ensure_ascii=False))

@@ -71,7 +71,7 @@ export async function clearContext() {
  * @param {function} onDone - 完成回调
  * @param {function} onError - 错误回调
  */
-export async function streamChat(query, search_mode, onData, onDone, onError, signal) {
+export async function streamChat(query, search_mode, onData, onDone, onError, signal, activeSkill = '') {
   // 从 localStorage 读取用户偏好
   const prefs = JSON.parse(localStorage.getItem('iris_preferences') || '{}');
   try {
@@ -84,6 +84,7 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
               thread_id: _threadId,
               style: prefs.style || 'detailed',
               language: prefs.language || 'zh',
+              active_skill: activeSkill,
           }),
           signal,
       });

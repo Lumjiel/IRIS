@@ -46,7 +46,11 @@
         :uploadedFiles="chat.uploadedFiles.value"
         :searchMode="chat.searchMode.value"
         :hasMessages="chat.messages.value.length > 0"
+        :skills="sidebarSkills"
+        :activeSkill="chat.activeSkill.value"
         @update:searchMode="(v) => chat.searchMode.value = v"
+        @selectSkill="(name) => chat.activeSkill.value = name"
+        @clearSkill="chat.clearSkill"
         @send="() => chat.sendMessage(showToast)"
         @stop="chat.stopResearch"
       />
@@ -88,6 +92,11 @@ const showToast = (msg, type = 'success') => {
     toastMsg.value = msg;
     toastType.value = type;
     toastTimer = setTimeout(() => { toastMsg.value = ''; }, 3000);
+};
+
+// === Skills ===
+const loadSkills = async () => {
+    try { const d = await listSkills(); sidebarSkills.value = d.skills || []; } catch { sidebarSkills.value = []; }
 };
 
 // === AI 新闻 ===
@@ -138,6 +147,7 @@ const handleKeydown = (e) => {
 onMounted(() => {
     chat.history.value = getHistory();
     loadAiNews();
+    loadSkills();
     document.addEventListener('keydown', handleKeydown);
 });
 

@@ -15,6 +15,37 @@ class AgentState(TypedDict):
     search_mode: str          # 取值: "document" (只查文档) 或 "hybrid" (混合搜索)
     should_stop: bool         # 控制位
 
+    # === 意图分类 ===
+    # intent: router 分类结果，取值: research / chat / sql / tool_call / refine / clarify
+    intent: str
+    # intent_confidence: 分类置信度 0.0-1.0，由 router 填充
+    intent_confidence: float
+    # is_followup: 是否为对上一轮的续聊（短回复/代词等），由 router 判断
+    is_followup: bool
+    # entities: 从用户输入中抽取的关键实体（人名/产品/专有名词等），由 router 填充
+    entities: list
+
+    # === 目标规划 ===
+    # plan_structure: 结构化研究计划 [{subtask, queries}]，由 planner 填充
+    # plan: 拍平的搜索子问题（由 plan_structure 派生），向后兼容 extractor 等下游
+    plan_structure: list
+    # research_findings: Researcher 按子任务分组的结构化检索结果，供 Synthesize 节点汇总
+    research_findings: list
+    # synthesis: Planner 拆解 -> Researcher 并行检索 -> Synthesize 汇总后的关键发现摘要
+    synthesis: str
+
+    # === 意图澄清 ===
+    # clarify_question: router 判为 CLARIFY 时，clarify 节点向用户抛出的澄清问题
+    clarify_question: str
+
+    # === ReAct 工具调用 ===
+    # tool_messages: ReAct 推理轨迹 [{role, content}]，tool_call/tool_execute 读写
+    tool_messages: list
+    # tool_iterations: 已执行工具轮数，达到 MAX_TOOL_ITERATIONS 强制出答案
+    tool_iterations: int
+    # tool_call_request: 当前待执行的工具请求 {tool, arguments}；None 表示直接回答
+    tool_call_request: dict
+
     # === 记忆系统 ===
     # conversation_summary: @deprecated — 四层记忆系统（Episodic/Semantic/Procedural）已替代此字段
     # 保留字段以维持 LangGraph checkpoint 兼容性，不再由 writer/refiner 更新

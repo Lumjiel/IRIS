@@ -5,6 +5,11 @@ from app.tools.registry import ToolRegistry
 @ToolRegistry.register(
     name="citation_search",
     description="搜索并返回带引用标注的结果。适用于：需要标注信息来源的调研。",
+    parameters={
+        "type": "object",
+        "properties": {"query": {"type": "string", "description": "要搜索的关键词或问题"}},
+        "required": ["query"],
+    },
 )
 def citation_search(query: str) -> str:
     from app.tools.search import search_tavily

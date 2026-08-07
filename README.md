@@ -157,14 +157,16 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 
 ### 3.1 Router — 意图识别器
 
-**职责**：判断用户输入是"新研究课题"还是"修改现有报告"
+**职责**：判断用户输入属于哪类意图，并匹配最相关的 Skill
 
 **设计要点**：
-- 首先检查是否有已有报告（无报告 → 强制 NEW_TOPIC）
-- 用 LLM 判断意图，输出 NEW_TOPIC 或 REFINE
-- LLM 输出非法时，启用关键词兜底规则
-- 模糊后续（"你觉得呢"、"然后呢"）默认走 REFINE
-- **Skill 匹配**：同时匹配最相关的 Skill，存入 state
+- 作为 LangGraph 节点运行，分类结果（intent/confidence/entities/active_skill）**写回 state**
+- **结构化 LLM 输出**：`{intent, confidence, is_followup, entities, skill}`，带置信度
+- 6 类意图：`research / chat / sql / tool_call / refine / clarify`
+- **CLARIFY 意图**：低置信度/语义含糊时反问澄清，而不是默认硬塞给 RESEARCH
+- **follow-up 识别**：注入对话摘要 + 是否有报告，短回复/代词续聊继承上一意图
+- **Skill 进路由**：意图为 research 时，由 LLM 根据各 Skill 的 `description` 选 Skill（agent-squad 风格），失败回退 bigram 匹配器
+- 无报告时强制排除 REFINE；LLM 输出非法时启用关键词兜底
 
 ### 3.2 Planner — 任务规划器
 
@@ -176,6 +178,7 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 - 如果存在 active_skill，注入 Skill 的 Prompt 模板
 - 如果存在审查意见，针对意见中提到的缺失信息生成搜索方向
 - 新主题时自动清理旧报告状态
+- **结构化计划输出**：拆解为 `plan_structure: [{subtask, queries}]`（Orchestrator-Worker 的任务分解阶段），并派生拍平 `plan` 兼容下游
 
 ### 3.3 Researcher — 多源检索器
 
@@ -184,13 +187,23 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 **设计要点**：
 - 本地文档检索：ChromaDB 向量搜索 + LLM 相关性评估
 - 网络搜索：Tavily API，带重试机制
+- **并行执行**：对 `plan_structure` 的每个子任务，用 `asyncio.gather` + `asyncio.to_thread` 并发执行其查询，单轮耗时从串行累计降到 ≈ 最慢一条
 - 三种模式：document（纯文档）、hybrid（混合）、全网搜索
 - 熔断机制：纯文档模式下文档不相关则终止
 - **Skill 工具选择**：根据 Skill 的 required_tools 决定使用哪些工具
 - **可信度过滤**：搜索结果按域名权威评分，过滤低质量来源
 - **来源追踪**：保留 URL 和标题，供引用标注使用
 
-### 3.4 Writer — 报告撰写器
+### 3.4 Synthesize — 结果汇总结
+
+**职责**：把并行检索的分散结果按子任务汇总成结构化发现摘要，供 Writer 直接引用（Orchestrator-Worker 的「结果合成」阶段）。
+
+**设计要点**：
+- 接收 Researcher 输出的 `research_findings`（按子任务分组）
+- 每个子任务提炼 2-4 条关键发现，去重、保留来源出处
+- 输出 `synthesis` 写入 state，Writer 优先使用该摘要而非原始片段
+
+### 3.5 Writer — 报告撰写器
 
 **职责**：基于检索结果撰写结构化研究报告
 
@@ -202,7 +215,7 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 - **引用标注**：自动追加参考文献列表
 - **记忆提取**：研究完成后自动写入 Episodic 记忆
 
-### 3.5 Reviewer — 质量审查器
+### 3.6 Reviewer — 质量审查器
 
 **职责**：评估报告是否充分回答了用户问题
 
@@ -213,7 +226,7 @@ Reviewer(FAIL) ──▶ Planner ──▶ Researcher ──▶ Writer ──▶
 - 使用 smart 模型（temperature 0），确保审查一致性
 - 最大重试次数由 `MAX_REVISIONS` 控制
 
-### 3.6 Refiner — 报告精修器
+### 3.7 Refiner — 报告精修器
 
 **职责**：处理用户的后续交互（模糊评价 or 明确修改）
 
@@ -275,6 +288,8 @@ memory_policy: read_episodic
 | Episodic | 用户发起新研究时 | 研究完成后 | SQLite |
 | Semantic | Planner 规划时 | 研究完成后异步提炼 | SQLite |
 | Procedural | 路由决策时 | 成功任务完成后 | SQLite |
+
+**混合检索**：`MemoryStore` 写入时用 DashScope 嵌入存向量，搜索时「关键词 + 余弦相似度」混合打分；嵌入不可用时无损回退关键词。Skill 的 `memory_policy`（如 `read_episodic`）驱动 planner 读取对应记忆层，避免重复调研。
 
 ### 5.2 Memory API
 
@@ -407,7 +422,7 @@ IRIS/
 │   │   ├── graph/
 │   │   │   ├── graph.py            # StateGraph 拓扑
 │   │   │   ├── state.py            # AgentState 定义
-│   │   │   └── nodes/              # 6 个 Agent 节点
+│   │   │   └── nodes/              # 11 个节点：router/planner/researcher/synthesize/writer/reviewer/refiner/chat/sql/tool_executor/clarify
 │   │   ├── skills/                 # Skill 体系
 │   │   │   ├── registry.py         # SkillRegistry
 │   │   │   ├── lifecycle.py        # CRUD 操作

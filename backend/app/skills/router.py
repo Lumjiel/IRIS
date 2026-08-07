@@ -30,3 +30,15 @@ def get_skill_prompt(skill_name: str) -> str:
     """获取指定 Skill 的 prompt 模板。"""
     registry = _get_registry()
     return registry.get_active_skill_prompt(skill_name)
+
+
+def get_skill(skill_name: str):
+    """获取指定 Skill 对象（含 memory_policy / required_tools 等元数据），不存在返回 None。"""
+    registry = _get_registry()
+    return registry.get(skill_name)
+
+
+def get_skill_memory_policy(skill_name: str) -> str:
+    """返回 Skill 的 memory_policy，未找到或未配置时返回 'none'。"""
+    skill = get_skill(skill_name)
+    return skill.memory_policy if skill else "none"

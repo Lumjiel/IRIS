@@ -29,12 +29,11 @@ class TestPlanNode:
 
     @pytest.mark.asyncio
     @patch("app.graph.nodes.planner.MemoryStore")
-    @patch("app.graph.nodes.planner.pop_skill_cache", return_value="")
     @patch("app.graph.nodes.planner.build_conversation_context", return_value="[当前问题] test")
     @patch("app.graph.nodes.planner.llm_invoke")
     @patch("app.graph.nodes.planner.get_token_queue", return_value=None)
     async def test_returns_plan_from_llm(
-        self, mock_queue, mock_llm, mock_ctx, mock_pop, mock_store_cls
+        self, mock_queue, mock_llm, mock_ctx, mock_store_cls
     ):
         from app.graph.nodes.planner import plan_node
 
@@ -43,15 +42,15 @@ class TestPlanNode:
 
         result = await plan_node(_base_state())
         assert result["plan"] == ["方向A", "方向B", "方向C"]
+        assert result["plan_structure"][0]["subtask"] == "方向A"
 
     @pytest.mark.asyncio
     @patch("app.graph.nodes.planner.MemoryStore")
-    @patch("app.graph.nodes.planner.pop_skill_cache", return_value="")
     @patch("app.graph.nodes.planner.build_conversation_context", return_value="[当前问题] test")
     @patch("app.graph.nodes.planner.llm_invoke")
     @patch("app.graph.nodes.planner.get_token_queue", return_value=None)
     async def test_new_topic_clears_old_report(
-        self, mock_queue, mock_llm, mock_ctx, mock_pop, mock_store_cls
+        self, mock_queue, mock_llm, mock_ctx, mock_store_cls
     ):
         """revision_number=0 + 有旧报告 → 清理旧报告和引用。"""
         from app.graph.nodes.planner import plan_node
@@ -70,12 +69,11 @@ class TestPlanNode:
 
     @pytest.mark.asyncio
     @patch("app.graph.nodes.planner.MemoryStore")
-    @patch("app.graph.nodes.planner.pop_skill_cache", return_value="")
     @patch("app.graph.nodes.planner.build_conversation_context", return_value="[当前问题] test")
     @patch("app.graph.nodes.planner.llm_invoke")
     @patch("app.graph.nodes.planner.get_token_queue", return_value=None)
     async def test_revision_retry_preserves_report(
-        self, mock_queue, mock_llm, mock_ctx, mock_pop, mock_store_cls
+        self, mock_queue, mock_llm, mock_ctx, mock_store_cls
     ):
         """revision_number>0 时不清零报告。"""
         from app.graph.nodes.planner import plan_node
@@ -95,36 +93,31 @@ class TestPlanNode:
     @pytest.mark.asyncio
     @patch("app.graph.nodes.planner.MemoryStore")
     @patch("app.graph.nodes.planner.get_skill_prompt", return_value="请使用深度搜索策略")
-    @patch("app.graph.nodes.planner.pop_skill_cache", return_value="deep_search")
     @patch("app.graph.nodes.planner.build_conversation_context", return_value="[当前问题] test")
     @patch("app.graph.nodes.planner.llm_invoke")
     @patch("app.graph.nodes.planner.get_token_queue", return_value=None)
     async def test_skill_prompt_injected(
-        self, mock_queue, mock_llm, mock_ctx, mock_pop, mock_skill, mock_store_cls
+        self, mock_queue, mock_llm, mock_ctx, mock_skill, mock_store_cls
     ):
-        """匹配到 Skill 时 skill prompt 被注入到对话上下文。"""
+        """state.active_skill 非空时 skill prompt 被注入。"""
         from app.graph.nodes.planner import plan_node
 
         mock_llm.return_value = MagicMock(content="方向A")
         mock_store_cls.return_value.search.return_value = []
 
-        await plan_node(_base_state())
-        # 验证 build_conversation_context 的调用参数包含了 skill prompt
-        call_args = mock_ctx.call_args[0][0]
-        # build_conversation_context 接收 state，但 planner 拼接后再传给 prompt
-        # 实际上 skill_prompt 是在 plan_node 内部拼接到 prompt_text 里的
+        await plan_node(_base_state(active_skill="deep_search"))
         mock_skill.assert_called_once_with("deep_search")
 
     @pytest.mark.asyncio
     @patch("app.graph.nodes.planner.MemoryStore")
-    @patch("app.graph.nodes.planner.pop_skill_cache", return_value="")
+    @patch("app.graph.nodes.planner.get_skill_prompt")
     @patch("app.graph.nodes.planner.build_conversation_context", return_value="[当前问题] test")
     @patch("app.graph.nodes.planner.llm_invoke")
     @patch("app.graph.nodes.planner.get_token_queue", return_value=None)
-    async def test_no_skill_when_cache_empty(
-        self, mock_queue, mock_llm, mock_ctx, mock_pop, mock_store_cls
+    async def test_no_skill_when_active_skill_empty(
+        self, mock_queue, mock_llm, mock_ctx, mock_skill, mock_store_cls
     ):
-        """pop_skill_cache 返回空时注入空 skill_prompt。"""
+        """active_skill 为空时不调用 get_skill_prompt。"""
         from app.graph.nodes.planner import plan_node
 
         mock_llm.return_value = MagicMock(content="方向A")
@@ -132,17 +125,40 @@ class TestPlanNode:
 
         result = await plan_node(_base_state())
         assert result["plan"] == ["方向A"]
-        # pop_skill_cache 返回 "" 时不会调用 get_skill_prompt
-        mock_pop.assert_called_once()
+        mock_skill.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("app.graph.nodes.planner.MemoryStore")
-    @patch("app.graph.nodes.planner.pop_skill_cache", return_value="")
+    @patch("app.graph.nodes.planner.get_skill_memory_policy", return_value="read_episodic")
+    @patch("app.graph.nodes.planner.get_skill_prompt", return_value="公众号策略")
+    @patch("app.graph.nodes.planner.build_conversation_context", return_value="[当前问题] test")
+    @patch("app.graph.nodes.planner.llm_invoke")
+    @patch("app.graph.nodes.planner.get_token_queue", return_value=None)
+    async def test_skill_reads_episodic_memory(
+        self, mock_queue, mock_llm, mock_ctx, mock_skill, mock_policy, mock_store_cls
+    ):
+        """memory_policy 含 episodic 时注入历史研究参考。"""
+        from app.graph.nodes.planner import plan_node
+
+        mock_llm.return_value = MagicMock(content="方向A")
+        mock_record = MagicMock(content="上次调研：量子计算商业化")
+        mock_store_cls.return_value.search.side_effect = (
+            lambda q, kind=None, limit=10: [mock_record] if kind == "episodic" else []
+        )
+
+        await plan_node(_base_state(active_skill="content_research"))
+        mock_policy.assert_called_once_with("content_research")
+        # episodic 搜索被触发
+        calls = [c for c in mock_store_cls.return_value.search.call_args_list if c.kwargs.get("kind") == "episodic"]
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    @patch("app.graph.nodes.planner.MemoryStore")
     @patch("app.graph.nodes.planner.build_conversation_context", return_value="[当前问题] test")
     @patch("app.graph.nodes.planner.llm_invoke")
     @patch("app.graph.nodes.planner.get_token_queue", return_value=None)
     async def test_strips_whitespace_from_plans(
-        self, mock_queue, mock_llm, mock_ctx, mock_pop, mock_store_cls
+        self, mock_queue, mock_llm, mock_ctx, mock_store_cls
     ):
         """LLM 返回带空格的计划时应去除空白。"""
         from app.graph.nodes.planner import plan_node
@@ -155,12 +171,11 @@ class TestPlanNode:
 
     @pytest.mark.asyncio
     @patch("app.graph.nodes.planner.MemoryStore")
-    @patch("app.graph.nodes.planner.pop_skill_cache", return_value="")
     @patch("app.graph.nodes.planner.build_conversation_context", return_value="[当前问题] test")
     @patch("app.graph.nodes.planner.llm_invoke")
     @patch("app.graph.nodes.planner.get_token_queue", return_value=None)
     async def test_semantic_memory_injected(
-        self, mock_queue, mock_llm, mock_ctx, mock_pop, mock_store_cls
+        self, mock_queue, mock_llm, mock_ctx, mock_store_cls
     ):
         """Semantic 记忆被读取并注入 prompt。"""
         from app.graph.nodes.planner import plan_node

@@ -79,6 +79,20 @@
 
           <!-- 流式消息 -->
           <div v-else-if="msg.type === 'stream'" class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+            <!-- 意图徽章 -->
+            <div v-if="msg.intent" class="px-4 pt-3 flex items-center gap-2 flex-wrap">
+              <span class="text-[10px] px-2 py-0.5 rounded-full font-medium" :class="intentBadgeClass(msg.intent)">{{ intentLabel(msg.intent) }}</span>
+              <span v-if="msg.intentConfidence != null" class="text-[10px] text-gray-400">置信度 {{ Math.round(msg.intentConfidence * 100) }}%</span>
+              <span v-if="msg.entities && msg.entities.length" class="text-[10px] text-gray-400">· {{ msg.entities.join('、') }}</span>
+            </div>
+            <!-- ReAct 工具轨迹 -->
+            <div v-if="msg.toolTrace && msg.toolTrace.length" class="px-4 pt-2 pb-1">
+              <div class="flex flex-wrap gap-1">
+                <span v-for="(t, ti) in msg.toolTrace" :key="ti" class="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full" :class="t.status === 'done' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100 animate-pulse'">
+                  🛠️ {{ t.tool }}
+                </span>
+              </div>
+            </div>
             <!-- 研究进度指示器 -->
             <div v-if="msg.active && currentPhase > 0" class="px-4 pt-3 pb-1">
               <div class="flex items-center gap-3">
@@ -105,6 +119,15 @@
                 <!-- 搜索方向卡片 -->
                 <div v-if="s.items && s.items.length" class="ml-6 mt-1 flex flex-wrap gap-1">
                   <span v-for="(item, j) in s.items" :key="j" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">{{ item }}</span>
+                </div>
+                <!-- 子任务卡片（Orchestrator-Worker 规划） -->
+                <div v-if="s.subtasks && s.subtasks.length" class="ml-6 mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  <div v-for="(st, si) in s.subtasks" :key="si" class="px-2.5 py-1.5 rounded-lg bg-purple-50 border border-purple-100">
+                    <p class="text-[10px] font-medium text-purple-700 truncate">{{ st.subtask }}</p>
+                    <div class="mt-0.5 flex flex-wrap gap-1">
+                      <span v-for="(query, qi) in st.queries" :key="qi" class="text-[9px] px-1 py-px rounded bg-white text-gray-500 border border-gray-100">{{ query }}</span>
+                    </div>
+                  </div>
                 </div>
                 <!-- 审查意见（红色警告） -->
                 <div v-if="s.detail" class="ml-6 mt-1 px-2.5 py-1.5 rounded-lg text-[10px] leading-relaxed" :class="s.detail.includes('审查') ? 'bg-red-50 text-red-600 border border-red-100' : 'text-gray-400'">
@@ -176,6 +199,17 @@
             </div>
           </div>
 
+          <!-- 澄清消息 -->
+          <div v-else-if="msg.type === 'clarify'" class="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 shadow-sm">
+            <div class="flex items-start gap-2">
+              <span class="text-sm mt-0.5">🤔</span>
+              <div>
+                <p class="text-[10px] font-medium text-amber-600 mb-1">需要澄清</p>
+                <p class="text-sm text-amber-800 leading-relaxed">{{ msg.content }}</p>
+              </div>
+            </div>
+          </div>
+
           <!-- 错误消息 -->
           <div v-else-if="msg.type === 'error'" class="bg-red-50 border border-red-100 rounded-2xl px-4 py-3 shadow-sm">
             <div class="flex items-center gap-2">
@@ -217,6 +251,20 @@ const phaseText = computed(() => {
     const t = { 0: '准备中...', 1: '搜索中', 2: '分析中', 3: '撰写中', 4: '完成' };
     return t[currentPhase.value] || '';
 });
+
+// 意图徽章
+const intentLabel = (i) => ({
+    research: '深度调研', chat: '对话', sql: 'SQL', tool_call: '工具调用',
+    refine: '报告修订', clarify: '需澄清',
+}[i] || i);
+const intentBadgeClass = (i) => ({
+    research: 'bg-blue-50 text-blue-600 border border-blue-100',
+    chat: 'bg-gray-100 text-gray-600 border border-gray-100',
+    sql: 'bg-cyan-50 text-cyan-600 border border-cyan-100',
+    tool_call: 'bg-amber-50 text-amber-600 border border-amber-100',
+    refine: 'bg-purple-50 text-purple-600 border border-purple-100',
+    clarify: 'bg-red-50 text-red-600 border border-red-100',
+}[i] || 'bg-gray-100 text-gray-600 border border-gray-100');
 
 // 阶段计时
 const phaseTimestamps = ref({});
