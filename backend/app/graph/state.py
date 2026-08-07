@@ -31,6 +31,8 @@ class AgentState(TypedDict):
     plan_structure: list
     # research_findings: Researcher 按子任务分组的结构化检索结果，供 Synthesize 节点汇总
     research_findings: list
+    # search_error: 所有网络搜索均因基础设施原因失败（API key 失效/网络/配额）时为 True
+    search_error: bool
     # synthesis: Planner 拆解 -> Researcher 并行检索 -> Synthesize 汇总后的关键发现摘要
     synthesis: str
 

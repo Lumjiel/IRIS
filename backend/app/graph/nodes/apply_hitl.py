@@ -34,6 +34,9 @@ def apply_hitl_node(state: AgentState) -> dict:
     }
     if final:
         result["review_status"] = "PASS"
+        # 把已有报告发回给前端展示（本次 run 不产生新报告）
+        result["final_report"] = state.get("final_report", "")
+        result["grounded"] = state.get("grounded", True)
         log.info("用户选择定稿，保留当前报告")
     else:
         log.info("用户选择重规划，回 planner 重新调研")

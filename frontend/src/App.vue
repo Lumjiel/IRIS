@@ -1,5 +1,17 @@
 <template>
-  <div class="h-screen flex bg-gray-50 overflow-hidden">
+  <!-- 账号管理独立页面 -->
+  <AccountPage v-if="page === 'account'"
+    :uploadedFiles="chat.uploadedFiles.value"
+    :materials="materials"
+    @back="page = 'chat'"
+    @fileSelect="(e) => chat.handleFileSelect(e, showToast)"
+    @loadMaterials="loadMaterials"
+    @viewMaterial="viewMaterial"
+    @deleteMaterial="deleteMaterialItem"
+  />
+
+  <!-- 对话主界面 -->
+  <div v-else class="h-screen flex bg-gray-50 overflow-hidden">
     <ChatSidebar
       :sidebarOpen="sidebarOpen"
       :uploadedFiles="chat.uploadedFiles.value"
@@ -14,6 +26,7 @@
       @viewMaterial="viewMaterial"
       @deleteMaterial="deleteMaterialItem"
       @viewHistory="chat.viewHistory"
+      @openAccount="page = 'account'"
     />
 
     <div class="flex-1 flex flex-col min-w-0">
@@ -38,7 +51,7 @@
         @ttsReport="chat.ttsReport"
         @useSkill="(skill) => { chat.activeSkill.value = skill.name; chat.query.value = ''; }"
         @switchTab="(tab) => { sidebarOpen = true; }"
-        @sendHitlChoice="(choice) => chat.sendHitlChoice(choice)"
+        @sendHitlChoice="(choice, direction) => chat.sendHitlChoice(choice, direction)"
       />
 
       <ChatInput
@@ -75,8 +88,10 @@ import ChatSidebar from './components/ChatSidebar.vue';
 import ChatHeader from './components/ChatHeader.vue';
 import ChatMessages from './components/ChatMessages.vue';
 import ChatInput from './components/ChatInput.vue';
+import AccountPage from './components/AccountPage.vue';
 
 const chatContainer = ref(null);
+const page = ref('chat');  // 'chat' | 'account'
 const chat = useChat(chatContainer);
 
 const sidebarOpen = ref(false);

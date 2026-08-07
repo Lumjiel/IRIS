@@ -8,31 +8,14 @@
       <h2 class="text-lg font-semibold text-gray-800 mb-1">有什么想调研的？</h2>
       <p class="text-sm text-gray-400 mb-6">输入主题开始深度调研，或试试下方灵感</p>
 
-      <!-- Skill 快捷入口 -->
-      <div v-if="skills && skills.length > 0" class="w-full max-w-xl mb-6">
-        <div class="flex items-center gap-2 mb-3">
-          <div class="w-5 h-5 rounded-lg bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-          </div>
-          <span class="text-sm font-semibold text-gray-700">快捷技能</span>
-          <button @click="$emit('switchTab', 'skills')" class="text-[11px] text-gray-400 hover:text-blue-500 transition-colors ml-auto">查看全部</button>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <button v-for="skill in skills.slice(0, 4)" :key="skill.name" @click="$emit('useSkill', skill)" class="group px-3 py-2 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-md hover:shadow-blue-50 transition-all duration-200 text-left max-w-[200px]">
-            <p class="text-[11px] font-medium text-gray-700 group-hover:text-blue-600 transition-colors truncate">{{ skill.name }}</p>
-            <p class="text-[10px] text-gray-400 mt-0.5 truncate">{{ skill.description || '自定义技能' }}</p>
-          </button>
-        </div>
-      </div>
-
-      <!-- 推文灵感 -->
+      <!-- 最近新闻 -->
       <div class="w-full max-w-xl">
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-2">
             <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
             </div>
-            <span class="text-sm font-semibold text-gray-700">推文灵感</span>
+            <span class="text-sm font-semibold text-gray-700">最近新闻</span>
           </div>
           <button @click="$emit('loadAiNews')" class="text-[11px] text-gray-400 hover:text-blue-500 transition-colors">换一批</button>
         </div>
@@ -136,10 +119,16 @@
               </div>
             </div>
             <div v-if="msg.streamText" class="px-4 pb-3 pt-1">
-              <div class="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line border-l-2 border-blue-200 pl-3">{{ msg.streamText }}</div>
+              <div class="prose prose-sm max-w-none leading-relaxed" v-html="renderMarkdown(msg.streamText)"></div>
+              <span v-if="msg.active" class="inline-block w-2 h-4 bg-blue-500 align-middle rounded-[1px] stream-cursor"></span>
             </div>
-            <div v-if="msg.active" class="px-4 pb-3">
-              <span class="inline-block w-0.5 h-4 bg-blue-500 animate-pulse align-middle"></span>
+            <div v-else-if="msg.active" class="px-4 pb-3 flex items-center gap-1.5">
+              <span class="flex gap-0.5">
+                <span class="w-1 h-1 rounded-full bg-blue-400 animate-bounce" style="animation-delay:0ms"></span>
+                <span class="w-1 h-1 rounded-full bg-blue-400 animate-bounce" style="animation-delay:150ms"></span>
+                <span class="w-1 h-1 rounded-full bg-blue-400 animate-bounce" style="animation-delay:300ms"></span>
+              </span>
+              <span class="text-[11px] text-gray-400">{{ phaseText || '思考中...' }}</span>
             </div>
           </div>
 
@@ -155,8 +144,8 @@
               <div class="flex items-center gap-1">
                 <button @click="$emit('copyReport', msg)" class="text-[10px] text-gray-400 hover:text-blue-500 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">📋 复制</button>
                 <button @click="$emit('downloadReport', msg)" class="text-[10px] text-gray-400 hover:text-purple-500 px-2 py-1 rounded-lg hover:bg-purple-50 transition-colors">⬇️ 下载</button>
+                <button @click="$emit('downloadPdf', msg)" class="text-[10px] text-gray-400 hover:text-red-500 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">📥 PDF</button>
                 <button @click="$emit('saveToLibrary', msg)" class="text-[10px] text-white bg-gradient-to-r from-blue-500 to-purple-500 px-2.5 py-1 rounded-full hover:shadow-md transition-all">💾 保存素材库</button>
-                <button @click="$emit('ttsReport', msg)" class="text-[10px] text-gray-400 hover:text-green-500 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors" :class="{ 'text-green-500 bg-green-50 animate-pulse': msg._ttsPlaying }">{{ msg._ttsPlaying ? '⏹️ 停止' : '🔊 朗读' }}</button>
               </div>
             </div>
 
@@ -189,14 +178,6 @@
             </div>
 
             <div class="prose prose-sm max-w-none p-5 leading-relaxed" v-html="renderMarkdown(msg.content)"></div>
-            <div class="px-5 pb-4 flex gap-2">
-              <button @click="$emit('copyReport', msg)" class="px-3 py-1.5 text-xs rounded-lg border border-gray-200 hover:bg-gray-50 flex items-center gap-1 text-gray-600 transition-colors">
-                📋 复制报告
-              </button>
-              <button @click="$emit('downloadPdf', msg)" class="px-3 py-1.5 text-xs rounded-lg border border-gray-200 hover:bg-gray-50 flex items-center gap-1 text-gray-600 transition-colors">
-                📥 下载 PDF
-              </button>
-            </div>
           </div>
 
           <!-- Human-in-the-loop 决策卡片 -->
@@ -211,7 +192,10 @@
             <div class="flex flex-wrap gap-2">
               <button @click="$emit('sendHitlChoice', '重试')" class="px-3 py-1.5 text-[11px] rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors">🔄 重试搜索</button>
               <button @click="$emit('sendHitlChoice', '就用当前内容定稿')" class="px-3 py-1.5 text-[11px] rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors">✅ 就用当前内容</button>
-              <button @click="$emit('sendHitlChoice', '换个方向')" class="px-3 py-1.5 text-[11px] rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors">🧭 换个方向</button>
+            </div>
+            <div class="mt-2 flex gap-2">
+              <input v-model="hitlDirection" @keyup.enter="sendRedirect" type="text" placeholder="输入新的调研方向..." class="flex-1 px-3 py-1.5 text-[11px] border border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-400" />
+              <button @click="sendRedirect" :disabled="!hitlDirection.trim()" class="px-3 py-1.5 text-[11px] rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors disabled:opacity-40">🧭 换方向</button>
             </div>
           </div>
 
@@ -255,7 +239,14 @@ const props = defineProps({
     skills: { type: Array, default: () => [] },
 });
 
-defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'downloadPdf', 'saveToLibrary', 'ttsReport', 'useSkill', 'switchTab', 'sendHitlChoice']);
+const hitlDirection = ref('');
+const sendRedirect = () => {
+    if (!hitlDirection.value.trim()) return;
+    emit('sendHitlChoice', 'redirect', hitlDirection.value.trim());
+    hitlDirection.value = '';
+};
+
+const emit = defineEmits(['loadAiNews', 'useAiNews', 'copyReport', 'downloadReport', 'downloadPdf', 'saveToLibrary', 'ttsReport', 'useSkill', 'switchTab', 'sendHitlChoice']);
 
 // 研究进度阶段
 const activeStreamMsg = computed(() => {
@@ -335,6 +326,12 @@ const catLabel = (cat) => {
 </script>
 
 <style scoped>
+@keyframes streamCursorBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.stream-cursor { animation: streamCursorBlink 1s step-end infinite; }
+
 .slide-enter-active, .slide-leave-active { transition: all 0.2s ease; overflow: hidden; }
 .slide-enter-from, .slide-leave-to { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; }
 .slide-enter-to, .slide-leave-from { max-height: 300px; opacity: 1; }
@@ -365,11 +362,49 @@ const catLabel = (cat) => {
 :deep(.prose pre) {
   background: #1e293b;
   color: #e2e8f0;
-  border-radius: 0.5rem;
+  border-radius: 0 0.5rem 0.5rem 0.5rem;
   padding: 1rem;
   overflow-x: auto;
   font-size: 0.8125rem;
   line-height: 1.6;
+  margin-top: 0;
+}
+:deep(.code-block) {
+  margin: 1rem 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid #1e293b;
+}
+:deep(.code-block-header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0f172a;
+  padding: 0.375rem 0.75rem;
+}
+:deep(.code-block-lang) {
+  font-size: 0.6875rem;
+  color: #94a3b8;
+  font-family: ui-monospace, monospace;
+}
+:deep(.code-block-copy) {
+  font-size: 0.6875rem;
+  color: #94a3b8;
+  background: transparent;
+  border: 1px solid #334155;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+:deep(.code-block-copy:hover) {
+  color: #e2e8f0;
+  border-color: #64748b;
+  background: #1e293b;
+}
+:deep(.code-block pre) {
+  border-radius: 0;
+  margin: 0;
 }
 :deep(.prose code) {
   font-size: 0.8125rem;
@@ -392,6 +427,19 @@ const catLabel = (cat) => {
 :deep(.prose sup) {
   color: #6366f1;
   font-weight: 600;
+}
+:deep(.citation-ref) {
+  color: #6366f1;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dashed #c7d2fe;
+  padding: 0 1px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+:deep(.citation-ref:hover) {
+  color: #4338ca;
+  border-bottom-color: #6366f1;
 }
 :deep(.prose hr) {
   border: none;

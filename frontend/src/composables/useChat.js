@@ -135,6 +135,16 @@ export function useChat(chatContainer) {
                     return;
                 }
 
+                // 闲聊 / SQL / 修订等非研究型回答：显示为普通文本消息
+                if (data.step === 'chat' || data.step === 'sql') {
+                    finishStatuses(sMsg.id);
+                    msg.type = 'text';
+                    msg.content = data.data.final_report || '';
+                    msg.active = false;
+                    scrollToBottom();
+                    return;
+                }
+
                 // 意图澄清（clarify）
                 if (data.step === 'clarify_token') {
                     if (!data.data.final && data.data.token) {
@@ -254,6 +264,17 @@ export function useChat(chatContainer) {
                     msg.hitl = { question: data.data.hitl_question || msg.hitlText || '报告未通过审查' };
                     msg.active = false;
                     msg._hitlPending = true;
+                    return;
+                }
+                else if (data.step === 'apply_hitl') {
+                    // 定稿：显示已有报告；重试/换方向：继续流式研究
+                    if (data.data.hitl_mode === 'end' && data.data.final_report) {
+                        finishStatuses(sMsg.id);
+                        msg.type = 'report';
+                        msg.content = data.data.final_report;
+                        msg.active = false;
+                        scrollToBottom();
+                    }
                     return;
                 }
 
@@ -483,9 +504,9 @@ export function useChat(chatContainer) {
 
     const clearSkill = () => { activeSkill.value = ''; };
 
-    const sendHitlChoice = (choice) => {
+    const sendHitlChoice = (choice, direction = '') => {
         pendingHitlResponse.value = choice;
-        query.value = choice;
+        query.value = direction || choice;
         sendMessage(() => {});
     };
 
