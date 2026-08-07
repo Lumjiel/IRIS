@@ -2,9 +2,11 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from app.utils.llm import llm_invoke
 from app.utils.streaming import llm_stream_tokens, get_token_queue
-from app.utils.memory import update_conversation_summary, build_conversation_context
+from app.utils.memory import build_conversation_context
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
+from app.memory.extractor import extract_memories
+from app.utils.citations import CitationFormatter
 
 log = get_logger("writer")
 
@@ -41,7 +43,10 @@ WRITE_PROMPT = ChatPromptTemplate.from_template(
 async def write_node(state: AgentState):
     log.info("正在撰写报告")
     query = state["query"]
-    content = "\n\n".join(state["search_results"])
+    # 优先使用 Synthesize 节点汇总后的结构化发现，避免被原始片段淹没
+    synthesis = state.get("synthesis", "")
+    raw_results = "\n\n".join(state.get("search_results", []))
+    content = synthesis if synthesis.strip() else raw_results
 
     critique = state.get("critique", "")
     critique_section = ""
@@ -86,13 +91,32 @@ async def write_node(state: AgentState):
         log.warning("LLM 返回空报告，生成兜底内容")
         report = f"## {query}\n\n基于现有信息，关于「{query}」的研究报告暂时无法完整生成。建议稍后重试或调整研究方向。"
 
-    # 更新对话摘要（增量追加本轮，含搜索方向供 planner 避免重复）
-    new_summary = update_conversation_summary(
-        old_summary=state.get("conversation_summary", ""),
-        query=query,
-        report=report,
-        critique=critique,
-        search_directions=state.get("plan", []),
-    )
+    # 追加引用标注和参考文献列表（跨轮持久化）
+    citation_fmt = CitationFormatter()
+    existing_refs = state.get("citation_refs", "")
+    if existing_refs:
+        for line in existing_refs.split("\n"):
+            line = line.strip()
+            if line and line.startswith("[") and "]" in line:
+                idx_end = line.index("]")
+                title_part = line[idx_end+1:].strip()
+                citation_fmt.add_source(url="", title=title_part, snippet="")
+    for src in state.get("search_sources", []):
+        citation_fmt.add_source_from_search_result(src)
+    references = citation_fmt.format_references()
+    if references:
+        report = report + references
 
-    return {"final_report": report, "conversation_summary": new_summary}
+    thread_id = state.get("thread_id") or state.get("preferences", {}).get("thread_id")
+    try:
+        extract_memories(
+            query=query,
+            plan=state.get("plan", []),
+            report=report,
+            thread_id=thread_id,
+            preferences=state.get("preferences"),
+        )
+    except Exception as e:
+        log.warning(f"记忆提取失败（不影响主流程）: {e}")
+
+    return {"final_report": report, "citation_refs": references}

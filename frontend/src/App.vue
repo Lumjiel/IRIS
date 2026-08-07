@@ -6,38 +6,38 @@
       :materials="materials"
       :history="chat.history.value"
       :activeHistoryId="chat.activeHistoryId.value"
-      :memoryTurns="memoryTurns"
+      :stats="chat.stats.value"
+      :avgTime="chat.avgTime.value"
       @newChat="chat.newChat"
       @fileSelect="(e) => chat.handleFileSelect(e, showToast)"
       @loadMaterials="loadMaterials"
       @viewMaterial="viewMaterial"
       @deleteMaterial="deleteMaterialItem"
       @viewHistory="chat.viewHistory"
-      @clearMemory="clearMemory"
     />
 
     <div class="flex-1 flex flex-col min-w-0">
       <ChatHeader
         :currentQuery="chat.currentQuery.value"
         :isLoading="chat.isLoading.value"
-        :memoryTurns="memoryTurns"
-        :memorySummary="memorySummary"
-        :summaryLength="summaryLength"
-        :summaryMax="summaryMax"
+        :activeSkill="chat.activeSkill.value"
         @toggleSidebar="sidebarOpen = !sidebarOpen"
-        @resetMemory="resetMemory"
       />
 
       <ChatMessages
         :messages="chat.messages.value"
         :isLoading="chat.isLoading.value"
         :aiNews="aiNews"
+        :skills="sidebarSkills"
         @loadAiNews="loadAiNews"
         @useAiNews="(title) => { chat.query.value = title; }"
         @copyReport="chat.copyReport"
         @downloadReport="chat.downloadReport"
+        @downloadPdf="chat.downloadPdf"
         @saveToLibrary="(msg) => chat.saveToLibrary(msg, showToast)"
         @ttsReport="chat.ttsReport"
+        @useSkill="(skill) => { chat.activeSkill.value = skill.name; chat.query.value = ''; }"
+        @switchTab="(tab) => { sidebarOpen = true; }"
       />
 
       <ChatInput
@@ -45,7 +45,12 @@
         :isLoading="chat.isLoading.value"
         :uploadedFiles="chat.uploadedFiles.value"
         :searchMode="chat.searchMode.value"
+        :hasMessages="chat.messages.value.length > 0"
+        :skills="sidebarSkills"
+        :activeSkill="chat.activeSkill.value"
         @update:searchMode="(v) => chat.searchMode.value = v"
+        @selectSkill="(name) => chat.activeSkill.value = name"
+        @clearSkill="chat.clearSkill"
         @send="() => chat.sendMessage(showToast)"
         @stop="chat.stopResearch"
       />
@@ -61,8 +66,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
-import { fetchAihotNews, listMaterials, deleteMaterial, getMaterial, getMemory, resetMemory as apiResetMemory } from './services/api';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { fetchAihotNews, listMaterials, deleteMaterial, getMaterial, listSkills } from './services/api';
 import { getHistory } from './services/history';
 import { useChat } from './composables/useChat';
 import ChatSidebar from './components/ChatSidebar.vue';
@@ -76,10 +81,7 @@ const chat = useChat(chatContainer);
 const sidebarOpen = ref(false);
 const aiNews = ref([]);
 const materials = ref([]);
-const memoryTurns = ref(0);
-const memorySummary = ref('');
-const summaryLength = ref(0);
-const summaryMax = ref(2000);
+const sidebarSkills = ref([]);
 
 // === Toast ===
 const toastMsg = ref('');
@@ -90,6 +92,11 @@ const showToast = (msg, type = 'success') => {
     toastMsg.value = msg;
     toastType.value = type;
     toastTimer = setTimeout(() => { toastMsg.value = ''; }, 3000);
+};
+
+// === Skills ===
+const loadSkills = async () => {
+    try { const d = await listSkills(); sidebarSkills.value = d.skills || []; } catch { sidebarSkills.value = []; }
 };
 
 // === AI 新闻 ===
@@ -129,51 +136,7 @@ const deleteMaterialItem = async (filename) => {
     } catch { showToast('删除失败', 'error'); }
 };
 
-// === 记忆管理 ===
-const loadMemory = async () => {
-    try {
-        const data = await getMemory(chat.getThreadId());
-        memoryTurns.value = data.turns || 0;
-        memorySummary.value = data.summary || '';
-        summaryLength.value = data.summary_length || 0;
-        summaryMax.value = data.summary_max || 2000;
-    } catch {
-        memoryTurns.value = 0;
-        memorySummary.value = '';
-        summaryLength.value = 0;
-    }
-};
-
-const resetMemory = async () => {
-    try {
-        await apiResetMemory(chat.getThreadId());
-        memoryTurns.value = 0;
-        memorySummary.value = '';
-        summaryLength.value = 0;
-        showToast('对话记忆已清空', 'success');
-    } catch {
-        showToast('清空记忆失败', 'error');
-    }
-};
-
-const clearMemory = async () => {
-    // 先用旧 thread_id 清理服务端摘要，再 newChat 生成新 ID
-    try { await apiResetMemory(chat.getThreadId()); } catch {}
-    chat.messages.value = [];
-    chat.currentQuery.value = '';
-    chat.newChat();
-    memoryTurns.value = 0;
-    memorySummary.value = '';
-    summaryLength.value = 0;
-    showToast('对话记忆已清除', 'success');
-};
-
 // === 生命周期 ===
-// 调研完成后自动刷新记忆状态
-watch(() => chat.isLoading.value, (loading, prev) => {
-    if (prev && !loading) loadMemory();
-});
-
 const handleKeydown = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -184,9 +147,7 @@ const handleKeydown = (e) => {
 onMounted(() => {
     chat.history.value = getHistory();
     loadAiNews();
-    loadMemory();
-    // 不再自动恢复旧 session — 始终从首页开始
-    // 旧会话可通过侧栏「历史」手动恢复
+    loadSkills();
     document.addEventListener('keydown', handleKeydown);
 });
 

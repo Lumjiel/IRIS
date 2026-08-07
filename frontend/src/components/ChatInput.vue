@@ -1,6 +1,15 @@
 <template>
   <div class="border-t border-gray-200 bg-white px-4 py-3 shrink-0">
     <div class="max-w-3xl mx-auto">
+      <!-- 示例建议 -->
+      <div v-if="!hasMessages" class="flex flex-wrap gap-2 mb-3">
+        <span class="text-xs text-gray-400">💡 试试：</span>
+        <button v-for="example in examples" :key="example"
+          @click="$emit('update:modelValue', example)"
+          class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+          {{ example }}
+        </button>
+      </div>
       <!-- 文件信息 + 搜索模式 -->
       <div v-if="uploadedFiles.length > 0" class="flex items-center gap-2 mb-2 px-1">
         <div class="flex items-center gap-1.5 text-[11px] text-gray-500">
@@ -11,6 +20,25 @@
           <button @click="$emit('update:searchMode', 'hybrid')" class="px-2.5 py-0.5 rounded-full text-[10px] font-medium transition-colors" :class="searchMode === 'hybrid' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-400 hover:text-gray-600'">混合</button>
           <button @click="$emit('update:searchMode', 'document')" class="px-2.5 py-0.5 rounded-full text-[10px] font-medium transition-colors" :class="searchMode === 'document' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400 hover:text-gray-600'">仅文档</button>
         </div>
+      </div>
+      <!-- Skill 选择器 -->
+      <div class="flex items-center gap-2 mb-2 px-1 min-h-[24px]">
+        <span class="text-[10px] text-gray-400 shrink-0">🧩 Skill</span>
+        <div v-if="activeSkill" class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200">
+          <span class="text-[11px] font-medium text-indigo-600">{{ activeSkill }}</span>
+          <button @click="$emit('clearSkill')" class="text-indigo-300 hover:text-indigo-600 text-[10px] leading-none">✕</button>
+        </div>
+        <button v-else @click="skillOpen = !skillOpen" class="px-2 py-0.5 rounded-full text-[10px] bg-gray-100 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 border border-transparent transition-colors">
+          {{ skillOpen ? '收起' : '+ 指定' }}
+        </button>
+        <Transition name="fade">
+          <div v-if="skillOpen" class="flex flex-wrap gap-1">
+            <button v-for="s in skills" :key="s.name" @click="pickSkill(s.name)"
+              class="px-2 py-0.5 rounded-full text-[10px] bg-white border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
+              {{ s.name }}
+            </button>
+          </div>
+        </Transition>
       </div>
       <!-- 输入框 -->
       <div class="flex items-end gap-2 bg-gray-50 rounded-2xl border border-gray-200 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 transition-all px-4 py-2">
@@ -53,11 +81,26 @@ defineProps({
     isLoading: Boolean,
     uploadedFiles: { type: Array, default: () => [] },
     searchMode: { type: String, default: 'hybrid' },
+    hasMessages: Boolean,
+    skills: { type: Array, default: () => [] },
+    activeSkill: { type: String, default: '' },
 });
 
-defineEmits(['update:modelValue', 'update:searchMode', 'send', 'stop']);
+const emit = defineEmits(['update:modelValue', 'update:searchMode', 'send', 'stop', 'selectSkill', 'clearSkill']);
 
 const inputBox = ref(null);
+const skillOpen = ref(false);
+const pickSkill = (name) => {
+    emit('selectSkill', name);
+    skillOpen.value = false;
+};
+
+const examples = [
+    '公众号如何写爆款文章',
+    'React vs Vue 技术选型',
+    '2026年AI行业趋势分析',
+    '数据库选型：PostgreSQL vs MySQL',
+];
 
 const autoResize = (e) => {
     const el = (e && e.target) || inputBox.value;

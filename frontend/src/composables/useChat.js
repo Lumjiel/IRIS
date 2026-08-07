@@ -1,7 +1,8 @@
 import { ref, nextTick } from 'vue';
-import { uploadFiles, streamChat, clearContext, saveReport, ttsSynthesize } from '../services/api';
+import { uploadFiles, streamChat, clearContext, saveReport, ttsSynthesize, exportPdf } from '../services/api';
 import { getHistory, saveSession } from '../services/history';
 import { getThreadId, setThreadId, newThreadId } from '../services/api';
+import { useStats } from './useStats';
 
 export function useChat(chatContainer) {
     const query = ref('');
@@ -12,9 +13,12 @@ export function useChat(chatContainer) {
     const uploadedFiles = ref([]);
     const history = ref([]);
     const activeHistoryId = ref(null);
+    const activeSkill = ref('');
 
+    const { stats, avgTime, recordResearch } = useStats();
     let currentAbortController = null;
     let msgIdCounter = 0;
+    let streamStartTime = 0;
 
     const getMsgById = (id) => messages.value.find(m => m.id === id);
 
@@ -69,6 +73,7 @@ export function useChat(chatContainer) {
         isLoading.value = true;
         activeHistoryId.value = null;
         currentAbortController = new AbortController();
+        streamStartTime = Date.now();
 
         if (uploadedFiles.value.length > 0) {
             try { await uploadFiles(uploadedFiles.value); } catch (e) {
@@ -85,6 +90,8 @@ export function useChat(chatContainer) {
             streamText: '',
             active: true,
             rounds: [],  // 研究轨迹：每轮的搜索方向
+            currentPhase: 0,  // 研究进度阶段：0=准备 1=搜索 2=分析 3=撰写 4=完成
+            intent: '', intentConfidence: null, entities: [], toolTrace: [],
         });
         let round = 0;
 
@@ -93,6 +100,62 @@ export function useChat(chatContainer) {
             (data) => {
                 const msg = getMsgById(sMsg.id);
                 if (!msg) return;
+
+                // 意图识别结果（router 节点）
+                if (data.step === 'router') {
+                    msg.intent = data.data.intent || '';
+                    msg.intentConfidence = data.data.intent_confidence ?? null;
+                    msg.entities = data.data.entities || [];
+                    if (data.data.active_skill) activeSkill.value = data.data.active_skill;
+                    return;
+                }
+
+                // ReAct 工具调用轨迹
+                if (data.step === 'tool_call') {
+                    if (data.data.tool_call_request) {
+                        const t = data.data.tool_call_request;
+                        msg.toolTrace.push({ tool: t.tool, arguments: t.arguments, status: 'calling' });
+                        if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                        msg.statuses.push({ text: `正在调用工具 ${t.tool}...`, active: true });
+                        msg.currentPhase = 2;
+                    } else {
+                        if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                        msg.statuses.push({ text: '工具结果已整合，生成回答 ✓', active: false });
+                        finishStatuses(sMsg.id);
+                        msg.type = 'report';
+                        msg.content = msg.streamText || data.data.final_report || '';
+                        msg.active = false;
+                    }
+                    return;
+                }
+                if (data.step === 'tool_execute') {
+                    const last = msg.toolTrace[msg.toolTrace.length - 1];
+                    if (last) { last.status = 'done'; }
+                    return;
+                }
+
+                // 意图澄清（clarify）
+                if (data.step === 'clarify_token') {
+                    if (!data.data.final && data.data.token) {
+                        msg.streamText += data.data.token;
+                        scrollToBottom();
+                    }
+                    return;
+                }
+                if (data.step === 'clarify') {
+                    finishStatuses(sMsg.id);
+                    msg.type = 'clarify';
+                    msg.content = msg.streamText || data.data.clarify_question || '';
+                    msg.active = false;
+                    return;
+                }
+
+                // 汇总节点
+                if (data.step === 'synthesize') {
+                    if (msg.statuses) msg.statuses.forEach(s => s.active = false);
+                    msg.statuses.push({ text: '正在汇总检索结果...', active: true });
+                    return;
+                }
 
                 if (data.step === 'planner_token') {
                     if (!data.data.final && data.data.token) {
@@ -117,20 +180,26 @@ export function useChat(chatContainer) {
 
                 if (data.step === 'planner') {
                     round++;
+                    msg.currentPhase = 1;
                     const plans = data.data.plan || [];
+                    const subtasks = data.data.plan_structure || [];
                     const status = {
                         text: `第 ${round} 轮 · 拆解了 ${plans.length} 个搜索方向`,
                         active: true,
                         items: plans,
+                        subtasks: subtasks,
                     };
                     if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                     msg.statuses.push(status);
+                    // 记录子任务（供卡片展示）
+                    msg.subtasks = subtasks;
                     msg.streamText = '';
                     // 记录研究轨迹
                     msg.rounds.push({ number: round, directions: plans });
                     scrollToBottom();
                 }
                 else if (data.step === 'researcher') {
+                    msg.currentPhase = 2;
                     const results = data.data.search_results || [];
                     const sources = results.map(r => {
                         const m = r.match(/### .+?[（(]([^)）]+)[)）]/) || r.match(/### (.+)/);
@@ -146,6 +215,7 @@ export function useChat(chatContainer) {
                     scrollToBottom();
                 }
                 else if (data.step === 'writer') {
+                    msg.currentPhase = 3;
                     if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                     msg.statuses.push({ text: '正在撰写报告...', active: true });
                     if (data.data.final_report) msg.streamText = data.data.final_report;
@@ -165,6 +235,7 @@ export function useChat(chatContainer) {
                         if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                         msg.statuses.push({ text: '审查通过，报告完成 ✓', active: false });
                         finishStatuses(sMsg.id);
+                        msg.currentPhase = 4;
                         msg.type = 'report';
                         msg.content = msg.streamText || '';
                         msg.active = false;
@@ -172,6 +243,7 @@ export function useChat(chatContainer) {
                     scrollToBottom();
                 }
                 else if (data.step === 'refiner') {
+                    msg.currentPhase = 4;
                     if (msg.statuses) msg.statuses.forEach(s => s.active = false);
                     msg.statuses.push({ text: '修订完成 ✓', active: false });
                     finishStatuses(sMsg.id);
@@ -190,9 +262,14 @@ export function useChat(chatContainer) {
                     msg.active = false;
                     scrollToBottom();
                 }
+                // 跟踪激活的 Skill
+                if (data.data?.active_skill !== undefined) {
+                    activeSkill.value = data.data.active_skill || '';
+                }
             },
             () => {
                 isLoading.value = false;
+                const durationSeconds = Math.round((Date.now() - streamStartTime) / 1000);
                 const msg = getMsgById(sMsg.id);
                 if (msg) {
                     finishStatuses(sMsg.id);
@@ -209,6 +286,10 @@ export function useChat(chatContainer) {
                     }
                 }
                 const finalReport = msg?.streamText || msg?.content || '';
+                if (msg?.type === 'report' && finalReport) {
+                    const sourceMatches = finalReport.match(/\[\d+\]/g);
+                    recordResearch(durationSeconds, sourceMatches ? sourceMatches.length : 0);
+                }
                 if (currentQuery.value) {
                     saveSession({
                         query: currentQuery.value,
@@ -241,7 +322,8 @@ export function useChat(chatContainer) {
                     history.value = getHistory();
                 }
             },
-            currentAbortController?.signal
+            currentAbortController?.signal,
+            activeSkill.value,
         );
     };
 
@@ -287,6 +369,20 @@ export function useChat(chatContainer) {
         a.download = `IRIS-${currentQuery.value || 'report'}.md`;
         a.click();
         URL.revokeObjectURL(url);
+    };
+
+    const downloadPdf = async (msg) => {
+        try {
+            const blob = await exportPdf(msg.content, currentQuery.value || 'report');
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `IRIS-${currentQuery.value || 'report'}.pdf`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error('PDF export failed:', e);
+        }
     };
 
     const saveToLibrary = async (msg, showToast) => {
@@ -361,17 +457,21 @@ export function useChat(chatContainer) {
         messages.value = [];
         currentQuery.value = '';
         activeHistoryId.value = null;
+        activeSkill.value = '';
         if (isLoading.value) stopResearch();
         newThreadId();
         try { clearContext(); } catch {}
     };
 
+    const clearSkill = () => { activeSkill.value = ''; };
+
     return {
         query, messages, isLoading, currentQuery, searchMode,
-        uploadedFiles, history, activeHistoryId,
+        uploadedFiles, history, activeHistoryId, activeSkill,
+        stats, avgTime,
         addMessage, scrollToBottom, handleFileSelect,
-        sendMessage, stopResearch, copyReport, downloadReport,
-        saveToLibrary, ttsReport, viewHistory, newChat,
+        sendMessage, stopResearch, copyReport, downloadReport, downloadPdf,
+        saveToLibrary, ttsReport, viewHistory, newChat, clearSkill,
         getHistory, getThreadId,
     };
 }

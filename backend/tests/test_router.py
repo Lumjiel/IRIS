@@ -40,54 +40,92 @@ class TestLooksLikeRefine:
         assert looks_like_refine("请帮我修改一下格式") is True
 
 
-class TestRouteQuery:
-    """route_query 节点测试（mock LLM）。"""
+class TestRouteNode:
+    """route_node 节点测试（mock LLM）：返回写回 state 的意图结果。"""
 
-    def test_no_report_always_planner(self, sample_state):
-        from app.graph.nodes.router import route_query
+    def _patch_classify(self, payload):
+        return patch(
+            "app.graph.nodes.router._llm_classify",
+            return_value=payload,
+        )
+
+    @patch("app.graph.nodes.router.route_skill", return_value="")
+    @patch("app.graph.nodes.router._list_skills", return_value=[])
+    def test_chat_intent(self, mock_skills, mock_skill, sample_state):
+        from app.graph.nodes.router import route_node
+        with self._patch_classify({"intent": "chat", "confidence": 0.9, "is_followup": False, "entities": [], "skill": ""}):
+            result = route_node(sample_state)
+        assert result["intent"] == "chat"
+        assert result["active_skill"] == ""
+
+    @patch("app.graph.nodes.router.route_skill", return_value="")
+    @patch("app.graph.nodes.router._list_skills", return_value=[{"name": "content_research", "description": "公众号内容调研"}])
+    def test_research_with_skill(self, mock_skills, mock_skill, sample_state):
+        from app.graph.nodes.router import route_node
+        with self._patch_classify({"intent": "research", "confidence": 0.95, "is_followup": False, "entities": ["量子计算"], "skill": "content_research"}):
+            result = route_node(sample_state)
+        assert result["intent"] == "research"
+        assert result["active_skill"] == "content_research"
+
+    @patch("app.graph.nodes.router.route_skill", return_value="")
+    @patch("app.graph.nodes.router._list_skills", return_value=[])
+    def test_refine_invalid_without_report(self, mock_skills, mock_skill, sample_state):
+        """无报告时 LLM 说 refine 也应被强制为 research。"""
+        from app.graph.nodes.router import route_node
         sample_state["final_report"] = ""
-        result = route_query(sample_state)
-        assert result == "planner"
+        with self._patch_classify({"intent": "refine", "confidence": 0.9, "is_followup": True, "entities": [], "skill": ""}):
+            result = route_node(sample_state)
+        assert result["intent"] == "research"
 
-    def test_missing_report_always_planner(self, sample_state):
-        from app.graph.nodes.router import route_query
-        sample_state.pop("final_report", None)
-        result = route_query(sample_state)
-        assert result == "planner"
+    @patch("app.graph.nodes.router.route_skill", return_value="")
+    @patch("app.graph.nodes.router._list_skills", return_value=[])
+    def test_llm_failure_fallback_research(self, mock_skills, mock_skill, sample_state):
+        """LLM 分类失败（返回 None）时，带调研关键词回退到 research。"""
+        from app.graph.nodes.router import route_node
+        sample_state["query"] = "帮我调研量子计算"
+        with patch("app.graph.nodes.router._llm_classify", return_value=None):
+            result = route_node(sample_state)
+        assert result["intent"] == "research"
+        assert result["active_skill"] == ""  # bigram 未匹配到 skill
 
-    @patch("app.graph.nodes.router.llm_invoke")
-    def test_llm_returns_refine(self, mock_llm, sample_state):
-        from app.graph.nodes.router import route_query
-        sample_state["final_report"] = "这是一份报告"
-        mock_llm.return_value = MagicMock(content="REFINE")
-        result = route_query(sample_state)
-        assert result == "refiner"
+    @patch("app.graph.nodes.router.route_skill", return_value="")
+    @patch("app.graph.nodes.router._list_skills", return_value=[])
+    def test_clarify_when_vague(self, mock_skills, mock_skill, sample_state):
+        """低置信度且无明显信号时回退到 clarify 而非默认 research。"""
+        from app.graph.nodes.router import route_node
+        sample_state["query"] = "xxx"
+        with self._patch_classify({"intent": "clarify", "confidence": 0.2, "is_followup": False, "entities": [], "skill": ""}):
+            result = route_node(sample_state)
+        assert result["intent"] == "clarify"
 
-    @patch("app.graph.nodes.router.llm_invoke")
-    def test_llm_returns_new_topic(self, mock_llm, sample_state):
-        from app.graph.nodes.router import route_query
-        sample_state["final_report"] = "这是一份报告"
-        mock_llm.return_value = MagicMock(content="NEW_TOPIC")
-        result = route_query(sample_state)
-        assert result == "planner"
 
-    @patch("app.graph.nodes.router.llm_invoke")
-    def test_llm_garbage_output_fallback_to_refine(self, mock_llm, sample_state):
-        from app.graph.nodes.router import route_query
-        sample_state["final_report"] = "这是一份报告"
-        sample_state["query"] = "帮我改一下标题"
-        mock_llm.return_value = MagicMock(content="maybe")
-        result = route_query(sample_state)
-        assert result == "refiner"
+class TestRouteIntent:
+    """route_intent 条件边函数测试：返回意图键，由图映射到节点。"""
 
-    @patch("app.graph.nodes.router.llm_invoke")
-    def test_llm_garbage_output_fallback_to_planner(self, mock_llm, sample_state):
-        from app.graph.nodes.router import route_query
-        sample_state["final_report"] = "这是一份报告"
-        sample_state["query"] = "量子计算的最新进展"
-        mock_llm.return_value = MagicMock(content="maybe")
-        result = route_query(sample_state)
-        assert result == "planner"
+    def test_research_key(self, sample_state):
+        from app.graph.nodes.router import route_intent
+        sample_state["intent"] = "research"
+        assert route_intent(sample_state) == "research"
+
+    def test_chat_key(self, sample_state):
+        from app.graph.nodes.router import route_intent
+        sample_state["intent"] = "chat"
+        assert route_intent(sample_state) == "chat"
+
+    def test_clarify_key(self, sample_state):
+        from app.graph.nodes.router import route_intent
+        sample_state["intent"] = "clarify"
+        assert route_intent(sample_state) == "clarify"
+
+    def test_refine_key(self, sample_state):
+        from app.graph.nodes.router import route_intent
+        sample_state["intent"] = "refine"
+        assert route_intent(sample_state) == "refine"
+
+    def test_unknown_fallback_to_research(self, sample_state):
+        from app.graph.nodes.router import route_intent
+        sample_state["intent"] = "garbage"
+        assert route_intent(sample_state) == "research"
 
 
 class TestIsVague:

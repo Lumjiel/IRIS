@@ -10,6 +10,10 @@ load_dotenv()
 LLM_TIMEOUT_FAST = int(os.getenv("LLM_TIMEOUT_FAST", "120"))
 LLM_TIMEOUT_SMART = int(os.getenv("LLM_TIMEOUT_SMART", "120"))
 MAX_REVISIONS = int(os.getenv("MAX_REVISIONS", "3"))
+# 单次研究请求的总超时（秒）——防止 reviewer 回跳等多轮链路无限挂起
+RESEARCH_TIMEOUT = int(os.getenv("RESEARCH_TIMEOUT", "300"))
+# ReAct 工具调用最大迭代轮数（每轮 = 决策 + 执行）
+MAX_TOOL_ITERATIONS = int(os.getenv("MAX_TOOL_ITERATIONS", "5"))
 
 # RAG
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
@@ -43,3 +47,12 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
 
 CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", os.path.join(DATA_DIR, "checkpoints.db"))
 STORE_DB = os.getenv("STORE_DB", os.path.join(DATA_DIR, "store.db"))
+MEMORY_DB = os.getenv("MEMORY_DB", os.path.join(DATA_DIR, "memory.db"))
+
+# Tools
+TOOLS_DIR = os.getenv("TOOLS_DIR", os.path.join(DATA_DIR, "tools"))
+
+# Skills（realpath 归一化——去掉 DATA_DIR 里的 ".."，否则 SkillRegistry 扫描会漏掉 user 目录的 skill）
+SKILLS_ROOT = os.path.realpath(os.getenv("SKILLS_ROOT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills")))
+SKILLS_BUILTIN_DIR = os.path.realpath(os.getenv("SKILLS_BUILTIN_DIR", os.path.join(SKILLS_ROOT, "builtin")))
+SKILLS_USER_DIR = os.path.realpath(os.getenv("SKILLS_USER_DIR", os.path.join(DATA_DIR, "skills")))

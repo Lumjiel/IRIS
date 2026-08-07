@@ -2,7 +2,7 @@ from langchain_core.messages import HumanMessage
 from app.graph.state import AgentState
 from app.utils.llm import llm_invoke
 from app.utils.streaming import llm_stream_tokens, get_token_queue
-from app.utils.memory import update_conversation_summary
+
 from app.utils.logger import get_logger
 
 log = get_logger("refiner")
@@ -67,15 +67,7 @@ async def refine_node(state: AgentState):
     if _is_vague(query):
         new_report = old_report + "\n\n---\n\n## 💬 AI 分析\n\n" + new_report
 
-    # 更新对话摘要，记录用户的修改指令
-    new_summary = update_conversation_summary(
-        old_summary=state.get("conversation_summary", ""),
-        query=query,
-        report=new_report,
-    )
-
     return {
         "final_report": new_report,
-        "conversation_summary": new_summary,
         "review_status": "PASS"
     }

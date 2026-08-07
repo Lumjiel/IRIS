@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
-from typing import List
+from typing import List, Optional
 from app.graph.graph import create_graph
 import json
 import asyncio
@@ -13,7 +13,7 @@ import shutil
 from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.utils.logger import get_logger
-from app.config import CHECKPOINT_MAX_AGE_DAYS, MAX_UPLOAD_FILES, MAX_FILE_SIZE_MB, CREATION_DIR, CHECKPOINT_DB, STORE_DB
+from app.config import CHECKPOINT_MAX_AGE_DAYS, MAX_UPLOAD_FILES, MAX_FILE_SIZE_MB, CREATION_DIR, CHECKPOINT_DB, STORE_DB, RESEARCH_TIMEOUT
 
 log = get_logger("routes")
 
@@ -161,6 +161,7 @@ class ChatRequest(BaseModel):
     thread_id: str
     style: str = "detailed"       # detailed / concise / formal / casual
     language: str = "zh"          # zh / en
+    active_skill: str = ""        # 用户强制指定使用的 Skill（覆盖自动匹配），空则自动
 
     @field_validator("query")
     @classmethod
@@ -254,6 +255,8 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 "critique": "",
                 "review_status": "PASS",
                 "should_stop": False,
+                "active_skill": request.active_skill,  # 用户强制指定或空（router 自动匹配）
+                "intent": "",  # 意图分类结果，由 router 填充
                 # final_report 不重置：router 需要判断是否有已有报告来决定路由
                 # conversation_summary 不重置：由 checkpoint 持久化，跨轮保持
             }
@@ -269,12 +272,24 @@ async def chat_endpoint(request: ChatRequest, req: Request):
 
                 graph_queue: asyncio.Queue = asyncio.Queue()
 
+                async def _consume_graph():
+                    """消费 app.astream 的所有事件并推入 graph_queue。"""
+                    async for event in app.astream(initial_state, config=config):
+                        for node_name, state_update in event.items():
+                            ev = json.dumps({"step": node_name, "data": state_update}, ensure_ascii=False)
+                            await graph_queue.put(ev)
+                    return True
+
                 async def _run_graph():
                     try:
-                        async for event in app.astream(initial_state, config=config):
-                            for node_name, state_update in event.items():
-                                ev = json.dumps({"step": node_name, "data": state_update}, ensure_ascii=False)
-                                await graph_queue.put(ev)
+                        # 总超时保护：多轮 reviewer 回跳等链路被硬性限制，防止无限挂起
+                        await asyncio.wait_for(_consume_graph(), timeout=RESEARCH_TIMEOUT)
+                    except asyncio.TimeoutError:
+                        log.error(f"研究请求超时（>{RESEARCH_TIMEOUT}s），强制终止")
+                        await graph_queue.put(json.dumps(
+                            {"step": "error", "data": {"message": f"研究超时（{RESEARCH_TIMEOUT} 秒），请精简问题或稍后重试"}},
+                            ensure_ascii=False,
+                        ))
                     except Exception as e:
                         log.error(f"Graph error: {type(e).__name__}: {e}", exc_info=True)
                         await graph_queue.put(json.dumps({"step": "error", "data": {"message": f"研究过程中发生错误: {type(e).__name__}: {e}"}}, ensure_ascii=False))
@@ -494,6 +509,71 @@ async def get_material(filename: str):
     return {"filename": filename, "content": content}
 
 
+# --- 四层记忆系统 API ---
+
+@router.get("/memory/search")
+async def search_memory(q: str = "", kind: str = None, limit: int = 10):
+    """搜索记忆库"""
+    from app.memory.extractor import search_memories
+    results = search_memories(query=q, kind=kind, limit=limit)
+    return {"results": results}
+
+
+@router.get("/memory/{memory_id}")
+async def get_memory_record(memory_id: str):
+    """获取单条记忆"""
+    from app.memory.store import MemoryStore
+    store = MemoryStore()
+    record = store.get(memory_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return record.to_dict()
+
+
+@router.delete("/memory/{memory_id}")
+async def delete_memory_record(memory_id: str):
+    """删除单条记忆"""
+    from app.memory.store import MemoryStore
+    store = MemoryStore()
+    deleted = store.delete(memory_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return {"status": "success"}
+
+
+class MemoryUpdateRequest(BaseModel):
+    content: Optional[str] = None
+    kind: Optional[str] = None
+
+
+@router.patch("/memory/{memory_id}")
+async def update_memory_record(memory_id: str, request: MemoryUpdateRequest):
+    """更新单条记忆"""
+    from app.memory.store import MemoryStore
+    store = MemoryStore()
+    record = store.update(memory_id, content=request.content, kind=request.kind)
+    if record is None:
+        raise HTTPException(status_code=404, detail="记忆不存在")
+    return {"status": "success", "memory": record.to_dict()}
+
+
+class MemoryCreateRequest(BaseModel):
+    content: str
+    kind: str = "episodic"  # episodic | semantic | procedural
+
+
+@router.post("/memory")
+async def create_memory(request: MemoryCreateRequest):
+    """手动创建记忆"""
+    from app.memory.store import MemoryStore
+    store = MemoryStore()
+    try:
+        record = store.add(kind=request.kind, content=request.content)
+        return {"status": "success", "memory": record.to_dict()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
+
+
 # --- TTS 语音合成（CosyVoice） ---
 class TTSRequest(BaseModel):
     text: str
@@ -532,3 +612,251 @@ async def text_to_speech(request: TTSRequest):
     except Exception as e:
         log.error(f"TTS 合成失败: {e}")
         raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")
+
+
+# --- Tool Registry API ---
+
+@router.get("/tools")
+async def list_tools():
+    """列出所有已注册的工具"""
+    from app.tools.registry import ToolRegistry
+    tools = ToolRegistry.list_all()
+    return {
+        "tools": [
+            {"name": t.name, "description": t.description, "parameters": t.parameters}
+            for t in tools
+        ]
+    }
+
+
+@router.get("/tools/{name}")
+async def get_tool(name: str):
+    """获取单个工具详情"""
+    from app.tools.registry import ToolRegistry
+    tool = ToolRegistry.get(name)
+    if tool is None:
+        raise HTTPException(status_code=404, detail=f"Tool '{name}' 不存在")
+    return {
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": tool.parameters,
+    }
+
+
+class ToolExecuteRequest(BaseModel):
+    query: str = ""
+
+@router.post("/tools/{name}/execute")
+async def execute_tool(name: str, request: ToolExecuteRequest = ToolExecuteRequest()):
+    """执行指定工具（调试用）"""
+    from app.tools.registry import ToolRegistry
+    tool = ToolRegistry.get(name)
+    if tool is None:
+        raise HTTPException(status_code=404, detail=f"Tool '{name}' 不存在")
+    try:
+        result = ToolRegistry.execute(name, query=request.query)
+        return {"status": "success", "result": str(result)}
+    except Exception as e:
+        log.error(f"工具执行失败 {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"执行失败: {str(e)}")
+
+
+# --- Skill 生命周期管理 ---
+
+class SkillCreateRequest(BaseModel):
+    name: str
+    description: str
+    prompt_template: str
+    tools: List[str] = []
+    memory_policy: str = "none"
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
+        if not v or not v.isalnum() and not all(c.isalnum() or c == "_" for c in v):
+            raise ValueError("Skill 名称只能包含字母、数字和下划线")
+        return v
+
+class SkillUpdateRequest(BaseModel):
+    description: str | None = None
+    prompt_template: str | None = None
+    tools: List[str] | None = None
+    memory_policy: str | None = None
+
+
+@router.get("/skills")
+async def list_skills():
+    """列出所有 Skill"""
+    from app.skills.lifecycle import list_skills as _list_skills
+    skills = _list_skills()
+    return {"skills": [s.to_dict() for s in skills]}
+
+
+@router.post("/skills")
+async def create_skill(request: SkillCreateRequest):
+    """创建新 Skill"""
+    from app.skills.lifecycle import create_skill as _create_skill
+    try:
+        skill = _create_skill(
+            name=request.name,
+            description=request.description,
+            prompt_template=request.prompt_template,
+            tools=request.tools,
+            memory_policy=request.memory_policy,
+        )
+        return {"status": "success", "skill": skill.to_dict()}
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        log.error(f"创建 Skill 失败: {e}")
+        raise HTTPException(status_code=500, detail="创建失败")
+
+
+@router.get("/skills/{name}")
+async def get_skill(name: str):
+    """获取单个 Skill 详情"""
+    from app.skills.lifecycle import get_skill as _get_skill
+    skill = _get_skill(name)
+    if skill is None:
+        raise HTTPException(status_code=404, detail=f"Skill '{name}' 不存在")
+    return {"skill": skill.to_dict()}
+
+
+@router.put("/skills/{name}")
+async def update_skill(name: str, request: SkillUpdateRequest):
+    """更新 Skill"""
+    from app.skills.lifecycle import update_skill as _update_skill
+    try:
+        kwargs = {k: v for k, v in request.model_dump().items() if v is not None}
+        skill = _update_skill(name, **kwargs)
+        if skill is None:
+            raise HTTPException(status_code=404, detail=f"Skill '{name}' 不存在")
+        return {"status": "success", "skill": skill.to_dict()}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        log.error(f"更新 Skill 失败: {e}")
+        raise HTTPException(status_code=500, detail="更新失败")
+
+
+@router.delete("/skills/{name}")
+async def delete_skill(name: str):
+    """删除 Skill（内置 Skill 返回 403）"""
+    from app.skills.lifecycle import delete_skill as _delete_skill
+    try:
+        ok = _delete_skill(name)
+        if not ok:
+            raise HTTPException(status_code=404, detail=f"Skill '{name}' 不存在")
+        return {"status": "success"}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        log.error(f"删除 Skill 失败: {e}")
+        raise HTTPException(status_code=500, detail="删除失败")
+
+
+@router.post("/skills/reload")
+async def reload_skills():
+    """重新扫描所有 Skill 目录（管理用）"""
+    from app.skills.lifecycle import reload_skills as _reload
+    count = _reload()
+    return {"status": "success", "count": count}
+
+
+# --- 导出功能 ---
+
+class ExportPDFRequest(BaseModel):
+    report: str
+    filename: str = "report"
+
+
+@router.post("/export/pdf")
+async def export_pdf(request: ExportPDFRequest):
+    """将报告导出为 PDF 文件"""
+    try:
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+
+        # 尝试加载中文字体
+        font_path = None
+        for candidate in [
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        ]:
+            if os.path.exists(candidate):
+                font_path = candidate
+                break
+
+        if font_path:
+            pdf.add_font("NotoSansCJK", "", font_path, uni=True)
+            pdf.set_font("NotoSansCJK", size=10)
+        else:
+            pdf.set_font("Helvetica", size=10)
+
+        # 逐行写入报告
+        for line in request.report.split("\n"):
+            pdf.cell(0, 7, txt=line, ln=True)
+
+        pdf_content = pdf.output()
+        from fastapi.responses import Response
+        return Response(
+            content=bytes(pdf_content),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{request.filename}.pdf"'},
+        )
+    except ImportError:
+        raise HTTPException(status_code=500, detail="fpdf2 未安装，请 pip install fpdf2")
+    except Exception as e:
+        log.error(f"PDF 导出失败: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF 导出失败: {str(e)}")
+
+
+class ExportHTMLRequest(BaseModel):
+    report: str
+
+
+@router.post("/export/html")
+async def export_html(request: ExportHTMLRequest):
+    """将报告导出为带样式的 HTML 页面"""
+    try:
+        html_content = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IRIS 调研报告</title>
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; }}
+h1 {{ color: #1a1a2e; border-bottom: 2px solid #e94560; padding-bottom: 10px; }}
+h2 {{ color: #16213e; }}
+h3 {{ color: #0f3460; }}
+pre {{ background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; }}
+code {{ background: #f0f0f0; padding: 2px 4px; border-radius: 3px; font-size: 0.9em; }}
+blockquote {{ border-left: 4px solid #e94560; margin-left: 0; padding-left: 16px; color: #555; }}
+.footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 0.85em; }}
+</style>
+</head>
+<body>
+{request.report.replace(chr(10), "<br>")}
+<div class="footer">由 IRIS 智能调研系统生成</div>
+</body>
+</html>"""
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=html_content)
+    except Exception as e:
+        log.error(f"HTML 导出失败: {e}")
+        raise HTTPException(status_code=500, detail=f"HTML 导出失败: {str(e)}")
+
+
+# --- Token 用量统计 ---
+
+@router.get("/usage/tokens")
+async def get_token_usage():
+    """返回累计 token 消耗统计"""
+    from app.utils.llm import get_token_usage as _get_token_usage
+    return _get_token_usage()
