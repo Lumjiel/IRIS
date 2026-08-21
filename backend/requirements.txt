@@ -19,3 +19,4 @@ msgpack
 python-multipart
 pypdf
 scikit-learn>=1.4.0
+akshare>=1.16.0
