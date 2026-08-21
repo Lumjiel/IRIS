@@ -46,25 +46,22 @@ def traced_router(state: AgentState):
     return route_query(state)
 
 @traceable(run_type="chain", name="planner")
-def traced_planner(state: AgentState):
-    return plan_node(state)
-
+async def traced_planner(state: AgentState):
+    return await plan_node(state)
 @traceable(run_type="chain", name="researcher")
 def traced_researcher(state: AgentState):
     return research_node(state)
 
 @traceable(run_type="chain", name="writer")
-def traced_writer(state: AgentState):
-    return write_node(state)
-
+async def traced_writer(state: AgentState):
+    return await write_node(state)
 @traceable(run_type="chain", name="reviewer")
 def traced_reviewer(state: AgentState):
     return review_node(state)
 
 @traceable(run_type="chain", name="refiner")
-def traced_refiner(state: AgentState):
-    return refine_node(state)
-
+async def traced_refiner(state: AgentState):
+    return await refine_node(state)
 
 @traceable(run_type="chain", name="search_agent")
 def traced_search_agent(state: AgentState):
