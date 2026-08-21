@@ -38,3 +38,12 @@ class AgentState(TypedDict):
     # tool_status: 工具调用状态 {name: {success, error}}
     tool_status: dict
     preferences: dict
+
+    # === 金融数据（阶段 2 新增） ===
+    # financial_data: AKShare 拉取的结构化金融数据
+    # 典型结构: {"stock_code": "600196", "stock_info": {...}, "indicators": {...}, "quote": {...}}
+    financial_data: dict
+    # data_sources: 数据来源列表 ["AKShare/东方财富", "PDF研报", "Tavily"]
+    data_sources: List[str]
+    # pending_stock_code: 待分析股票代码（router/planner 提取 → data_collector 消费）
+    pending_stock_code: str

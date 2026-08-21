@@ -15,6 +15,7 @@ from app.graph.nodes.researcher import research_node
 from app.graph.nodes.writer import write_node
 from app.graph.nodes.reviewer import review_node
 from app.graph.nodes.refiner import refine_node
+from app.graph.nodes.data_collector import data_collector_node
 from app.error_types import ErrorCode
 from app.utils.logger import get_logger
 from app.config import MAX_REVISIONS, LANGSMITH_API_KEY
@@ -63,6 +64,11 @@ def traced_reviewer(state: AgentState):
 @traceable(run_type="chain", name="refiner")
 def traced_refiner(state: AgentState):
     return refine_node(state)
+
+
+@traceable(run_type="chain", name="data_collector")
+def traced_data_collector(state: AgentState):
+    return data_collector_node(state)
 
 
 def route_after_research(state: AgentState):
@@ -126,6 +132,7 @@ _workflow.add_node("researcher", traced_researcher)
 _workflow.add_node("writer", traced_writer)
 _workflow.add_node("reviewer", traced_reviewer)
 _workflow.add_node("refiner", traced_refiner)
+_workflow.add_node("data_collector", traced_data_collector)
 
 # START -> planner -> Researcher -> Writer -> Reviewer -> END/Planner
 _workflow.set_conditional_entry_point(
@@ -136,14 +143,8 @@ _workflow.set_conditional_entry_point(
     }
 )
 _workflow.add_edge("planner", "researcher")
-_workflow.add_conditional_edges(
-    "researcher",
-    route_after_research,
-    {
-        "writer": "writer",
-        END: END
-    }
-)
+_workflow.add_edge("researcher", "data_collector")
+_workflow.add_edge("data_collector", "writer")
 _workflow.add_edge("writer", "reviewer")
 _workflow.add_conditional_edges(
     "reviewer",
