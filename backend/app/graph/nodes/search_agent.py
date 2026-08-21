@@ -12,7 +12,7 @@ from app.utils.logger import get_logger
 
 log = get_logger("search_agent")
 
-# 可用工具列表
+# 可用工具列表（Function Calling）
 TOOLS = [search_web]
 
 

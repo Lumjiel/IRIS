@@ -14,7 +14,7 @@ from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.utils.logger import get_logger
 from app.config import CHECKPOINT_MAX_AGE_DAYS, MAX_UPLOAD_FILES, MAX_FILE_SIZE_MB, CREATION_DIR, CHECKPOINT_DB, STORE_DB
-from app.tools.akshare_tools import query_stock_info, query_financial_indicators, query_stock_quote
+from app.tools.akshare_tools import query_stock_info, query_financial_indicators, query_stock_quote, query_stock_news
 
 log = get_logger("routes")
 
@@ -555,3 +555,50 @@ async def get_quote(stock_code: str):
     """查询实时行情"""
     result = query_stock_quote.invoke(stock_code)
     return json.loads(result)
+
+
+# ============================================================
+# 个股新闻/公告（阶段 5 新增）
+# ============================================================
+
+@router.get("/stock/{stock_code}/news")
+async def get_stock_news(stock_code: str):
+    """查询个股新闻/公告"""
+    result = query_stock_news.invoke(stock_code)
+    return json.loads(result)
+
+
+# ============================================================
+# 研报 RAG 入库与检索（阶段 5 新增）
+# ============================================================
+
+@router.post("/reports/upload")
+async def upload_report(file: UploadFile = File(...)):
+    """上传研报 PDF 并入库 RAG"""
+    from app.rag.report_ingest import ingest_report
+    
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="仅支持 PDF 文件")
+    
+    # 保存上传的文件
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+    
+    # 入库
+    result = ingest_report(file_path, file.filename)
+    
+    if result["success"]:
+        return {"status": "ok", "chunks": result["chunks"], "metadata": result["metadata"]}
+    else:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+
+@router.get("/reports/search")
+async def search_reports(q: str, stock_code: str = None, top_k: int = 5):
+    """检索已入库的研报"""
+    from app.rag.report_ingest import search_reports
+    
+    results = search_reports(q, stock_code=stock_code, top_k=top_k)
+    return {"status": "ok", "results": results, "count": len(results)}

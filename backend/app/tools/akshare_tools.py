@@ -462,6 +462,111 @@ def query_stock_quote(stock_code: str) -> str:
     return json.dumps({"error": False, "quote": quote}, ensure_ascii=False, indent=2)
 
 
+
+@tool
+def query_stock_news(stock_code: str) -> str:
+    """
+    查询 A 股个股最新新闻和公告信息。
+
+    参数:
+        stock_code: A 股股票代码，如 "600196"（复星医药）
+
+    返回:
+        JSON 格式字符串，包含新闻标题、发布时间、来源、内容摘要。
+        网络不可用时返回内置模拟数据（标注数据来源）。
+    """
+    logger.info("[Tool] query_stock_news: stock_code=%s", stock_code)
+
+    news_list: list = []
+    data_source: str = "未知"
+
+    try:
+        import akshare as ak
+
+        # ---- 第一层：东方财富个股新闻 ----
+        logger.info("[Tool] 尝试主数据源: AKShare 东方财富个股新闻")
+        news_df = _safe_request(
+            func=lambda: ak.stock_news_em(symbol=stock_code),
+            func_name="stock_news_em",
+            max_retries=2,
+        )
+
+        if news_df is not None and hasattr(news_df, 'empty') and not news_df.empty:
+            for _, row in news_df.head(10).iterrows():
+                news_list.append({
+                    "title": str(row.get("新闻标题", row.get("title", "N/A"))),
+                    "content": str(row.get("新闻内容", row.get("content", "N/A")))[:200],
+                    "publish_time": str(row.get("发布时间", row.get("time", "N/A"))),
+                    "source": str(row.get("文章来源", row.get("source", "东方财富"))),
+                })
+            data_source = "AKShare (东方财富)"
+            logger.info("[Tool] 东方财富个股新闻成功: %d条", len(news_list))
+
+        # ---- 第二层：新浪财经备用 ----
+        if not news_list:
+            logger.info("[Tool] 尝试备用数据源: 新浪财经个股新闻")
+            try:
+                sina_news = _safe_request(
+                    func=lambda: ak.stock_news_sina(symbol=stock_code),
+                    func_name="stock_news_sina",
+                    max_retries=1,
+                )
+                if sina_news is not None and hasattr(sina_news, 'empty') and not sina_news.empty:
+                    for _, row in sina_news.head(10).iterrows():
+                        news_list.append({
+                            "title": str(row.get("标题", row.get("title", "N/A"))),
+                            "content": str(row.get("内容", row.get("content", "N/A")))[:200],
+                            "publish_time": str(row.get("时间", row.get("time", "N/A"))),
+                            "source": "新浪财经",
+                        })
+                    data_source = "AKShare (新浪财经备用)"
+            except Exception as e:
+                logger.warning("[Tool] 新浪财经备用接口失败: %s", str(e)[:100])
+
+        # ---- 第三层：内置模拟数据兜底 ----
+        if not news_list:
+            logger.info("[Tool] 网络数据源全部失败，使用内置模拟数据")
+            news_list = _get_mock_news(stock_code)
+            data_source = "内置模拟数据（网络不可用时的最终兜底）"
+
+    except ImportError:
+        logger.warning("[Tool] akshare 库未安装，使用内置模拟数据")
+        news_list = _get_mock_news(stock_code)
+        data_source = "内置模拟数据（akshare未安装）"
+    except Exception as e:
+        logger.error("[Tool] query_stock_news 未预期异常: %s", str(e)[:100])
+        news_list = _get_mock_news(stock_code)
+        data_source = f"内置模拟数据（异常降级: {str(e)[:50]}）"
+
+    logger.info("[Tool] query_stock_news 完成: source=%s, count=%d", data_source, len(news_list))
+    return json.dumps({"error": False, "news": news_list, "data_source": data_source}, ensure_ascii=False, indent=2)
+
+
+def _get_mock_news(stock_code: str) -> list:
+    """内置模拟新闻数据"""
+    return [
+        {
+            "title": f"[{stock_code}] 公司发布2025年半年度业绩预告",
+            "content": "公司预计2025年上半年实现归母净利润同比增长15%-20%...",
+            "publish_time": "2025-07-15",
+            "source": "模拟数据",
+        },
+        {
+            "title": f"[{stock_code}] 公司公告：关于回购股份的进展公告",
+            "content": "截至2025年6月30日，公司累计回购股份约500万股...",
+            "publish_time": "2025-07-01",
+            "source": "模拟数据",
+        },
+        {
+            "title": f"[{stock_code}] 分析师点评：行业景气度持续提升",
+            "content": "近期行业政策利好频出，公司业务有望受益...",
+            "publish_time": "2025-06-20",
+            "source": "模拟数据",
+        },
+    ]
+
+
+
 # ============================================================
 # 工具列表（注册到 LangGraph ToolNode）
 # ============================================================
@@ -469,4 +574,11 @@ AKSHARE_TOOLS = [
     query_stock_info,
     query_financial_indicators,
     query_stock_quote,
+    query_stock_news,
 ]
+
+
+# ============================================================
+# 工具 4: 个股新闻/公告（阶段 5 新增）
+# 三层降级: 东方财富 → 新浪 → 内置模拟
+# ============================================================
