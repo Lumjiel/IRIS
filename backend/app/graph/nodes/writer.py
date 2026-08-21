@@ -5,6 +5,12 @@ from app.utils.streaming import llm_stream_tokens, get_token_queue
 from app.utils.memory import update_conversation_summary, build_conversation_context
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
+from app.agents.prompts import (
+    CHINESE_REPORT_SYSTEM_PROMPT,
+    DISCLAIMER,
+    build_financial_tables,
+    build_data_source_tags,
+)
 
 log = get_logger("writer")
 
@@ -39,9 +45,15 @@ WRITE_PROMPT = ChatPromptTemplate.from_template(
 )
 
 async def write_node(state: AgentState):
-    log.info("正在撰写报告")
+    log.info("正在撰写中文投研报告")
     query = state["query"]
-    content = "\n\n".join(state["search_results"])
+    search_content = "\n\n".join(state["search_results"])
+
+    # === 数据与观点分离：直接从 financial_data JSON 生成表格（不经 LLM 改写）===
+    financial_data = state.get("financial_data", {})
+    data_sources = state.get("data_sources", [])
+    financial_tables = build_financial_tables(financial_data)
+    source_tags = build_data_source_tags(data_sources)
 
     critique = state.get("critique", "")
     critique_section = ""
@@ -62,14 +74,36 @@ async def write_node(state: AgentState):
     style_instruction = STYLE_MODIFIERS.get(style, STYLE_MODIFIERS["detailed"])
     language_instruction = LANGUAGE_MODIFIERS.get(language, LANGUAGE_MODIFIERS["zh"])
 
-    prompt_text = WRITE_PROMPT.format(
-        query=query,
-        content=content,
-        conversation_context=conversation_context,
-        critique_section=critique_section,
-        style_instruction=style_instruction,
-        language_instruction=language_instruction,
-    )
+    # 组装 prompt（六章节中文格式 + 数据表格 + 来源标注）
+    prompt_text = f"""{CHINESE_REPORT_SYSTEM_PROMPT}
+
+## 用户问题
+{query}
+
+## 数据与资料
+
+### 结构化数据（已由系统自动提取，请直接使用以下表格数据）
+{financial_tables if financial_tables else "（无结构化金融数据）"}
+
+### 数据来源
+{source_tags if source_tags else "（无数据源标注）"}
+
+### 网络调研资料
+{search_content}
+
+### 对话上下文
+{conversation_context}
+
+{critique_section}
+
+## 写作要求
+- 所有结论必须基于上述数据
+- 数据缺失的维度，必须标注「⚠️ 数据不足，暂不评价」
+- 严禁编造数据、指标具体数值
+- 使用 Markdown 格式，全文中文
+{style_instruction}
+{language_instruction}
+"""
 
     if get_token_queue() is not None:
         report = await llm_stream_tokens(
@@ -85,6 +119,10 @@ async def write_node(state: AgentState):
     if not report.strip():
         log.warning("LLM 返回空报告，生成兜底内容")
         report = f"## {query}\n\n基于现有信息，关于「{query}」的研究报告暂时无法完整生成。建议稍后重试或调整研究方向。"
+
+    # === 免责声明强制追加 ===
+    if "免责" not in report and "不构成" not in report:
+        report += DISCLAIMER
 
     # 更新对话摘要（增量追加本轮，含搜索方向供 planner 避免重复）
     new_summary = update_conversation_summary(
