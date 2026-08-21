@@ -2,41 +2,43 @@
 
 ## Project Overview
 
-**IRIS** (Intelligent Research Insight System) — an automated deep research and report generation system built on a LangGraph state machine.
+**IRIS** (Intelligent Research Insight System) — an A-share investment research aggregation platform built on a LangGraph multi-agent state machine.
 
-**Purpose**: Accept a research topic → plan search directions → multi-source retrieval (local docs + web) → write structured report → quality review → output. Supports multi-turn follow-up refinement.
+**Purpose**: Accept a stock code or research topic → plan search directions → multi-source retrieval (local docs + web + AKShare financial data) → write Chinese 6-section research report → quality review → output. Supports multi-turn follow-up refinement.
 
 **Tech Stack**:
-- **Backend**: Python 3.11+ / FastAPI / LangGraph / ChromaDB / Tavily / DashScope LLM / SQLite
+
+- **Backend**: Python 3.11+ / FastAPI / LangGraph / AKShare / ChromaDB / Tavily / DeepSeek / SQLite
 - **Frontend**: Vue 3 (Composition API) / Tailwind CSS / markdown-it + KaTeX / SSE streaming
 
 ---
 
 ## Architecture & Data Flow
 
-### 6-Node State Machine
+### 7-Node State Machine
 
 The core workflow is a LangGraph `StateGraph` defined in `backend/app/graph/graph.py`. The topology is built **once at module import** — adding/removing nodes requires a server restart.
 
 ```
 router (conditional entry, NOT a node)
-  ├── NEW_TOPIC → planner → researcher → (should_stop? → END : writer) → reviewer
-  │                                      └── FAIL → planner (up to MAX_REVISIONS=3)
+  ├── NEW_TOPIC → planner → researcher → data_collector → writer → reviewer
+  │                                                              └── FAIL → planner (up to MAX_REVISIONS=5)
   └── REFINE → refiner → END
 ```
 
 **Node sync/async split**:
+
 - `async def` nodes (SSE-aware): `planner`, `writer`, `refiner` — call `get_token_queue()` to detect streaming mode
-- `sync def` nodes: `router`, `researcher`, `reviewer`
+- `sync def` nodes: `router`, `researcher`, `data_collector`, `reviewer`
 
-**Key insight**: `router` is registered via `set_conditional_entry_point()` — it's a dispatch function, not a graph node. The conditional edge after `researcher` checks `should_stop` to short-circuit in document-only mode.
+**Key insight**: `router` is registered via `set_conditional_entry_point()` — it's a dispatch function, not a graph node.
 
-### AgentState (11 fields)
+### AgentState (18 fields)
 
 Defined in `backend/app/graph/state.py` as a `TypedDict`:
 
 | Field | Type | Written By | Purpose |
-|-------|------|-----------|---------|
+| ------- | ------ | ----------- | --------- |
 | `query` | str | all | User's original question |
 | `plan` | List[str] | planner/writer | 3-5 search sub-directions |
 | `search_results` | List[str] | researcher/writer | Retrieved content chunks |
@@ -48,10 +50,21 @@ Defined in `backend/app/graph/state.py` as a `TypedDict`:
 | `should_stop` | bool | researcher | Circuit-breaker flag |
 | `conversation_summary` | str | writer/refiner | Running summary, persisted via checkpoint |
 | `preferences` | dict | writer | `{style, language}` from frontend |
+| `error_code` | str | various | Structured error code (ErrorCode enum) |
+| `degraded` | bool | various | Degradation flag |
+| `failed_tools` | list | various | Failed tool list |
+| `early_stop` | bool | reviewer | Reviewer early-stop flag |
+| `should_continue` | bool | reviewer | Conditional edge control |
+| `report_history` | list | reviewer | Report history (cosine similarity) |
+| `tool_status` | dict | researcher | Tool call status |
+| `financial_data` | dict | data_collector | AKShare financial data (stock_info, indicators, quote) |
+| `data_sources` | list | data_collector | Data source tags |
+| `pending_stock_code` | str | router/planner | Stock code to analyze |
 
 ### SSE Streaming Architecture
 
 `backend/app/utils/streaming.py` — producer/consumer pattern:
+
 - `ContextVar` holds per-request `asyncio.Queue`
 - **Producer thread**: sync `llm.stream()` → `asyncio.Queue`
 - **Consumer**: async loop reads from queue → pushes to SSE response
@@ -61,6 +74,7 @@ Defined in `backend/app/graph/state.py` as a `TypedDict`:
 ### RAG Engine
 
 `backend/app/rag/engine.py`:
+
 - Embedding: DashScope `text-embedding-v4` → ChromaDB vector store
 - Optional CrossEncoder reranker (`ENABLE_RERANKER=true`): fetch_k=20 → rerank → top_k=5
 - Document pipeline: PyPDFLoader → RecursiveCharacterTextSplitter (chunk_size=500, overlap=50)
@@ -69,379 +83,188 @@ Defined in `backend/app/graph/state.py` as a `TypedDict`:
 ### LLM Factory
 
 `backend/app/utils/llm.py`:
+
 - Per-node model routing: `LLM_MODEL_{NODE}` env vars (router/planner/researcher/writer/reviewer/refiner)
 - `model_type="fast"` (temp 0.7): router, planner, writer, refiner
 - `model_type="smart"` (temp 0): researcher grader, reviewer
 - Global primary→fallback downgrade with **5-minute TTL auto-recovery**
 - Downgrade trigger keywords: quota/limit/insufficient/balance/429/rate
 
+### AKShare Financial Data Layer
+
+`backend/app/tools/akshare_tools.py`:
+
+- **3 tools**: `query_stock_info`, `query_financial_indicators`, `query_stock_quote`
+- **3-tier fallback**: East Money → Snowball/Sina → Mock data
+- **Module-level proxy cleanup**: clears `HTTP_PROXY/HTTPS_PROXY` on import
+- **Never throws exceptions**: returns structured JSON error on failure
+- **LangChain `@tool` decorator**: Function Calling ready
+- **Source attribution**: every value tagged with `[来源: AKShare 东方财富]`
+
+### Chinese Report Format
+
+`backend/app/agents/prompts.py`:
+
+- **6-section template**: 核心结论 → 公司概况 → 财务分析 → 行业观点 → 风险提示 → 投资建议
+- **Data-opinion separation**: tables generated directly from `financial_data` JSON (not LLM-rewritten)
+- **Source attribution**: all values tagged with `[来源: ...]`
+- **Mandatory disclaimer**: auto-appended if missing
+- **Honest reporting**: missing data marked as `⚠️ 数据不足，暂不评价`
+
 ### Session Memory
 
 `backend/app/utils/memory.py`:
-- `update_conversation_summary()`: incremental append of query/report/search directions; LLM compression when >2000 chars
-- `build_conversation_context()`: regex-extracts searched directions from summary → generates avoidance list for planner
-- `_truncate_at_sentence()`: 3-level degradation — split by `。` → `,` → hard cut; **never blocks main flow**
 
-### Checkpoint Serialization
-
-LangGraph `AsyncSqliteSaver` uses **msgpack** (NOT JSON). `channel_values` at top level (not nested under `data`). Custom checkpoint reads in `routes.py` (`_read_checkpoint_state`, `_reset_checkpoint_summary`) use `msgpack.packb/unpackb`.
+- `conversation_summary`: running summary, persisted via checkpoint
+- Incremental update: appends each round's query + report excerpt
+- Compression: truncates at `summary_max` (default 2000 chars)
+- Search direction dedup: prevents repeating search directions
 
 ---
 
-## Key Directories
+## Project Structure
 
 ```
 IRIS/
 ├── backend/
-│   ├── main.py                    # FastAPI entry: CORS, router mount, startup dep check
-│   ├── conftest.py                # Mock external deps + sample_state fixture
-│   ├── pytest.ini                 # asyncio_mode = auto
-│   ├── requirements.txt           # 19 production deps
-│   ├── requirements-dev.txt       # pytest + pytest-asyncio
+│   ├── main.py                      # FastAPI 入口，CORS、路由挂载、启动依赖检查
 │   ├── app/
-│   │   ├── config.py              # Centralized config from env vars
+│   │   ├── agents/
+│   │   │   └── prompts.py           # 中文研报提示词模板 + 数据表格生成器
 │   │   ├── api/
-│   │   │   └── routes.py          # All API endpoints (SSE chat, upload, materials, memory, TTS)
+│   │   │   └── routes.py            # 全部 API 端点（SSE 流式聊天、上传、素材、记忆、TTS、股票查询）
 │   │   ├── graph/
-│   │   │   ├── state.py          # AgentState TypedDict
-│   │   │   ├── graph.py          # StateGraph topology (module-level singleton)
+│   │   │   ├── state.py             # AgentState TypedDict（18+ 字段）
+│   │   │   ├── graph.py             # LangGraph StateGraph 拓扑（7 节点）
 │   │   │   └── nodes/
-│   │   │       ├── router.py     # Intent routing (NEW_TOPIC / REFINE) + keyword fallback
-│   │   │       ├── planner.py    # Search planning, 3-5 sub-directions
-│   │   │       ├── researcher.py # Multi-source retrieval + Relevance Grader + circuit-breaker
-│   │   │       ├── writer.py     # Report writing, style/language preferences
-│   │   │       ├── reviewer.py   # Quality review, JSON output + retry + fail-closed
-│   │   │       └── refiner.py    # Dual-mode: vague follow-up / explicit edit
+│   │   │       ├── router.py        # 意图路由（NEW_TOPIC / REFINE）
+│   │   │       ├── planner.py       # 搜索规划
+│   │   │       ├── researcher.py    # 多源检索 + Relevance Grader + 熔断
+│   │   │       ├── data_collector.py # AKShare 数据拉取（扇出并行 + 三层降级）
+│   │   │       ├── writer.py        # 中文研报撰写（六章节格式）
+│   │   │       ├── reviewer.py      # 质量审查 + cosine 相似度早停
+│   │   │       └── refiner.py       # 双模式修订
 │   │   ├── rag/
-│   │   │   └── engine.py         # ChromaDB + DashScope embedding + optional CrossEncoder
+│   │   │   └── engine.py            # ChromaDB + DashScope embedding + 可选 CrossEncoder
 │   │   ├── tools/
-│   │   │   └── search.py         # Tavily search wrapper with retry
+│   │   │   ├── akshare_tools.py     # AKShare 3 工具 + 三层降级 + @tool 装饰器
+│   │   │   └── search.py            # Tavily 搜索封装
 │   │   └── utils/
-│   │       ├── llm.py            # LLM factory + auto-downgrade
-│   │       ├── streaming.py      # ContextVar + asyncio.Queue streaming
-│   │       ├── memory.py         # Session summary: incremental + compression + avoidance
-│   │       └── logger.py         # Structured logging
-│   └── tests/
-│       ├── test_router.py        # 18 tests
-│       ├── test_reviewer.py      # 12 tests
-│       ├── test_researcher.py    # 6 tests
-│       ├── test_llm.py           # 9 tests
-│       └── test_graph.py         # 6 tests
+│   │       ├── llm.py               # LLM 工厂 + 自动降级
+│   │       ├── streaming.py         # ContextVar + asyncio.Queue 流式架构
+│   │       ├── memory.py            # 会话摘要
+│   │       └── logger.py            # 结构化日志
+│   ├── eval/                        # 评测框架
+│   ├── tests/                       # 106 个测试（全量通过）
+│   │   ├── test_akshare_tools.py    # 13 个测试（AKShare 工具层 + mock）
+│   │   ├── test_data_collector.py   # 9 个测试（DataCollector 节点 + mock）
+│   │   ├── test_chinese_report.py   # 11 个测试（中文报告格式 + 表格生成）
+│   │   ├── test_router.py           # 18 个测试
+│   │   ├── test_reviewer.py         # 12 个测试
+│   │   ├── test_researcher.py       # 6 个测试
+│   │   ├── test_llm.py              # 9 个测试
+│   │   └── test_graph.py            # 6 个测试
+│   ├── conftest.py                  # Mock 外部依赖 + sample_state fixture
+│   ├── pytest.ini                   # asyncio_mode = auto
+│   ├── requirements.txt             # 依赖清单（含 akshare）
+│   └── DEPLOY.md                    # 部署指南
 ├── frontend/
 │   ├── src/
-│   │   ├── App.vue               # Root component, all UI state (201 lines)
-│   │   ├── main.js               # Vue entry
-│   │   ├── style.css             # Tailwind entry
-│   │   ├── components/
-│   │   │   ├── ChatHeader.vue    # Top bar: memory status + summary capacity bar
-│   │   │   ├── ChatMessages.vue  # Message flow: research trajectory timeline + Markdown report
-│   │   │   ├── ChatInput.vue     # Input: search mode toggle
-│   │   │   └── ChatSidebar.vue   # Sidebar: knowledge base/materials/history/settings + memory management
+│   │   ├── views/
+│   │   │   └── InvestmentResearch.vue # 投研分析页面（股票输入 + 流式报告）
+│   │   ├── components/              # 聊天组件
 │   │   ├── composables/
-│   │   │   └── useChat.js       # Chat core: SSE streaming + session persistence (377 lines)
+│   │   │   └── useChat.js            # 聊天逻辑（SSE 流式）
 │   │   ├── services/
-│   │   │   ├── api.js            # API client (211 lines)
-│   │   │   └── history.js       # localStorage session persistence
-│   │   └── utils/
-│   │       └── markdown.js       # markdown-it + KaTeX rendering
-│   ├── vite.config.js            # /api proxy to localhost:8000
-│   └── package.json              # Vue 3 + Tailwind + markdown-it
-├── deploy/
-│   └── nginx.conf                # Nginx reverse proxy config
-├── docker-compose.yml            # Full stack orchestration (backend + frontend)
-└── docs/
-    └── flowchart.md              # Architecture diagrams
+│   │   │   ├── api.js               # API 客户端
+│   │   │   └── finance.js           # 投研分析 API 服务
+│   │   └── App.vue                  # 根组件（Tab 导航：智能问答 + 投研分析）
+│   └── package.json
+├── docs/research/                   # 调研报告（6 份）
+├── REFACTOR_PLAN.md                 # 分阶段重构计划（含面试验证）
+├── AGENTS.md                        # 本文件
+├── PROJECT_BRIEFING.md              # 项目简报
+└── CLAUDE.md                        # Claude Code 配置
 ```
 
 ---
 
-## Development Commands
-
-### Backend
+## Testing
 
 ```bash
 cd backend
-
-# Setup (Windows)
-python -m venv venv && venv\Scripts\activate
-pip install -r requirements.txt
-
-# Configure
-cp .env.example .env    # Fill in API keys
-
-# Run (development)
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# Run (production single-worker)
-uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+python -m pytest tests/ -v          # 详细输出
+python -m pytest tests/ -q          # 简洁输出
+python -m pytest tests/test_akshare_tools.py -v  # 仅 AKShare 测试
 ```
 
-### Frontend
+**Test count**: 106 tests, all passing (39s)
 
-```bash
-cd frontend
-npm install && npm run dev      # http://localhost:5173, /api proxies to :8000
-npm run build                   # Production build to dist/
-```
+**Key test patterns**:
 
-### Tests
-
-```bash
-cd backend
-
-# Full suite
-pytest
-
-# Single file
-pytest tests/test_router.py
-
-# Single test by name
-pytest -k "test_looks_like_refine"
-
-# With verbose output
-pytest -v
-```
-
-**Pytest config** (`backend/pytest.ini`):
-- `asyncio_mode = auto` — async tests run without `@pytest.mark.asyncio`
-- `testpaths = tests`
-
-### Docker (Full Stack)
-
-```bash
-# Build and start
-docker compose up -d --build
-
-# View logs
-docker compose logs -f
-
-# Rebuild after code changes
-docker compose up -d --build
-
-# Stop
-docker compose down
-
-# Debug backend container
-docker compose exec backend bash
-```
+- `monkeypatch` for mocking AKShare API calls (offline-capable)
+- `unittest.mock.patch` for mocking LLM calls
+- `pytest-asyncio` for async node tests
+- `sample_state` fixture in `conftest.py` for AgentState
 
 ---
 
-## Code Conventions & Common Patterns
+## Key Design Decisions
 
-### Async/Sync Split
-
-- **Async nodes** (`planner`, `writer`, `refiner`): Use `await llm_stream_tokens()` when SSE queue is present, else fall back to `llm_invoke()`
-- **Sync nodes** (`router`, `researcher`, `reviewer`): Always use `llm_invoke()` directly
-
-### Error Handling Patterns
-
-1. **Graceful degradation** (never crash the workflow):
-   - LLM downgrade: primary → fallback model with 5-min TTL
-   - Router fallback: `looks_like_refine()` keyword match if LLM returns invalid routing
-   - Reviewer fail-closed: JSON parse failure → FAIL status (forces rewrite)
-   - Memory compression: LLM failure → `_truncate_at_sentence()` → hard cut
-
-2. **Circuit-breaker** (researcher):
-   - Document-only mode + irrelevant docs → `should_stop=True` → skip writer
-   - Hybrid mode + irrelevant docs → auto-degrade to web-only search
-
-3. **Validation at boundaries**:
-   - File upload: type/size/count validation
-   - Material endpoints: `os.path.realpath()` before prefix check (path traversal defense)
-   - Query length limit: 2000 chars
-
-### Logging
-
-`backend/app/utils/logger.py` — structured logging with per-module loggers:
-```python
-from app.utils.logger import get_logger
-log = get_logger("module_name")
-log.info("message")
-```
-
-Format: `HH:MM:SS [module] LEVEL: message`
-
-### Configuration
-
-All config in `backend/app/config.py` reads from env vars with defaults:
-```python
-from app.config import HOST, PORT, WORKERS, CORS_ORIGINS, LOG_LEVEL
-```
-
-**Required env vars**: `OPENAI_API_KEY`, `OPENAI_API_BASE`, `DASHSCOPE_API_KEY`, `TAVILY_API_KEY`
-
-### Rate Limiting
-
-`routes.py` — SQLite-backed sliding window rate limiter (process-safe across workers):
-- 5 research requests per IP per minute
-- **Warning**: `WORKERS > 1` breaks in-memory rate limiter; use SQLite-backed limiter for multi-worker
-
-### Streaming Pattern
-
-Producer/consumer with `asyncio.Queue`:
-```python
-# In async node:
-if get_token_queue() is not None:
-    text = await llm_stream_tokens(messages, model_type="fast", node_name="writer", node="writer")
-else:
-    response = llm_invoke(messages, node="writer")
-    text = response.content
-```
-
-### Frontend State Management
-
-- **Single component**: `App.vue` holds all UI state (201 lines)
-- **Composable**: `useChat.js` encapsulates chat logic, SSE handling, session persistence
-- **Session persistence**: `history.js` — localStorage, max 50 sessions, truncate reports >50KB
-- **Vue Proxy gotcha**: `getMsgById()` returns Vue Proxy reference — mutate plain object directly to avoid reactivity overhead
-
----
-
-## Important Files
-
-| File | Purpose |
-|------|---------|
-| `backend/main.py` | FastAPI entry point, CORS, startup dependency check |
-| `backend/app/config.py` | Centralized configuration from env |
-| `backend/app/graph/graph.py` | StateGraph topology (module-level singleton) |
-| `backend/app/graph/state.py` | AgentState TypedDict definition |
-| `backend/app/api/routes.py` | All API endpoints (534 lines) |
-| `backend/app/utils/llm.py` | LLM factory with auto-downgrade |
-| `backend/app/utils/streaming.py` | SSE streaming architecture |
-| `backend/app/utils/memory.py` | Session summary management |
-| `backend/app/rag/engine.py` | RAG engine (ChromaDB + optional reranker) |
-| `backend/conftest.py` | Test fixtures, mock external deps |
-| `frontend/src/composables/useChat.js` | Frontend chat logic (377 lines) |
-| `frontend/src/services/api.js` | API client (211 lines) |
-| `docker-compose.yml` | Full stack orchestration |
-| `deploy/nginx.conf` | Nginx reverse proxy config |
-
----
-
-## Runtime/Tooling Preferences
-
-### Required Runtime
-
-- **Python 3.11+** (backend)
-- **Node.js 18+** (frontend development)
-- **Docker** (deployment)
-
-### Package Manager
-
-- **Backend**: `pip` with `venv` (or `uv` per global CLAUDE.md policy)
-- **Frontend**: `npm` (lockfile present)
-
-### Key Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| `fastapi==0.129.0` | Web framework |
-| `langgraph==1.0.8` | State machine orchestration |
-| `langchain_openai==1.1.9` | LLM client (DashScope-compatible) |
-| `langgraph-checkpoint-sqlite` | Session persistence |
-| `chromadb` | Vector store |
-| `tavily==1.1.0` | Web search |
-| `dashscope` | Embedding + TTS |
-| `pydantic==2.12.5` | Request validation |
-| `uvicorn[standard]==0.40.0` | ASGI server |
-
-### Tooling Constraints
-
-- **No linter/formatter configured** — run tests as the gate
-- **No type checking** — no mypy/pyright in CI
-- **No integration/e2e tests** — all backend tests are unit tests with mocked external deps
-- **No frontend tests** — no vitest/jest configured
-
----
-
-## Testing & QA
-
-### Test Framework
-
-- **pytest** + **pytest-asyncio** (`asyncio_mode = auto`)
-- 5 test files, ~51 test cases total
-- All unit tests — mock all external dependencies (LLM, Tavily, ChromaDB)
-
-### Test Fixtures (`backend/conftest.py`)
-
-```python
-@pytest.fixture(autouse=True)
-def _mock_env_vars(monkeypatch):
-    # Sets OPENAI_API_KEY, OPENAI_API_BASE, DASHSCOPE_API_KEY, TAVILY_API_KEY
-
-@pytest.fixture
-def mock_llm_invoke():
-    # Patches app.utils.llm.llm_invoke
-
-@pytest.fixture
-def sample_state():
-    # Returns standard AgentState dict
-```
-
-### Mocking Pattern
-
-External deps are mocked at **module import time** in `conftest.py`:
-```python
-sys.modules.setdefault("dashscope", MagicMock())
-sys.modules.setdefault("tavily", MagicMock())
-sys.modules.setdefault("sentence_transformers", MagicMock())
-```
-
-### Running Tests
-
-```bash
-cd backend
-pytest                           # All tests
-pytest tests/test_router.py       # Single file
-pytest -k "test_name"            # By test name
-pytest -v                        # Verbose
-```
-
-### Coverage
-
-- No coverage tool configured
-- Focus areas: router logic, reviewer JSON parsing, LLM factory downgrade, researcher circuit-breaker
-
----
-
-## Key Constraints & Gotchas
-
-1. **Graph topology is a module-level singleton** — adding/removing nodes requires server restart
-2. **Checkpoint uses msgpack** — not JSON; `channel_values` at top level
-3. **Rate limiter is process-scoped memory** — `WORKERS > 1` breaks it (use SQLite-backed limiter)
-4. **2GB servers**: disable reranker (`ENABLE_RERANKER=false`) — saves ~400MB
-5. **`CREATION_DIR` defaults to Windows path** — set explicitly for Docker/Linux
-6. **WAL mode for checkpoint cleanup** — `timeout=5`, silent skip on locked DB
-7. **Path traversal defense** on material endpoints — `os.path.realpath()` before prefix check
-8. **Startup dep check** — `main.py` checks `langgraph.checkpoint.sqlite` etc. at import; missing → `SystemExit(1)`
-9. **Memory compression degrades** — LLM summarization failure → `_truncate_at_sentence()` → hard cut, never blocks main flow
-10. **Frontend `getMsgById()`** returns Vue Proxy — mutate plain object directly to avoid reactivity overhead
+1. **Module-level graph singleton**: `_workflow` is built once at import. Adding nodes requires restart.
+2. **AKShare proxy cleanup**: Module-level `os.environ.pop()` clears proxy vars to prevent `Connection aborted`.
+3. **Data-opinion separation**: Financial tables generated from JSON (not LLM) to prevent hallucination.
+4. **3-tier data fallback**: East Money → Snowball/Sina → Mock data ensures system never crashes.
+5. **`@tool` decorator**: AKShare tools use LangChain `@tool` for Function Calling readiness.
+6. **Never-throw tools**: All tools return structured JSON errors instead of raising exceptions.
 
 ---
 
 ## Environment Variables
 
-### Required
+| Variable | Description | Default |
+| ---------- | ------------- | --------- |
+| `OPENAI_API_KEY` | DeepSeek API key | - |
+| `OPENAI_API_BASE` | API base URL | `https://api.deepseek.com/v1` |
+| `LLM_MODEL_PRIMARY` | Primary model | `qwen3.7-plus` |
+| `LLM_MODEL_FALLBACK` | Fallback model | `deepseek-v4-flash` |
+| `TAVILY_API_KEY` | Tavily search API key | - |
+| `LANGSMITH_API_KEY` | LangSmith observability (optional) | - |
+| `DEEPSEEK_API_KEY` | DeepSeek key (legacy compat) | - |
 
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | DashScope API Key |
-| `OPENAI_API_BASE` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| `DASHSCOPE_API_KEY` | Embedding API Key |
-| `TAVILY_API_KEY` | Tavily search Key |
+---
 
-### Optional
+## Common Workflows
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LLM_MODEL_PRIMARY` | `qwen3.7plus` | Primary model |
-| `LLM_MODEL_FALLBACK` | `deepseek-v4-flash` | Fallback model |
-| `LLM_MODEL_{NODE}` | PRIMARY | Per-node model override |
-| `ENABLE_RERANKER` | `false` | CrossEncoder reranker (2GB: don't enable) |
-| `CORS_ORIGINS` | `*` | Comma-separated allowed origins |
-| `CREATION_DIR` | Windows path | Report save directory |
-| `CHECKPOINT_DB` | `checkpoints.db` | SQLite checkpoint path |
-| `MAX_REVISIONS` | `3` | Max review retry loop |
-| `WORKERS` | `1` | uvicorn workers (>1 breaks rate limiter) |
-| `LOG_LEVEL` | `info` | Logging level |
+### Adding a new graph node
+
+1. Create `backend/app/graph/nodes/my_node.py` with `def my_node_node(state: AgentState) -> dict`
+2. Add `@traceable(run_type="chain", name="my_node")` wrapper in `graph.py`
+3. Register: `_workflow.add_node("my_node", traced_my_node)`
+4. Wire edges: `_workflow.add_edge("from_node", "my_node")`
+5. Add tests in `tests/test_my_node.py`
+
+### Adding a new AKShare tool
+
+1. Add `@tool` function in `backend/app/tools/akshare_tools.py`
+2. Implement 3-tier fallback: East Money → Snowball/Sina → Mock
+3. Add to `AKSHARE_TOOLS` list
+4. Add mock tests in `tests/test_akshare_tools.py`
+
+### Adding a new API endpoint
+
+1. Add route in `backend/app/api/routes.py`
+2. For SSE: use `StreamingResponse` with async generator
+3. For stock data: use `query_stock_info.invoke(code)` etc.
+
+---
+
+## Interview Talking Points
+
+- **Why LangGraph?** Explicit state + conditional routing + Checkpoint, ideal for auditable deterministic workflows
+- **How to prevent infinite loops?** MAX_REVISIONS(5) + cosine similarity early-stop(0.95)
+- **How to prevent hallucination?** Data-opinion separation + source attribution + honest reporting
+- **How to handle degradation?** 3-tier data sources + LLM primary/fallback + tool-level never-throw
+- **Multi-agent architecture?** 7-node collaboration, each node independently decoupled
+- **Function Calling?** `@tool` declaration + `bind_tools` + `ToolNode` + `tools_condition`
+- **Memory system?** conversation_summary incremental + checkpoint cross-session persistence
