@@ -16,12 +16,6 @@ const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 export function extractStockCode(query) {
   if (!query) return "";
   const patterns = [
-    r"\b([36]0d{4})\b",   // 沪市主板 60xxxx, 创业板 30xxxx
-    r"\b(00d{4})\b",       // 深市主板 00xxxx
-    r"(d{6})",             // 兜底：任意 6 位数字
-  ];
-  // Use simple regex without raw strings
-  var patterns = [
     /\b([36]0\d{4})\b/,
     /\b(00\d{4})\b/,
     /(\d{6})/,
