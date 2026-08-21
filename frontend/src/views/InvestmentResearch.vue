@@ -145,9 +145,8 @@
 
 <script setup>
 import { ref, computed, onUnmounted } from 'vue';
-import { marked } from 'marked';
+import { renderMarkdown } from '../utils/markdown';
 import { streamResearch, extractStockCode } from '../services/finance';
-
 const stockCode = ref('600196');
 const isLoading = ref(false);
 const report = ref('');
@@ -166,13 +165,13 @@ const examples = [
 
 const renderedReport = computed(() => {
   if (!report.value) return '';
-  return marked.parse(report.value);
+  return renderMarkdown(report.value);
 });
 
 async function startResearch() {
   if (!stockCode.value.trim() || isLoading.value) return;
 
-  isLoading.value = true);
+  isLoading.value = true;
   report.value = '';
   events.value = [];
   stockData.value = {};

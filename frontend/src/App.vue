@@ -1,5 +1,29 @@
 <template>
-  <div class="h-screen flex bg-gray-50 overflow-hidden">
+  <div class="h-screen flex flex-col bg-gray-50">
+    <!-- Tab Navigation -->
+    <div class="flex items-center gap-1 border-b border-gray-200 bg-white px-4 py-2 shrink-0">
+      <button
+        @click="activeTab = 'chat'"
+        :class="[
+          'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+          activeTab === 'chat' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+        ]"
+      >
+        智能问答
+      </button>
+      <button
+        @click="activeTab = 'research'"
+        :class="[
+          'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+          activeTab === 'research' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+        ]"
+      >
+        投研分析
+      </button>
+    </div>
+
+    <!-- Chat Tab -->
+    <div v-if="activeTab === 'chat'" class="flex-1 flex overflow-hidden min-h-0">
     <ChatSidebar
       :sidebarOpen="sidebarOpen"
       :uploadedFiles="chat.uploadedFiles.value"
@@ -50,6 +74,12 @@
         @stop="chat.stopResearch"
       />
     </div>
+    </div>
+
+    <!-- Research Tab -->
+    <div v-else class="flex-1 flex overflow-hidden min-h-0">
+      <InvestmentResearch />
+    </div>
 
     <!-- Toast -->
     <Transition name="fade">
@@ -69,8 +99,10 @@ import ChatSidebar from './components/ChatSidebar.vue';
 import ChatHeader from './components/ChatHeader.vue';
 import ChatMessages from './components/ChatMessages.vue';
 import ChatInput from './components/ChatInput.vue';
+import InvestmentResearch from './views/InvestmentResearch.vue';
 
 const chatContainer = ref(null);
+const activeTab = ref('chat');
 const chat = useChat(chatContainer);
 
 const sidebarOpen = ref(false);
