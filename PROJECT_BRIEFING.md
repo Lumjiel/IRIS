@@ -22,22 +22,24 @@ IRIS/
 │   │   ├── api/
 │   │   │   └── routes.py            # 全部 API 端点（SSE 流式聊天、上传、素材、记忆、TTS、股票查询）
 │   │   ├── graph/
-│   │   │   ├── state.py             # AgentState TypedDict（18+ 字段，含 financial_data）
-│   │   │   ├── graph.py             # LangGraph StateGraph 拓扑（7 节点）
+│   │   │   ├── state.py             # AgentState TypedDict（20+ 字段，含 messages）
+│   │   │   ├── graph.py             # StateGraph 拓扑（8 节点 + Function Calling 循环）
 │   │   │   └── nodes/
 │   │   │       ├── router.py        # 意图路由（NEW_TOPIC / REFINE）
-│   │   │       ├── planner.py       # 搜索规划
-│   │   │       ├── researcher.py    # 多源检索 + Relevance Grader + 熔断
-│   │   │       ├── data_collector.py # AKShare 数据拉取（扇出并行 + 三层降级）
-│   │   │       ├── writer.py        # 中文研报撰写（六章节格式）
-│   │   │       ├── reviewer.py      # 质量审查 + cosine 相似度早停
-│   │   │       └── refiner.py       # 双模式修订
+│   │   │       ├── planner.py       # 搜索规划（async）
+│   │   │       ├── researcher.py    # RAG 检索 + Grader 审计
+│   │   │       ├── search_agent.py  # Function Calling agent
+│   │   │       ├── data_collector.py # AKShare 数据拉取
+│   │   │       ├── writer.py        # 中文研报撰写（async）
+│   │   │       ├── reviewer.py      # 质量审查 + cosine 早停
+│   │   │       └── refiner.py       # 双模式修订（async）
 │   │   ├── rag/
-│   │   │   └── engine.py            # ChromaDB + DashScope embedding + 可选 CrossEncoder
+│   │   │   ├── engine.py            # ChromaDB + DashScope embedding
+│   │   │   └── report_ingest.py     # 研报 PDF 入库 + 实体抽取
 │   │   ├── tools/
-│   │   │   ├── akshare_tools.py     # AKShare 3 工具 + 三层降级 + @tool 装饰器
+│   │   │   ├── akshare_tools.py     # AKShare 4 工具（含新闻）+ 三层降级
+│   │   │   ├── search_tools.py      # Function Calling @tool 声明
 │   │   │   └── search.py            # Tavily 搜索封装
-│   │   └── utils/
 │   │       ├── llm.py               # LLM 工厂 + 自动降级（5 分钟 TTL）
 │   │       ├── streaming.py         # ContextVar + asyncio.Queue 流式架构
 │   │       ├── memory.py            # 会话摘要：增量更新 + 压缩 + 搜索方向避让
@@ -71,11 +73,11 @@ IRIS/
 
 ## 核心架构
 
-### 七节点状态机
+### 八节点状态机 + Function Calling
 
 ```
 router (conditional entry)
-  ├── NEW_TOPIC → planner → researcher → data_collector → writer → reviewer
+  ├── NEW_TOPIC → planner → researcher → search_agent ⇄ search_tools → data_collector → writer → reviewer
   │                                                              └── FAIL → planner (循环)
   └── REFINE → refiner → END
 ```
@@ -84,23 +86,36 @@ router (conditional entry)
 | ------ | ------ | --------- |
 | 🧠 Router | 意图识别：新话题 / 修改报告 | LLM 分类 + 关键词兜底 |
 | 📋 Planner | 搜索规划：生成 3-5 个子方向 | 对话上下文 + 搜索方向去重 |
-| 🔍 Researcher | 多源检索：本地文档 + 网络搜索 | ChromaDB RAG + Tavily + Grader 审计 |
+| 🔍 Researcher | 本地文档检索 + 文档审计 | ChromaDB RAG + Grader |
+| 🤖 SearchAgent | LLM 驱动的网络搜索 | Function Calling: `@tool` + `bind_tools` |
+| 🔧 SearchTools | 执行 LLM 决定的工具调用 | 自定义 ToolNode |
 | 📊 DataCollector | 金融数据拉取：AKShare 并行调用 | ThreadPoolExecutor 扇出 + 三层降级 |
 | ✍️ Writer | 中文研报撰写：六章节格式 | 数据与观点分离 + 来源标注 |
 | 🔍 Reviewer | 质量审查：PASS/FAIL + 修复循环 | JSON 输出 + cosine 相似度早停 |
 | 🔧 Refiner | 多轮修改：模糊追加 / 明确重写 | 双模式修订策略 |
+### AgentState（20+ 字段）
 
-### AgentState（18+ 字段）
-
-核心字段：`query`, `plan`, `search_results`, `final_report`, `critique`, `revision_number`, `review_status`, `search_mode`, `should_stop`, `conversation_summary`, `preferences`, `error_code`, `degraded`, `failed_tools`, `early_stop`, `should_continue`, `report_history`, `tool_status`, **`financial_data`**, **`data_sources`**, **`pending_stock_code`**
+核心字段：`query`, `plan`, `search_results`, `final_report`, `critique`, `revision_number`, `review_status`, `search_mode`, `should_stop`, `conversation_summary`, `preferences`, `error_code`, `degraded`, `failed_tools`, `early_stop`, `should_continue`, `report_history`, `tool_status`, **`financial_data`**, **`data_sources`**, **`pending_stock_code`**, **`messages`**
 
 ### AKShare 数据层
 
-- **3 个工具**：`query_stock_info`, `query_financial_indicators`, `query_stock_quote`
+- **4 个工具**：`query_stock_info`, `query_financial_indicators`, `query_stock_quote`, `query_stock_news`
 - **三层降级**：东方财富 → 雪球/新浪 → 内置模拟数据
 - **永不抛异常**：工具级故障隔离
 - **来源标注**：所有数值标注 `[来源: AKShare 东方财富]`
 
+### Function Calling 架构
+
+- **`@tool` 声明**：`search_web` 使用 LangChain `@tool` 装饰器
+- **LLM 自主决策**：通过 `bind_tools([search_web])` 绑定工具，LLM 决定何时调用
+- **自定义 ToolNode**：`search_tool_node` 执行工具调用（避免 `langgraph.prebuilt` 版本兼容问题）
+- **消息累加**：`add_messages` reducer 自动累加到 `state["messages"]`
+
+### 研报 RAG
+
+- **PyMuPDF 抽取**：`import fitz` 抽取 PDF 全文
+- **实体抽取**：正则抽取公司名/代码/评级/目标价/日期
+- **元数据入库**：ChromaDB metadata 存 `{source, stock_code, rating, report_date}`
 ### 中文六章节研报格式
 
 ```markdown
@@ -120,16 +135,19 @@ router (conditional entry)
 ## 测试覆盖
 
 ```
-106 tests in 39.07s
+127 tests in 38.16s
 
 ├── test_akshare_tools.py     13 passed  (AKShare 工具层 + mock)
 ├── test_data_collector.py     9 passed  (DataCollector 节点 + mock)
 ├── test_chinese_report.py    11 passed  (中文报告格式 + 表格生成)
 ├── test_router.py            18 passed  (意图路由)
 ├── test_reviewer.py          12 passed  (质量审查)
-├── test_researcher.py         6 passed  (多源检索)
+├── test_researcher.py         5 passed  (RAG 检索 + 审计)
+├── test_search_agent.py       8 passed  (Function Calling 节点)
+├── test_report_ingest.py     13 passed  (研报入库 + 检索)
 ├── test_llm.py                9 passed  (LLM 工厂)
-└── test_graph.py              6 passed  (图拓扑)
+├── test_graph.py              6 passed  (图拓扑)
+└── integration/              23 passed  (集成测试)
 ```
 
 ---

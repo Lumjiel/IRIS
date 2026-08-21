@@ -4,31 +4,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-IRIS (Intelligent Research Insight System) — 基于 LangGraph 状态机的自动化深度调研与报告生成系统。支持多轮对话、会话记忆、素材库管理。
+IRIS (Intelligent Research Insight System) — 基于 LangGraph 状态机的 A 股投研信息聚合平台。支持多轮对话、会话记忆、素材库管理、研报 PDF 入库检索。
 
 ## 技术栈
 
-- **后端**: FastAPI + LangGraph 1.0.8 + ChromaDB (RAG) + Tavily (搜索) + SQLite Checkpoint (WAL + msgpack)
-- **前端**: Vue 3 (单组件 App.vue) + Tailwind CSS + markdown-it + KaTeX
+- **后端**: FastAPI + LangGraph 1.0.8 + ChromaDB (RAG) + Tavily (搜索) + AKShare (A股数据) + SQLite Checkpoint (WAL + msgpack)
+- **前端**: Vue 3 + Tailwind CSS + markdown-it + KaTeX
 - **LLM**: DashScope API (qwen3.7-plus 主 / deepseek-v4-flash 备)
 - **Embedding**: DashScope text-embedding-v4
-
+- **PDF**: PyMuPDF (研报入库)
 ## 项目结构
 
 ```
 backend/
   main.py                     # FastAPI 入口，CORS、路由挂载、启动依赖检查
   app/config.py               # 集中配置，从 env 读取所有参数
-  app/api/routes.py           # 全部 API 端点 + checkpoint 读写（msgpack）
-  app/graph/graph.py          # LangGraph StateGraph 拓扑（模块级单例）
-  app/graph/state.py          # AgentState TypedDict（11 字段）
-  app/graph/nodes/            # 6 个节点：router/planner/researcher/writer/reviewer/refiner
-  app/rag/engine.py           # RAG 引擎：ChromaDB + DashScope embedding + 可选 CrossEncoder
-  app/tools/search.py         # Tavily 搜索封装（带重试）
-  app/utils/llm.py            # LLM 工厂 + 自动降级
-  app/utils/streaming.py      # ContextVar + asyncio.Queue 流式架构
-  app/utils/memory.py         # 会话记忆：摘要增量更新 + 压缩 + 搜索方向去重
+  app/api/routes.py           # 全部 API 端点（含股票查询/研报上传检索）+ checkpoint 读写（msgpack）
+  app/graph/graph.py          # LangGraph StateGraph 拓扑（8 节点 + Function Calling 循环）
+  app/graph/state.py          # AgentState TypedDict（20+ 字段，含 messages）
+  app/graph/nodes/            # 8 个节点
+    ├── router.py             # 意图路由
+    ├── planner.py            # 搜索规划（async）
+    ├── researcher.py         # RAG 检索 + Grader 审计
+    ├── search_agent.py       # Function Calling agent（LLM 驱动工具调用）
+    ├── data_collector.py     # AKShare 数据拉取（扇出并行）
+    ├── writer.py             # 中文研报撰写（async）
+    ├── reviewer.py           # 质量审查 + cosine 早停
+    └── refiner.py            # 双模式修订（async）
+  app/rag/
+    ├── engine.py             # RAG 引擎：ChromaDB + DashScope embedding
+    └── report_ingest.py      # 研报 PDF 入库 + 实体抽取
+  app/tools/
+    ├── akshare_tools.py      # AKShare 4 工具（行情/财务/新闻/基本信息）+ 三层降级
+    ├── search_tools.py       # Function Calling @tool 声明
+    └── search.py             # Tavily 搜索封装
+  app/utils/
+    ├── llm.py                # LLM 工厂 + 自动降级（5 分钟 TTL）
+    ├── streaming.py          # ContextVar + asyncio.Queue 流式架构
+    ├── memory.py             # 会话记忆：摘要增量更新 + 压缩 + 搜索方向避让
+    └── logger.py             # 结构化日志
 
+frontend/
+  src/App.vue                 # 根组件（Tab 导航：智能问答 + 投研分析）
+  src/views/InvestmentResearch.vue  # 投研分析页面
+  src/components/ChatHeader.vue    # 顶栏：记忆状态指示器 + 摘要容量进度条
+  src/components/ChatMessages.vue  # 消息流：研究轨迹时间线 + Markdown 报告
+  src/components/ChatInput.vue     # 输入框：搜索模式切换
+  src/components/ChatSidebar.vue   # 侧栏：知识库/素材/历史/设置 + 记忆管理
+  src/composables/useChat.js       # 聊天逻辑：流式 SSE + 会话持久化 + 轮次跟踪
+  src/services/api.js         # API 客户端
+  src/services/finance.js     # 投研分析 API 服务
+  src/services/history.js     # localStorage 会话持久化
+```
 frontend/
   src/App.vue                 # 根组件，包含全部 UI 状态和记忆管理
   src/components/ChatHeader.vue    # 顶栏：记忆状态指示器 + 摘要容量进度条
@@ -102,34 +129,16 @@ docker run -d --name iris -p 8000:8000 --memory=1g -v .env:/app/.env iris-backen
 
 ```
 入口 → router
-  ├── NEW_TOPIC → planner → researcher → (should_stop? → END : writer) → reviewer → (FAIL? → planner : END)
+  ├── NEW_TOPIC → planner → researcher → search_agent ⇄ search_tools → data_collector → writer → reviewer → (FAIL? → planner : END)
   └── REFINE → refiner → END
 ```
 
 多轮对话：第 1 次输入走 NEW_TOPIC，后续输入（同 thread_id 且已有报告）走 REFINE。
 
+**Function Calling 循环**：`search_agent` 和 `search_tools` 形成循环 — LLM 决定何时调用 `search_web` 工具，执行后结果累加到 `state["messages"]`，直到 LLM 认为信息充分。
+
 **REFINE 路径双模式**：
-- **模糊后续**（如"你觉得呢？"）：`_is_vague()` 检测 → 轻量 prompt（只传报告前 2000 字摘要）→ 输出追加到报告末尾作为"AI 分析"
-- **明确修改**（如"把第三段改详细"）：全文报告 + 修改指令 → LLM 输出完整修订版
-
-### AgentState（`graph/state.py`）
-
-TypedDict，11 个字段：
-
-| 字段 | 类型 | 读写节点 | 说明 |
-|------|------|---------|------|
-| `query` | str | 全部 | 用户原始问题 |
-| `plan` | List[str] | planner/writer | 规划的搜索步骤 |
-| `search_results` | List[str] | researcher/writer | 搜索到的具体内容 |
-| `final_report` | str | writer/reviewer/refiner | 最终生成的报告 |
-| `critique` | str | reviewer/planner | 审查意见 |
-| `revision_number` | int | reviewer | 当前修改到了第几版 |
-| `review_status` | str | reviewer | "PASS" 或 "FAIL" |
-| `search_mode` | str | router | "document" 或 "hybrid" |
-| `should_stop` | bool | researcher | 控制位 |
-| `conversation_summary` | str | writer/refiner | 运行摘要，通过 checkpoint 持久化 |
-| `preferences` | dict | writer | 用户偏好 {style, language} |
-
+- **模糊后续**（如
 ### 流式架构
 
 - `contextvars.ContextVar` 存储每请求的 token queue（`utils/streaming.py`）
@@ -232,6 +241,12 @@ TypedDict，11 个字段：
 | `GET /api/materials` | 列出所有素材 |
 | `GET /api/materials/{filename}` | 读取素材内容 |
 | `DELETE /api/materials/{filename}` | 删除素材 |
+| `GET /api/stock/{code}/info` | 查询 A 股基本信息（AKShare 三层降级） |
+| `GET /api/stock/{code}/financial` | 查询财务指标 |
+| `GET /api/stock/{code}/quote` | 查询实时行情 |
+| `GET /api/stock/{code}/news` | 查询个股新闻/公告 |
+| `POST /api/reports/upload` | 上传研报 PDF 并入库 RAG |
+| `GET /api/reports/search` | 检索已入库的研报（支持 stock_code 过滤） |
 | `GET /` | 健康检查 |
 
 ## 容错机制

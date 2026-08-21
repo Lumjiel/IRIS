@@ -15,13 +15,13 @@
 
 ## Architecture & Data Flow
 
-### 7-Node State Machine
+### 8-Node State Machine + Function Calling
 
 The core workflow is a LangGraph `StateGraph` defined in `backend/app/graph/graph.py`. The topology is built **once at module import** — adding/removing nodes requires a server restart.
 
 ```
 router (conditional entry, NOT a node)
-  ├── NEW_TOPIC → planner → researcher → data_collector → writer → reviewer
+  ├── NEW_TOPIC → planner → researcher → search_agent ⇄ search_tools → data_collector → writer → reviewer
   │                                                              └── FAIL → planner (up to MAX_REVISIONS=5)
   └── REFINE → refiner → END
 ```
@@ -29,11 +29,14 @@ router (conditional entry, NOT a node)
 **Node sync/async split**:
 
 - `async def` nodes (SSE-aware): `planner`, `writer`, `refiner` — call `get_token_queue()` to detect streaming mode
-- `sync def` nodes: `router`, `researcher`, `data_collector`, `reviewer`
+- `sync def` nodes: `router`, `researcher`, `data_collector`, `reviewer`, `search_agent`, `search_tools`
 
 **Key insight**: `router` is registered via `set_conditional_entry_point()` — it's a dispatch function, not a graph node.
 
-### AgentState (18 fields)
+**Function Calling loop**: `search_agent` and `search_tools` form a loop — LLM decides when to call tools, executes them, and loops back until satisfied.
+**Key insight**: `router` is registered via `set_conditional_entry_point()` — it's a dispatch function, not a graph node.
+
+### AgentState (20+ fields)
 
 Defined in `backend/app/graph/state.py` as a `TypedDict`:
 
@@ -60,7 +63,7 @@ Defined in `backend/app/graph/state.py` as a `TypedDict`:
 | `financial_data` | dict | data_collector | AKShare financial data (stock_info, indicators, quote) |
 | `data_sources` | list | data_collector | Data source tags |
 | `pending_stock_code` | str | router/planner | Stock code to analyze |
-
+| `messages` | List | search_agent/tools | Function Calling 消息历史（`add_messages` reducer 自动累加） |
 ### SSE Streaming Architecture
 
 `backend/app/utils/streaming.py` — producer/consumer pattern:
@@ -94,13 +97,32 @@ Defined in `backend/app/graph/state.py` as a `TypedDict`:
 
 `backend/app/tools/akshare_tools.py`:
 
-- **3 tools**: `query_stock_info`, `query_financial_indicators`, `query_stock_quote`
+- **4 tools**: `query_stock_info`, `query_financial_indicators`, `query_stock_quote`, `query_stock_news`
 - **3-tier fallback**: East Money → Snowball/Sina → Mock data
 - **Module-level proxy cleanup**: clears `HTTP_PROXY/HTTPS_PROXY` on import
 - **Never throws exceptions**: returns structured JSON error on failure
 - **LangChain `@tool` decorator**: Function Calling ready
 - **Source attribution**: every value tagged with `[来源: AKShare 东方财富]`
 
+### Function Calling Architecture
+
+`backend/app/tools/search_tools.py` + `backend/app/graph/nodes/search_agent.py`:
+
+- **`@tool` 声明**: `search_web` 使用 LangChain `@tool` 装饰器
+- **`bind_tools`**: LLM 通过 `get_llm().bind_tools([search_web])` 绑定工具
+- **LLM 自主决策**: LLM 决定是否调用工具、调用什么参数
+- **自定义 ToolNode**: `search_tool_node` 执行 LLM 决定的工具调用（不依赖 `langgraph.prebuilt`，避免版本兼容问题）
+- **消息累加**: 工具结果通过 `add_messages` reducer 自动累加到 `state["messages"]`
+- **结果提取**: `route_after_tools` 从 ToolMessage 提取搜索结果到 `search_results`
+
+### Report RAG (PDF Ingestion)
+
+`backend/app/rag/report_ingest.py`:
+
+- **PyMuPDF 抽取**: `import fitz` 抽取 PDF 全文
+- **实体抽取**: 正则抽取公司名/代码/评级/目标价/日期
+- **元数据入库**: ChromaDB metadata 存 `{source, stock_code, rating, report_date}`
+- **按标的检索**: `search_reports(query, stock_code="600196")` 可按股票代码过滤
 ### Chinese Report Format
 
 `backend/app/agents/prompts.py`:
@@ -134,79 +156,44 @@ IRIS/
 │   │   ├── api/
 │   │   │   └── routes.py            # 全部 API 端点（SSE 流式聊天、上传、素材、记忆、TTS、股票查询）
 │   │   ├── graph/
-│   │   │   ├── state.py             # AgentState TypedDict（18+ 字段）
-│   │   │   ├── graph.py             # LangGraph StateGraph 拓扑（7 节点）
+│   │   │   ├── state.py             # AgentState TypedDict（20+ 字段，含 messages）
+│   │   │   ├── graph.py             # StateGraph 拓扑（8 节点 + Function Calling 循环）
 │   │   │   └── nodes/
 │   │   │       ├── router.py        # 意图路由（NEW_TOPIC / REFINE）
-│   │   │       ├── planner.py       # 搜索规划
-│   │   │       ├── researcher.py    # 多源检索 + Relevance Grader + 熔断
+│   │   │       ├── planner.py       # 搜索规划（async）
+│   │   │       ├── researcher.py    # RAG 检索 + Grader 审计
+│   │   │       ├── search_agent.py  # Function Calling agent（LLM 驱动工具调用）
 │   │   │       ├── data_collector.py # AKShare 数据拉取（扇出并行 + 三层降级）
-│   │   │       ├── writer.py        # 中文研报撰写（六章节格式）
+│   │   │       ├── writer.py        # 中文研报撰写（async）
 │   │   │       ├── reviewer.py      # 质量审查 + cosine 相似度早停
-│   │   │       └── refiner.py       # 双模式修订
+│   │   │       └── refiner.py       # 双模式修订（async）
 │   │   ├── rag/
 │   │   │   └── engine.py            # ChromaDB + DashScope embedding + 可选 CrossEncoder
+│   │   │   └── report_ingest.py     # 研报 PDF 入库 + 实体抽取
 │   │   ├── tools/
-│   │   │   ├── akshare_tools.py     # AKShare 3 工具 + 三层降级 + @tool 装饰器
+│   │   │   ├── akshare_tools.py     # AKShare 4 工具（含新闻）+ 三层降级 + @tool 装饰器
+│   │   │   ├── search_tools.py      # Function Calling @tool 声明
 │   │   │   └── search.py            # Tavily 搜索封装
-│   │   └── utils/
 │   │       ├── llm.py               # LLM 工厂 + 自动降级
 │   │       ├── streaming.py         # ContextVar + asyncio.Queue 流式架构
 │   │       ├── memory.py            # 会话摘要
 │   │       └── logger.py            # 结构化日志
-│   ├── eval/                        # 评测框架
-│   ├── tests/                       # 106 个测试（全量通过）
+│   ├── eval/                        # 评测框架（12 个 Golden Case）
+│   ├── tests/                       # 127 个测试（全量通过）
 │   │   ├── test_akshare_tools.py    # 13 个测试（AKShare 工具层 + mock）
 │   │   ├── test_data_collector.py   # 9 个测试（DataCollector 节点 + mock）
 │   │   ├── test_chinese_report.py   # 11 个测试（中文报告格式 + 表格生成）
 │   │   ├── test_router.py           # 18 个测试
 │   │   ├── test_reviewer.py         # 12 个测试
-│   │   ├── test_researcher.py       # 6 个测试
+│   │   ├── test_researcher.py       # 5 个测试
+│   │   ├── test_search_agent.py     # 8 个测试（Function Calling 节点）
+│   │   ├── test_report_ingest.py    # 13 个测试（研报入库 + 检索）
 │   │   ├── test_llm.py              # 9 个测试
-│   │   └── test_graph.py            # 6 个测试
+│   │   ├── test_graph.py            # 6 个测试
+│   │   └── integration/             # 23 个集成测试
 │   ├── conftest.py                  # Mock 外部依赖 + sample_state fixture
 │   ├── pytest.ini                   # asyncio_mode = auto
-│   ├── requirements.txt             # 依赖清单（含 akshare）
-│   └── DEPLOY.md                    # 部署指南
-├── frontend/
-│   ├── src/
-│   │   ├── views/
-│   │   │   └── InvestmentResearch.vue # 投研分析页面（股票输入 + 流式报告）
-│   │   ├── components/              # 聊天组件
-│   │   ├── composables/
-│   │   │   └── useChat.js            # 聊天逻辑（SSE 流式）
-│   │   ├── services/
-│   │   │   ├── api.js               # API 客户端
-│   │   │   └── finance.js           # 投研分析 API 服务
-│   │   └── App.vue                  # 根组件（Tab 导航：智能问答 + 投研分析）
-│   └── package.json
-├── docs/research/                   # 调研报告（6 份）
-├── REFACTOR_PLAN.md                 # 分阶段重构计划（含面试验证）
-├── AGENTS.md                        # 本文件
-├── PROJECT_BRIEFING.md              # 项目简报
-└── CLAUDE.md                        # Claude Code 配置
-```
-
----
-
-## Testing
-
-```bash
-cd backend
-python -m pytest tests/ -v          # 详细输出
-python -m pytest tests/ -q          # 简洁输出
-python -m pytest tests/test_akshare_tools.py -v  # 仅 AKShare 测试
-```
-
-**Test count**: 106 tests, all passing (39s)
-
-**Key test patterns**:
-
-- `monkeypatch` for mocking AKShare API calls (offline-capable)
-- `unittest.mock.patch` for mocking LLM calls
-- `pytest-asyncio` for async node tests
-- `sample_state` fixture in `conftest.py` for AgentState
-
+│   ├── requirements.txt             # 依赖清单（含 akshare + pymupdf）
 ---
 
 ## Key Design Decisions
@@ -215,9 +202,9 @@ python -m pytest tests/test_akshare_tools.py -v  # 仅 AKShare 测试
 2. **AKShare proxy cleanup**: Module-level `os.environ.pop()` clears proxy vars to prevent `Connection aborted`.
 3. **Data-opinion separation**: Financial tables generated from JSON (not LLM) to prevent hallucination.
 4. **3-tier data fallback**: East Money → Snowball/Sina → Mock data ensures system never crashes.
-5. **`@tool` decorator**: AKShare tools use LangChain `@tool` for Function Calling readiness.
-6. **Never-throw tools**: All tools return structured JSON errors instead of raising exceptions.
-
+5. **Function Calling**: LLM autonomously decides when/what to search via `@tool` + `bind_tools` + custom `ToolNode`.
+6. **Custom ToolNode**: Instead of `langgraph.prebuilt.ToolNode` (which has version compatibility issues), we implement our own.
+7. **Report RAG**: PyMuPDF + regex entity extraction + ChromaDB metadata filtering.
 ---
 
 ## Environment Variables
@@ -265,6 +252,7 @@ python -m pytest tests/test_akshare_tools.py -v  # 仅 AKShare 测试
 - **How to prevent infinite loops?** MAX_REVISIONS(5) + cosine similarity early-stop(0.95)
 - **How to prevent hallucination?** Data-opinion separation + source attribution + honest reporting
 - **How to handle degradation?** 3-tier data sources + LLM primary/fallback + tool-level never-throw
-- **Multi-agent architecture?** 7-node collaboration, each node independently decoupled
-- **Function Calling?** `@tool` declaration + `bind_tools` + `ToolNode` + `tools_condition`
+- **Multi-agent architecture?** 8-node collaboration with Function Calling loop (search_agent ⇄ search_tools)
+- **Function Calling?** `@tool` declaration + `bind_tools` + custom `ToolNode` + LLM autonomous decision (not hardcoded)
 - **Memory system?** conversation_summary incremental + checkpoint cross-session persistence
+- **Report RAG?** PyMuPDF extraction + regex entity extraction + ChromaDB metadata filtering
