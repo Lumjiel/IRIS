@@ -1,8 +1,8 @@
 // frontend/src/services/api.js
 
-const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
-function generateUUID() {
+export function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
@@ -10,18 +10,32 @@ function generateUUID() {
 }
 
 // 会话级 ID：可持久化，支持刷新后恢复
-let _threadId = localStorage.getItem('iris_thread_id') || crypto.randomUUID();
-localStorage.setItem('iris_thread_id', _threadId);
+let _threadId;
+try {
+  _threadId = localStorage.getItem('iris_thread_id') || crypto.randomUUID();
+  localStorage.setItem('iris_thread_id', _threadId);
+} catch {
+  // localStorage 不可用时降级为内存模式
+  _threadId = generateUUID();
+}
 
 export function getThreadId() { return _threadId; }
 export function setThreadId(id) {
   _threadId = id;
-  localStorage.setItem('iris_thread_id', id);
+  try {
+    localStorage.setItem('iris_thread_id', id);
+  } catch {
+    // localStorage 不可用时静默降级
+  }
 }
 export function newThreadId() {
   const id = crypto.randomUUID();
   _threadId = id;
-  localStorage.setItem('iris_thread_id', id);
+  try {
+    localStorage.setItem('iris_thread_id', id);
+  } catch {
+    // localStorage 不可用时静默降级
+  }
   return id;
 }
 
@@ -31,100 +45,91 @@ export function newThreadId() {
  */
 export async function uploadFiles(files) {
     const formData = new FormData();
-    // 遍历文件数组，把它们都塞进 'files' 字段里
     files.forEach(file => {
         formData.append('files', file);
     });
 
-    // 发送 POST 请求到 /upload
     const response = await fetch(`${API_BASE}/upload`, {
-        method: "POST",
-        body: formData
+        method: 'POST',
+        body: formData,
     });
-    
-    if (!response.ok) {
-        let msg = "上传失败";
-        try {
-            const errorData = await response.json();
-            msg = errorData.detail || msg;
-        } catch {
-            msg = `HTTP ${response.status}`;
-        }
-        throw new Error(msg);
-    }
-    
+    if (!response.ok) throw new Error('Upload failed');
     return await response.json();
 }
+
 export async function clearContext() {
   const response = await fetch(`${API_BASE}/clear`, {
       method: "POST"
   });
-  if (!response.ok) throw new Error("Failed to clear context");
+  if (!response.ok) throw new Error('Clear failed');
   return await response.json();
 }
 
 /**
  * 流式聊天
- * @param {string} query - 问题
- * @param {string} searchMode - 'hybrid' | 'document'
- * @param {function} onMessage - 接收消息回调
+ * @param {string} query - 用户查询
+ * @param {string} search_mode - 搜索模式 (document/hybrid)
+ * @param {function} onData - 数据回调
  * @param {function} onDone - 完成回调
  * @param {function} onError - 错误回调
+ * @param {AbortSignal} signal - 中止信号
  */
 export async function streamChat(query, search_mode, onData, onDone, onError, signal) {
-  // 从 localStorage 读取用户偏好
-  const prefs = JSON.parse(localStorage.getItem('iris_preferences') || '{}');
+  let prefs = {};
   try {
-      const response = await fetch(`${API_BASE}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-              query: query,
-              search_mode: search_mode,
-              thread_id: _threadId,
-              style: prefs.style || 'detailed',
-              language: prefs.language || 'zh',
-          }),
-          signal,
-      });
-      
-      if (!response.ok) {
-          let msg = "请求失败";
-          try { const d = await response.json(); msg = d.detail || msg; } catch { msg = `HTTP ${response.status}`; }
-          throw new Error(msg);
-      }
+    prefs = JSON.parse(localStorage.getItem('iris_preferences') || '{}');
+  } catch {
+    // JSON 解析失败时静默降级
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        search_mode,
+        thread_id: getThreadId(),
+        preferences: prefs,
+      }),
+      signal,
+    });
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
-      let streamDone = false;
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
 
-      const processLine = (line) => {
-          if (!line.startsWith('data: ')) return;
-          const dataStr = line.slice(6).trim();
-          if (dataStr === '[DONE]') { streamDone = true; return; }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
           try {
-              const parsed = JSON.parse(dataStr);
-              onData(parsed);
-          } catch(e){
-              console.warn('[SSE] parse error:', dataStr.substring(0, 50));
+            const data = JSON.parse(line.slice(6));
+            onData(data);
+            if (data.type === 'done') {
+              onDone();
+            }
+          } catch {
+            // JSON 解析失败时跳过该行
           }
-      };
-
-      while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop();
-          for (const line of lines) processLine(line);
+        }
       }
-      // 处理 buffer 中剩余的数据
-      if (buffer.trim()) processLine(buffer.trim());
-      onDone();
+    }
   } catch (error) {
-      if (error.name === 'AbortError') return; // 用户主动取消，不报错
-      onError(error);
+    if (error.name === 'AbortError') {
+      return;
+    }
+    onError(error);
   }
 }
 
@@ -135,7 +140,7 @@ export async function fetchAihotNews(take = 20, query = null) {
   const params = new URLSearchParams({ mode: 'selected', take });
   if (query) params.set('q', query);
   const response = await fetch(`${API_BASE}/aihot/news?${params}`);
-  if (!response.ok) throw new Error('Failed to fetch AI news');
+  if (!response.ok) throw new Error('Failed to fetch news');
   return await response.json();
 }
 
@@ -146,7 +151,7 @@ export async function saveReport(query, report, watermark = true) {
   const response = await fetch(`${API_BASE}/save-report`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, report, watermark })
+    body: JSON.stringify({ query, report, watermark }),
   });
   if (!response.ok) throw new Error('Failed to save report');
   return await response.json();
@@ -192,20 +197,13 @@ export async function resetMemory(threadId) {
 
 /**
  * TTS 语音合成
- * @param {string} text - 要合成的文本
- * @param {string} voice - 音色名称
- * @returns {Blob} 音频 Blob
  */
 export async function ttsSynthesize(text, voice = 'longtian_v3') {
   const response = await fetch(`${API_BASE}/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, voice })
+    body: JSON.stringify({ text, voice }),
   });
-  if (!response.ok) {
-    let msg = '语音合成失败';
-    try { const d = await response.json(); msg = d.detail || msg; } catch {}
-    throw new Error(msg);
-  }
+  if (!response.ok) throw new Error('TTS failed');
   return await response.blob();
 }

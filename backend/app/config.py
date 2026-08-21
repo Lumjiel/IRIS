@@ -43,3 +43,16 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
 
 CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", os.path.join(DATA_DIR, "checkpoints.db"))
 STORE_DB = os.getenv("STORE_DB", os.path.join(DATA_DIR, "store.db"))
+
+# === LangSmith 可观测性 ===
+LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY", "")
+LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "iris-dev")
+LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "true")
+LANGCHAIN_ENDPOINT = os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
+
+# 启动时自动设置环境变量（LangSmith SDK 自动读取）
+if LANGSMITH_API_KEY:
+    os.environ["LANGSMITH_API_KEY"] = LANGSMITH_API_KEY
+    os.environ["LANGCHAIN_TRACING_V2"] = LANGCHAIN_TRACING_V2
+    os.environ["LANGCHAIN_PROJECT"] = LANGSMITH_PROJECT
+    os.environ["LANGCHAIN_ENDPOINT"] = LANGCHAIN_ENDPOINT

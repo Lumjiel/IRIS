@@ -22,4 +22,19 @@ class AgentState(TypedDict):
 
     # === 用户偏好 ===
     # preferences: {style, language}，从前端传递，影响 writer 输出风格
+    # === Function Calling 容错 (新增) ===
+    # error_code: 结构化错误码（ErrorCode 枚举值）
+    error_code: str
+    # degraded: 是否处于降级模式
+    degraded: bool
+    # failed_tools: 失败的工具列表
+    failed_tools: List[str]
+    # early_stop: reviewer 设置的早停标记
+    early_stop: bool
+    # should_continue: 条件边控制
+    should_continue: bool
+    # report_history: reviewer 维护的报告历史（用于 cosine 相似度）
+    report_history: List[str]
+    # tool_status: 工具调用状态 {name: {success, error}}
+    tool_status: dict
     preferences: dict

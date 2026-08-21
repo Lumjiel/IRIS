@@ -2,24 +2,35 @@
 __pycache__/
 *.pyc
 venv/
+.venv/
+backend/venv/
 .env
 backend/.env
 
 # Node
 node_modules/
 dist/
+frontend/dist/
 
 # IDE
 .vscode/
 .idea/
 
-# Data
+# Data & Runtime
 backend/app/rag/chroma_db/
 backend/app/rag/uploads/
 backend/app/api/checkpoints.db
+*.db
+backend/checkpoints.db*
+backend/store.db*
+.pytest_cache/
+backend/.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Claude Code / Tools
 .claude/
 .understand-anything/
-*.db
-backend/checkpoints.db*
+.playwright-mcp/

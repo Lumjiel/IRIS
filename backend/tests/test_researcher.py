@@ -69,4 +69,5 @@ class TestResearchNode:
         mock_search.side_effect = Exception("Tavily error")
         result = research_node(sample_state)
         assert len(result["search_results"]) == 1
-        assert "未能检索" in result["search_results"][0]
+        # 新 Validation Node 返回降级提示而非"未能检索"
+        assert "搜索服务暂时不可用" in result["search_results"][0] or "未能检索" in result["search_results"][0]
