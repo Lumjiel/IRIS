@@ -14,6 +14,7 @@ from app.rag.engine import process_documents, reset_knowledge_base, UPLOAD_DIR
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.utils.logger import get_logger
 from app.config import CHECKPOINT_MAX_AGE_DAYS, MAX_UPLOAD_FILES, MAX_FILE_SIZE_MB, CREATION_DIR, CHECKPOINT_DB, STORE_DB
+from app.tools.akshare_tools import query_stock_info, query_financial_indicators, query_stock_quote
 
 log = get_logger("routes")
 
@@ -532,3 +533,25 @@ async def text_to_speech(request: TTSRequest):
     except Exception as e:
         log.error(f"TTS 合成失败: {e}")
         raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")
+
+# ============================================================
+# 股票查询 API（投研分析前端用）
+# ============================================================
+
+@router.get("/stock/{stock_code}/info")
+async def get_stock_info(stock_code: str):
+    """查询股票基本信息"""
+    result = query_stock_info.invoke(stock_code)
+    return json.loads(result)
+
+@router.get("/stock/{stock_code}/financial")
+async def get_financial(stock_code: str):
+    """查询财务指标"""
+    result = query_financial_indicators.invoke(stock_code)
+    return json.loads(result)
+
+@router.get("/stock/{stock_code}/quote")
+async def get_quote(stock_code: str):
+    """查询实时行情"""
+    result = query_stock_quote.invoke(stock_code)
+    return json.loads(result)
