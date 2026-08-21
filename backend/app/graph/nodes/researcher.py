@@ -1,12 +1,11 @@
 """
 IRIS Researcher 节点
-- 多源检索（本地文档 + 网络搜索）
-- 文档相关性审计（Grader）
-- 熔断机制（document 模式）
+- 本地文档检索（RAG）+ 文档相关性审计（Grader）
+- 文档模式提前终止（should_stop）
 - Validation Node（工具状态校验）
+- 网络搜索已迁移至 search_agent（Function Calling）
 """
 from langchain_core.messages import HumanMessage
-from app.tools.search import search_tavily
 from app.graph.state import AgentState
 from app.rag.engine import get_retriever
 from app.utils.llm import llm_invoke
@@ -56,7 +55,7 @@ def _record_tool_status(state: AgentState, tool_name: str, success: bool, error:
 
 
 def research_node(state: AgentState):
-    """执行研究节点"""
+    """执行研究节点（本地 RAG + 文档审计，网络搜索由 search_agent 处理）"""
     mode = state.get("search_mode", "hybrid")
     query = state["query"]
     plans = state["plan"]
@@ -67,10 +66,16 @@ def research_node(state: AgentState):
     
     log.info(f"开始搜索 | 模式: {mode}")
     
-    retriever = get_retriever()
+    try:
+        retriever = get_retriever()
+    except Exception as e:
+        log.error(f"get_retriever 调用失败: {e}")
+        _record_tool_status(state, "retriever", False, str(e))
+        retriever = None
+
     rag_content = ""
     is_doc_relevant = False
-    
+
     # === 本地文档检索 ===
     if retriever:
         log.info("正在检索本地知识库...")
@@ -138,32 +143,16 @@ def research_node(state: AgentState):
                 "degraded": True,
             }
 
-    # === 混合模式：网络搜索 ===
-    should_web_search = True
-
-    if is_doc_relevant:
-        log.info("文档相关，启用混合增强模式 (Doc + Web)")
-    else:
-        log.info("文档不相关，自动切换为全网搜索模式")
-        log.info("本地文档与问题无关，系统已自动切换为全网搜索")
-
-    if should_web_search:
-        log.info("正在执行互联网搜索...")
-        for q in plans:
-            try:
-                content = search_tavily(q)
-                results.append(f"### 🌐 网络搜索结果 ({q})\n{content}\n")
-                _record_tool_status(state, f"tavily_{q}", True)
-            except Exception as e:
-                log.error(f"搜索 {q} 失败: {e}")
-                _record_tool_status(state, f"tavily_{q}", False, str(e))
+    # === 网络搜索已迁移至 search_agent（Function Calling） ===
+    # researcher 只负责本地 RAG 检索 + 文档相关性审计
+    # 网络搜索由 search_agent 节点通过 LLM 驱动的工具调用完成
 
     # === Validation Node：统一检查工具状态 ===
     state = _validate_tool_status(state, results)
 
     # 如果所有检索都失败，给 writer 一个提示而非空内容
     if not results:
-        results.append(f"[系统提示] 未能检索到关于「{query}」的外部资料。请基于你的知识直接回答，并在报告开头说明信息来源有限。")
+        results.append(f"[系统提示] 未能检索到关于「{query}」的本地资料。网络搜索将由后续搜索代理完成。")
 
     return {"search_results": results, **{
         k: v for k, v in state.items()

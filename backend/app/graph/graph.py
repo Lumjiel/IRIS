@@ -12,6 +12,7 @@ from app.graph.state import AgentState
 from app.graph.nodes.router import route_query
 from app.graph.nodes.planner import plan_node
 from app.graph.nodes.researcher import research_node
+from app.graph.nodes.search_agent import search_agent_node, search_tool_node, route_after_tools
 from app.graph.nodes.writer import write_node
 from app.graph.nodes.reviewer import review_node
 from app.graph.nodes.refiner import refine_node
@@ -19,7 +20,6 @@ from app.graph.nodes.data_collector import data_collector_node
 from app.error_types import ErrorCode
 from app.utils.logger import get_logger
 from app.config import MAX_REVISIONS, LANGSMITH_API_KEY
-
 log = get_logger("graph")
 
 # === 循环终止配置 ===
@@ -66,9 +66,37 @@ def traced_refiner(state: AgentState):
     return refine_node(state)
 
 
+@traceable(run_type="chain", name="search_agent")
+def traced_search_agent(state: AgentState):
+    return search_agent_node(state)
+
+
+@traceable(run_type="chain", name="search_tools")
 @traceable(run_type="chain", name="data_collector")
 def traced_data_collector(state: AgentState):
     return data_collector_node(state)
+
+
+def traced_search_tools(state: AgentState):
+    return search_tool_node(state)
+
+
+def _route_search_agent(state: AgentState) -> str:
+    """Function Calling 路由：agent 决定调工具还是结束"""
+    messages = state.get("messages", [])
+    if not messages:
+        log.warning("[FC路由] 无消息，跳过搜索")
+        return "route_after_tools"
+    
+    last_msg = messages[-1]
+    # 检查最后一条消息是否有工具调用
+    if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+        log.info(f"[FC路由] agent 请求 {len(last_msg.tool_calls)} 个工具调用 -> search_tools")
+        return "search_tools"
+    
+    # 无工具调用 = agent 结束，提取结果
+    log.info("[FC路由] agent 无工具调用 -> 提取结果 -> data_collector")
+    return "route_after_tools"
 
 
 def route_after_research(state: AgentState):
@@ -78,7 +106,6 @@ def route_after_research(state: AgentState):
         return END
     else:
         return "writer"
-
 
 def should_continue(state: AgentState) -> str:
     """
@@ -129,12 +156,15 @@ _workflow = StateGraph(AgentState)
 _workflow.add_node("router", traced_router)
 _workflow.add_node("planner", traced_planner)
 _workflow.add_node("researcher", traced_researcher)
+_workflow.add_node("search_agent", traced_search_agent)
+_workflow.add_node("search_tools", traced_search_tools)
+_workflow.add_node("route_after_tools", route_after_tools)
 _workflow.add_node("writer", traced_writer)
 _workflow.add_node("reviewer", traced_reviewer)
 _workflow.add_node("refiner", traced_refiner)
 _workflow.add_node("data_collector", traced_data_collector)
 
-# START -> planner -> Researcher -> Writer -> Reviewer -> END/Planner
+# START -> planner -> researcher -> search_agent -> tools -> search_agent (loop) -> data_collector -> writer
 _workflow.set_conditional_entry_point(
     route_query,
     {
@@ -143,7 +173,17 @@ _workflow.set_conditional_entry_point(
     }
 )
 _workflow.add_edge("planner", "researcher")
-_workflow.add_edge("researcher", "data_collector")
+_workflow.add_edge("researcher", "search_agent")
+_workflow.add_conditional_edges(
+    "search_agent",
+    _route_search_agent,
+    {
+        "search_tools": "search_tools",
+        "route_after_tools": "route_after_tools"
+    }
+)
+_workflow.add_edge("search_tools", "search_agent")
+_workflow.add_edge("route_after_tools", "data_collector")
 _workflow.add_edge("data_collector", "writer")
 _workflow.add_edge("writer", "reviewer")
 _workflow.add_conditional_edges(

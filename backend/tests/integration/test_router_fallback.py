@@ -144,26 +144,20 @@ class TestResearcherCircuitBreaker:
         assert result.get("should_stop") is True
         assert result.get("error_code") == ErrorCode.VALIDATION_FAILED
 
-    def test_hybrid_mode_degrades_to_web(self):
-        """hybrid 模式文档不相关时降级为全网搜索"""
+    def test_hybrid_mode_no_web_search_in_researcher(self):
+        """researcher 不再直接搜索，网络搜索已迁移至 search_agent"""
         from app.graph.nodes.researcher import research_node
         
         state = make_state(search_mode="hybrid", query="量子计算")
         
-        with patch("app.graph.nodes.researcher.get_retriever") as mock_get_retriever, \
-             patch("app.graph.nodes.researcher.search_tavily") as mock_tavily:
+        with patch("app.graph.nodes.researcher.get_retriever") as mock_get_retriever:
             mock_retriever = MagicMock()
             mock_retriever.invoke.return_value = []
             mock_get_retriever.return_value = mock_retriever
             
-            # Mock grader 返回 NO（文档不相关）
-            with patch("app.graph.nodes.researcher.llm_invoke") as mock_llm:
-                mock_llm.return_value = MagicMock(content="NO")
-                
-                result = research_node(state)
+            result = research_node(state)
         
-        # 应该触发了网络搜索
-        assert mock_tavily.called
+        # researcher 不再做 web 搜索，只返回本地 RAG 结果
         assert "search_results" in result
 
 
@@ -231,19 +225,11 @@ class TestResearcherValidationNode:
             plan=["AI Agent"],
         )
         
-        # Mock retriever 为空，search_tavily 失败
-        with patch("app.graph.nodes.researcher.get_retriever") as mock_get_retriever, \
-             patch("app.graph.nodes.researcher.search_tavily") as mock_tavily:
-            mock_retriever = MagicMock()
-            mock_retriever.invoke.return_value = []
-            mock_get_retriever.return_value = mock_retriever
+        # Mock retriever 失败
+        with patch("app.graph.nodes.researcher.get_retriever") as mock_get_retriever:
+            mock_get_retriever.side_effect = Exception("ChromaDB 连接失败")
             
-            # Mock grader 返回 YES（文档相关，但实际没有文档）
-            with patch("app.graph.nodes.researcher.llm_invoke") as mock_llm:
-                mock_llm.return_value = MagicMock(content="YES")
-                mock_tavily.side_effect = Exception("Tavily API 500")
-                
-                result = research_node(state)
+            result = research_node(state)
         
         # 应该标记降级
         assert result.get("degraded") is True
