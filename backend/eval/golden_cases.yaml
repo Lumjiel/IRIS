@@ -1,0 +1,96 @@
+# IRIS Golden Case 数据集
+# 用于 Eval 评测的典型查询和预期结果
+
+test_cases:
+  # === 基础查询 ===
+  - id: "tc-001"
+    query: "2026年AI Agent领域最新进展"
+    expected_topics: ["多智能体", "LangGraph", "工具调用", "MCP"]
+    min_report_length: 500
+    language: "zh"
+    difficulty: "medium"
+
+  - id: "tc-002"
+    query: "RAG系统架构设计"
+    expected_topics: ["向量数据库", "Embedding", "检索", "ChromaDB"]
+    min_report_length: 400
+    language: "zh"
+    difficulty: "medium"
+
+  # === 技术深度 ===
+  - id: "tc-003"
+    query: "LangGraph状态机实现原理"
+    expected_topics: ["状态机", "节点", "条件边", "checkpointer"]
+    min_report_length: 600
+    language: "zh"
+    difficulty: "hard"
+
+  - id: "tc-004"
+    query: "如何设计一个支持多轮对话的Agent"
+    expected_topics: ["会话记忆", "conversation_summary", "上下文管理"]
+    min_report_length: 500
+    language: "zh"
+    difficulty: "hard"
+
+  # === 边界/异常 ===
+  - id: "tc-005"
+    query: ""
+    expected_error: "empty_query"
+    min_report_length: 0
+    language: "zh"
+    difficulty: "edge"
+
+  - id: "tc-006"
+    query: "   "
+    expected_error: "whitespace_only"
+    min_report_length: 0
+    language: "zh"
+    difficulty: "edge"
+
+  # === 模糊查询 ===
+  - id: "tc-007"
+    query: "AI"
+    expected_topics: ["人工智能", "机器学习", "大模型"]
+    min_report_length: 300
+    language: "zh"
+    difficulty: "easy"
+
+  # === 英文查询 ===
+  - id: "tc-008"
+    query: "Compare LangGraph vs CrewAI"
+    expected_topics: ["LangGraph", "CrewAI", "comparison"]
+    min_report_length: 400
+    language: "en"
+    difficulty: "medium"
+
+  # === 专业领域 ===
+  - id: "tc-009"
+    query: "向量数据库性能优化策略"
+    expected_topics: ["ChromaDB", "索引", "性能", "ANN"]
+    min_report_length: 500
+    language: "zh"
+    difficulty: "medium"
+
+  - id: "tc-010"
+    query: "Prompt Injection攻击防护"
+    expected_topics: ["安全", "Prompt Injection", "防护", "验证"]
+    min_report_length: 400
+    language: "zh"
+    difficulty: "hard"
+
+  # === 多轮对话 ===
+  - id: "tc-011"
+    query: "继续上一个话题，补充细节"
+    expected_topics: ["上下文", "对话", "记忆"]
+    min_report_length: 300
+    language: "zh"
+    difficulty: "multi_turn"
+    requires_context: true
+
+  # === 长查询 ===
+  - id: "tc-012"
+    query: "请详细分析2024-2026年大模型技术演进，包括GPT-4、Claude、Gemini等主要模型的特点和应用场景"
+    expected_topics: ["GPT-4", "Claude", "Gemini", "大模型"]
+    min_report_length: 800
+    language: "zh"
+    difficulty: "hard"
