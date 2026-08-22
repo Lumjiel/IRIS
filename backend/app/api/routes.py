@@ -632,3 +632,53 @@ async def search_reports(q: str, stock_code: str = None, top_k: int = 5):
     
     results = search_reports(q, stock_code=stock_code, top_k=top_k)
     return {"status": "ok", "results": results, "count": len(results)}
+
+
+# ============================================================
+# 系统状态探测（侧边栏数据源/LLM 状态展示）
+# ============================================================
+
+_status_cache = {"ts": 0.0, "data": None}
+_STATUS_TTL = 60  # 60s 缓存，避免每次侧边栏渲染都真查
+
+
+@router.get("/status")
+async def system_status():
+    """返回数据源与 LLM 降级状态（60s 缓存）"""
+    import time as _t
+    from app.utils.llm import _is_exhausted
+
+    now = _t.time()
+    if _status_cache["data"] and (now - _status_cache["ts"] < _STATUS_TTL):
+        return _status_cache["data"]
+
+    # 轻量探测：行情工具自带三层降级，返回的 data_source 即当前实际数据层
+    data_source = "未知"
+    try:
+        # invoke 返回 JSON 字符串（工具约定），同步在线程池执行避免阻塞事件循环
+        raw = _t_run(lambda: query_stock_quote.invoke("600519"))
+        result = json.loads(raw)
+        quote = result.get("quote", {})
+        data_source = quote.get("data_source", "未知")
+    except Exception as e:
+        data_source = f"异常（{str(e)[:40]}）"
+
+    payload = {
+        "data_source": data_source,
+        "data_online": "AKShare" in data_source or "雪球" in data_source,
+        "llm_degraded": _is_exhausted(),
+        "primary_model": os.getenv("LLM_MODEL_PRIMARY", "qwen3.7-plus"),
+        "fallback_model": os.getenv("LLM_MODEL_FALLBACK", "deepseek-v4-flash"),
+    }
+    _status_cache["ts"] = now
+    _status_cache["data"] = payload
+    return payload
+
+
+# 同步阻塞调用放入线程池，避免阻塞事件循环
+from concurrent.futures import ThreadPoolExecutor
+_t_executor = ThreadPoolExecutor(max_workers=1)
+
+def _t_run(fn, *args):
+    fut = _t_executor.submit(fn, *args)
+    return fut.result(timeout=30)
