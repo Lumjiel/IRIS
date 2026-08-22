@@ -1,4 +1,4 @@
-"""router.py 节点测试。"""
+"""router.py 节点测试（2026-08 对齐三意图路由实现）。"""
 from unittest.mock import patch, MagicMock
 
 # conftest.py 会先于测试模块加载并注入外部依赖 mock，此处模块级导入安全
