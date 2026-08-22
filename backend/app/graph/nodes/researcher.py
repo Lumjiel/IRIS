@@ -58,7 +58,7 @@ def research_node(state: AgentState):
     """执行研究节点（本地 RAG + 文档审计，网络搜索由 search_agent 处理）"""
     mode = state.get("search_mode", "hybrid")
     query = state["query"]
-    plans = state["plan"]
+    plans = state.get("plan", [])
     results = []
 
     # 初始化 tool_status

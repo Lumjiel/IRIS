@@ -10,6 +10,7 @@ class AgentState(TypedDict):
     query: str                # 用户原始问题
     messages: Annotated[List, add_messages]  # Function Calling 消息历史（自动累加）
     search_results: List[str] # 搜索到的具体内容
+    plan: List[str]            # 搜索子问题列表（planner 生成，researcher 消费）
     final_report: str         # 最终生成的报告
     critique: str             # 审查意见
     revision_number: int      # 当前修改到了第几版 (防止死循环)

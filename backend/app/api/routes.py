@@ -18,6 +18,21 @@ from app.tools.akshare_tools import query_stock_info, query_financial_indicators
 
 log = get_logger("routes")
 
+# 安全序列化：处理 AIMessage 等非 JSON 可序列化对象
+def _safe_json_serialize(obj):
+    """递归处理非 JSON 可序列化对象"""
+    if isinstance(obj, str):
+        return obj
+    elif isinstance(obj, (int, float, bool, type(None))):
+        return obj
+    elif isinstance(obj, list):
+        return [_safe_json_serialize(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {str(k): _safe_json_serialize(v) for k, v in obj.items()}
+    else:
+        # AIMessage 等其他对象转为字符串
+        return str(obj)
+
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = CHECKPOINT_DB
 router = APIRouter()
@@ -274,7 +289,8 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                     try:
                         async for event in app.astream(initial_state, config=config):
                             for node_name, state_update in event.items():
-                                ev = json.dumps({"step": node_name, "data": state_update}, ensure_ascii=False)
+                                safe_data = _safe_json_serialize(state_update)
+                                ev = json.dumps({"step": node_name, "data": safe_data}, ensure_ascii=False, default=str)
                                 await graph_queue.put(ev)
                     except Exception as e:
                         log.error(f"Graph error: {type(e).__name__}: {e}", exc_info=True)

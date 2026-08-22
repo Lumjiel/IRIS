@@ -83,7 +83,7 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
   }
   
   try {
-    const response = await fetch(`${API_BASE}/chat/stream`, {
+    const response = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
