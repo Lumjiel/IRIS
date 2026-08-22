@@ -49,6 +49,14 @@
               <ResearchTimeline v-if="msg.events && msg.events.length" :events="msg.events" />
               <!-- 报告 -->
               <ReportViewer v-if="msg.report" :content="msg.report" :streaming="msg.streaming" />
+              <ActionBar
+                v-if="msg.report && msg.type !== 'loading'"
+                :report="msg.report"
+                :sources="msg.quote?.data_source ? [msg.quote.data_source] : []"
+                @copy="handleCopy"
+                @download="handleDownload"
+                @save="handleSave"
+              />
             </div>
 
             <!-- AI 消息：加载中 -->
@@ -93,6 +101,9 @@
       </div>
     </footer>
   </div>
+
+  <!-- Toast 反馈 -->
+  <Toast :message="toastMessage" :type="toastType" />
 </template>
 
 <script setup>
@@ -101,9 +112,44 @@ import MarketDataCard from './components/MarketDataCard.vue';
 import FinancialCard from './components/FinancialCard.vue';
 import ResearchTimeline from './components/ResearchTimeline.vue';
 import ReportViewer from './components/ReportViewer.vue';
+import ActionBar from './components/ActionBar.vue';
+import Toast from './components/Toast.vue';
 import { streamChat } from './services/api';
 
 const input = ref('');
+// --- Toast 反馈 ---
+const toastMessage = ref('');
+const toastType = ref('success');
+let toastTimer = null;
+const showToast = (msg, type = 'success') => {
+  toastMessage.value = msg;
+  toastType.value = type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastMessage.value = ''; }, 2200);
+};
+
+// --- ActionBar 操作 ---
+const currentReport = () => messages.value.find(m => m.report && m.type !== 'loading');
+const handleCopy = () => {
+  const msg = currentReport();
+  if (!msg?.report) return;
+  navigator.clipboard.writeText(msg.report).then(() => showToast('已复制到剪贴板')).catch(() => showToast('复制失败', 'error'));
+};
+const handleDownload = () => {
+  const msg = currentReport();
+  if (!msg?.report) return;
+  const blob = new Blob([msg.report], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const code = msg.quote?.code || msg.quote?.stock_code || 'report';
+  a.download = `投研报告_${code}_${ts}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('报告已下载');
+};
+const handleSave = () => { showToast('保存功能开发中'); };
 const isLoading = ref(false);
 const messages = ref([]);
 const scrollEl = ref(null);
