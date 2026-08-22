@@ -47,7 +47,7 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **八节点多智能体协同架构*
 │                                                                  │
 │  router → planner → researcher → search_agent ⇄ search_tools    │
 │                                   ↓                              │
-│              data_collector → writer → reviewer ──FAIL──→ planner│
+│  route_after_tools → data_collector → writer → reviewer ──FAIL──→ planner│
 │                                        │                        │
 │                                   refiner (多轮追问/修改)         │
 └─────────────────────────────┬───────────────────────────────────┘
@@ -75,7 +75,7 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **八节点多智能体协同架构*
 | 🔍 **Researcher** | 本地文档检索 + 文档相关性审计 | ChromaDB RAG + Grader |
 | 🤖 **SearchAgent** | LLM 驱动的网络搜索 | Function Calling: `@tool` + `bind_tools` + 自定义 ToolNode |
 | 🔧 **SearchTools** | 执行 LLM 决定的工具调用 | Tavily 搜索 + 新闻 API |
-| 📊 **DataCollector** | 金融数据拉取：AKShare 并行调用 | ThreadPoolExecutor 扇出 + 三层降级 |
+| 📊 **DataCollector** | 金融数据拉取：AKShare 并行调用 | ThreadPoolExecutor 扇出 + 三层降级 + 60s 缓存 |
 | ✍️ **Writer** | 中文研报撰写：六章节格式 | 数据与观点分离 + 来源标注 |
 | 🔍 **Reviewer** | 质量审查：PASS/FAIL + 修复循环 | JSON 输出 + cosine 相似度早停 |
 
@@ -84,15 +84,14 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **八节点多智能体协同架构*
 - 传统方式：Python 直接调用 `search_tavily(q)`（硬编码搜索关键词）
 - IRIS 方式：LLM 通过 `bind_tools(tools)` 自主决定**何时搜索、搜索什么**
 - LLM 返回 `tool_calls` → `ToolNode` 执行 → 结果自动累加到 `state["messages"]`
-- 支持多轮迭代：agent → tools → agent → tools → ... → 结束
+- 支持多轮迭代：agent → tools → agent → tools → ... → 结束（≤5 轮自动终止）
 
 ### 2. AKShare 真实 A 股数据接入
 
 - **三层降级**：东方财富 → 雪球/新浪 → 内置模拟数据
 - **4 个数据工具**：`query_stock_info` / `query_financial_indicators` / `query_stock_quote` / `query_stock_news`
-- **永不抛异常**：工具级故障隔离，单工具失败不影响整体流程
+- **60s 缓存**：全市场数据 TTL 缓存，消灭 30s 全量拉取
 - **来源标注**：所有数值标注 `[来源: AKShare 东方财富]`
-
 ### 3. 中文六章节投研报告
 
 ```markdown
@@ -234,14 +233,23 @@ IRIS/
 ├── frontend/                         # Vue 3 + Vite + Tailwind
 │   ├── src/
 │   │   ├── views/
-│   │   │   └── InvestmentResearch.vue # 投研分析页面（股票输入 + 流式报告）
-│   │   ├── components/               # 聊天组件
-│   │   ├── composables/
-│   │   │   └── useChat.js             # 聊天逻辑（SSE 流式）
-│   │   ├── services/
-│   │   │   ├── api.js                # API 客户端
-│   │   │   └── finance.js            # 投研分析 API 服务
-│   │   └── App.vue                   # 根组件（Tab 导航：智能问答 + 投研分析）
+│   │   │   ├── ChatView.vue          # 聊天页（功能引导 + 消息流 + 侧边栏布局）
+│   │   │   ├── SettingsView.vue      # 设置页
+│   │   │   └── HistoryView.vue       # 历史记录页
+│   │   ├── components/
+│   │   │   ├── ChatSidebar.vue        # 侧边栏（自选股/会话历史/系统状态）
+│   │   │   ├── ReportViewer.vue       # 报告渲染（TOC + ScrollSpy）
+│   │   │   ├── ResearchTimeline.vue   # 研究进程时间线（10 节点真实进度）
+│   │   │   ├── MarketDataCard.vue     # 实时行情卡
+│   │   │   ├── FinancialCard.vue      # 财务指标卡
+│   │   │   ├── ActionBar.vue          # 操作栏（复制/下载/保存）
+│   │   │   └── Toast.vue              # 全局提示
+│   │   ├── composables/               # useChat / useToast / useWatchlist / useThrottledRender
+│   │   ├── router/                    # vue-router 配置（懒加载）
+│   │   ├── stores/                    # pinia 全局 store
+│   │   ├── services/                  # api / finance / history
+│   │   ├── App.vue                    # 路由壳
+│   │   └── main.js
 │   └── package.json
 ├── deploy/                           # Nginx 配置
 ├── docker-compose.yml                # Docker 部署（backend + frontend）
@@ -309,9 +317,9 @@ IRIS/
 
 ### ✅ 已完成（v1.0）
 
-- [x] 基于 LangGraph StateGraph 的八节点多智能体协同架构
-- [x] Function Calling 改造（LLM 驱动工具调用）
-- [x] AKShare 真实 A 股数据接入（4 个工具 + 三层降级）
+- [x] 基于 LangGraph StateGraph 的十节点多智能体协同架构
+- [x] Function Calling 改造（LLM 驱动工具调用 + ≤5 轮循环终止）
+- [x] AKShare 真实 A 股数据接入（4 个工具 + 三层降级 + 60s 缓存）
 - [x] 中文六章节投研报告格式（数据与观点分离）
 - [x] 研报 PDF 入库 RAG（PyMuPDF + 实体抽取）
 - [x] 个股新闻/公告聚合
@@ -323,15 +331,20 @@ IRIS/
 - [x] Vue 3 前端（智能问答 + 投研分析 Tab）
 - [x] Docker Compose 部署
 - [x] 127 个测试，零回归
+- [x] 图拓扑修复（researcher→search_agent 断链）
+- [x] 节点状态事件（start/done + elapsed 真实进度）
+- [x] search_iteration 循环终止（≤5 轮自动停止）
+- [x] Router REFINE 误判收紧
+- [x] 前端工程化（composables + vue-router + pinia + 侧边栏）
+- [x] 功能引导页 + 真实进度时间线
 
-### 🚧 规划中（v1.1）
+### 🚧 规划中（v1.2）
 
 - [ ] 多股票对比分析
 - [ ] 行业数据聚合
 - [ ] 定时研报生成任务
 - [ ] 报告导出（PDF / Word）
 - [ ] 前端 Gradio 演示入口
-
 ### 🔮 远期规划（v2.0）
 
 - [ ] MCP 协议集成（eastmoney MCP）
