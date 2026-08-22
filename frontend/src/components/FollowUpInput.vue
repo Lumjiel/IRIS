@@ -1,6 +1,6 @@
 <template>
   <div class="px-4 py-3 border-t border-slate-200 bg-white">
-    <div class="flex items-end gap-2 bg-slate-50 rounded-lg border border-slate-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10 transition-all px-4 py-2">
+    <div class="flex items-end gap-2 bg-slate-50 rounded-lg border border-slate-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10 transition-colors duration-200 px-4 py-2">
       <textarea
         ref="inputBox"
         :value="modelValue"

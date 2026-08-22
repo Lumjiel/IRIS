@@ -1,7 +1,7 @@
 <template>
   <div class="card overflow-hidden">
     <div v-if="title" class="px-6 py-4 border-b border-slate-100">
-      <h1 class="text-lg font-semibold text-slate-900">{{ title }}</h1>
+      <h1 class="text-data-xl font-semibold text-slate-900">{{ title }}</h1>
       <p class="text-label text-slate-500 mt-1">{{ subtitle }}</p>
     </div>
 

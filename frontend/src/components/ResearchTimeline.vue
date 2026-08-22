@@ -7,21 +7,21 @@
         <!-- 竖线 -->
         <span
           v-if="idx < nodes.length - 1"
-          class="absolute left-[7px] top-3.5 bottom-0 w-px"
+          class="absolute left-[4px] top-2 bottom-0 w-px"
           :class="node.status === 'done' ? 'bg-emerald-400' : 'bg-slate-200'"
         />
 
         <!-- 节点圆点 -->
         <span
-          class="absolute left-0 top-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center"
+          class="absolute left-0 top-1 w-2 h-2 rounded-full flex items-center justify-center"
           :class="dotCls(node.status)"
         >
-          <span v-if="node.status === 'done'" class="text-white text-[9px] leading-none">✓</span>
-          <span v-else-if="node.status === 'running'" class="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+          <svg v-if="node.status === 'done'" class="w-1.5 h-1.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          <span v-else-if="node.status === 'running'" class="w-1 h-1 bg-white rounded-full animate-pulse" />
         </span>
 
         <!-- 节点内容 -->
-        <div class="ml-6">
+        <div class="ml-4">
           <div class="flex items-center justify-between">
             <span :class="['text-body font-medium', textCls(node.status)]">{{ node.label }}</span>
             <span v-if="node.status === 'done'" class="text-label text-slate-400">{{ node.elapsed }}</span>
@@ -85,6 +85,6 @@ const nodes = computed(() => {
     });
 });
 
-const dotCls = s => s === 'done' ? 'bg-emerald-500' : s === 'running' ? 'bg-accent animate-pulse' : s === 'error' ? 'bg-red-500' : 'bg-slate-300';
+const dotCls = s => s === 'done' ? 'bg-emerald-500' : s === 'running' ? 'bg-accent animate-pulse' : s === 'error' ? 'bg-red-500' : 'border-2 border-slate-300 bg-transparent';
 const textCls = s => s === 'done' ? 'text-slate-900' : s === 'running' ? 'text-accent font-semibold' : s === 'error' ? 'text-red-600' : 'text-slate-400';
 </script>
