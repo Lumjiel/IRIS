@@ -7,7 +7,7 @@
 
     <div class="flex items-baseline gap-3 mb-1">
       <span class="num text-data-xl text-slate-900">¥{{ price }}</span>
-      <span :class="['num text-body font-medium', changeCls]">{{ change }}</span>
+      <span :class="changeBadge">{{ change }}</span>
     </div>
 
     <!-- Sparkline：30 日走势 -->
@@ -39,7 +39,7 @@
 <script setup>
 import { computed } from 'vue';
 import Sparkline from './Sparkline.vue';
-import { parseChange, formatPrice, formatBigInt, pick } from '../utils/format';
+import { parseChange, formatPrice, formatBigInt, pick, formatYoY } from '../utils/format';
 
 const props = defineProps({
   quote: { type: Object, default: () => ({}) },
@@ -52,7 +52,15 @@ const price = computed(() => formatPrice(pick(props.quote, 'latest', pick(props.
 
 const changeInfo = computed(() => parseChange(pick(props.quote, 'change_pct', pick(props.quote, '涨跌幅'))));
 const change = computed(() => changeInfo.value.display);
-const changeCls = computed(() => changeInfo.value.colorClass);
+const changeBadge = computed(() => {
+  const d = changeInfo.value.direction;
+  const base = 'px-2 py-0.5 rounded-md font-medium';
+  return d > 0
+    ? `${base} bg-red-600 text-white`
+    : d < 0
+    ? `${base} bg-emerald-600 text-white`
+    : `${base} bg-slate-200 text-slate-600`;
+});
 
 const sparkColor = computed(() => {
   const d = changeInfo.value.direction;

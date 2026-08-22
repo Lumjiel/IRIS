@@ -1,6 +1,6 @@
 <template>
   <div class="card overflow-hidden">
-    <div v-if="title" class="px-6 py-4 border-b border-slate-100">
+    <div v-if="title" class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 border-l-4 border-l-accent">
       <h1 class="text-data-xl font-semibold text-slate-900">{{ title }}</h1>
       <p class="text-label text-slate-500 mt-1">{{ subtitle }}</p>
     </div>
@@ -19,7 +19,7 @@
     </nav>
 
     <!-- 报告正文 -->
-    <div class="p-6">
+    <div class="p-6 max-w-4xl">
       <div class="prose prose-slate max-w-none text-body leading-relaxed" v-html="rendered" />
 
       <!-- 流式时光标 -->

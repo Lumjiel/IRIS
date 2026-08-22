@@ -39,6 +39,15 @@ export function formatBigInt(val) {
  if (num >= 1e4) return `${(num / 1e4).toFixed(2)} 亿`;
  return num.toLocaleString();
 }
+/** 格式化同比数据：带箭头 + 颜色 */
+export function formatYoY(val) {
+  if (val == null || val === "" || val === "N/A" || val === "-") return null;
+  const num = typeof val === "number" ? val : parseFloat(String(val).replace(/[%,，]/g, ""));
+  if (isNaN(num)) return null;
+  const arrow = num > 0 ? "↑" : num < 0 ? "↓" : "";
+  const sign = num > 0 ? "+" : "";
+  return { arrow, display: `${sign}${num.toFixed(1)}%`, direction: num > 0 ? 1 : num < 0 ? -1 : 0 };
+}
 
 /** 格式化价格：保留两位小数 */
 export function formatPrice(val) {
