@@ -1,0 +1,12 @@
+{
+  // Pyright 解释器指向实际运行环境（uv Python 3.12）。
+  // 注意：backend/venv 是历史遗留的空壳（无 Scripts/python.exe），不要指向它。
+  "pythonPath": "C:\\Users\\JIE\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\python.exe",
+  "extraPaths": [
+    "C:\\Users\\JIE\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\Lib\\site-packages"
+  ],
+  "include": ["app", "tests", "eval", "main.py", "conftest.py"],
+  "reportMissingImports": "error",
+  "reportAttributeAccessIssue": "warning",
+  "reportGeneralTypeIssues": "warning"
+}

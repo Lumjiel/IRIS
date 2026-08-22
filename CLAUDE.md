@@ -20,9 +20,9 @@ backend/
   main.py                     # FastAPI 入口，CORS、路由挂载、启动依赖检查
   app/config.py               # 集中配置，从 env 读取所有参数
   app/api/routes.py           # 全部 API 端点（含股票查询/研报上传检索）+ checkpoint 读写（msgpack）
-  app/graph/graph.py          # LangGraph StateGraph 拓扑（8 节点 + Function Calling 循环）
+  app/graph/graph.py          # LangGraph StateGraph 拓扑（9 节点 + Function Calling 循环）
   app/graph/state.py          # AgentState TypedDict（20+ 字段，含 messages）
-  app/graph/nodes/            # 8 个节点
+  app/graph/nodes/            # 9 个节点
     ├── router.py             # 意图路由
     ├── planner.py            # 搜索规划（async）
     ├── researcher.py         # RAG 检索 + Grader 审计
@@ -30,7 +30,8 @@ backend/
     ├── data_collector.py     # AKShare 数据拉取（扇出并行）
     ├── writer.py             # 中文研报撰写（async）
     ├── reviewer.py           # 质量审查 + cosine 早停
-    └── refiner.py            # 双模式修订（async）
+    ├── refiner.py            # 双模式修订（async）
+    └── chat_node.py          # 通用对话（不走研究流程）
   app/rag/
     ├── engine.py             # RAG 引擎：ChromaDB + DashScope embedding
     └── report_ingest.py      # 研报 PDF 入库 + 实体抽取
@@ -45,26 +46,29 @@ backend/
     └── logger.py             # 结构化日志
 
 frontend/
-  src/App.vue                 # 根组件（Tab 导航：智能问答 + 投研分析）
-  src/views/InvestmentResearch.vue  # 投研分析页面
-  src/components/ChatHeader.vue    # 顶栏：记忆状态指示器 + 摘要容量进度条
-  src/components/ChatMessages.vue  # 消息流：研究轨迹时间线 + Markdown 报告
-  src/components/ChatInput.vue     # 输入框：搜索模式切换
-  src/components/ChatSidebar.vue   # 侧栏：知识库/素材/历史/设置 + 记忆管理
-  src/composables/useChat.js       # 聊天逻辑：流式 SSE + 会话持久化 + 轮次跟踪
-  src/services/api.js         # API 客户端
-  src/services/finance.js     # 投研分析 API 服务
-  src/services/history.js     # localStorage 会话持久化
-```
-frontend/
-  src/App.vue                 # 根组件，包含全部 UI 状态和记忆管理
-  src/components/ChatHeader.vue    # 顶栏：记忆状态指示器 + 摘要容量进度条
-  src/components/ChatMessages.vue  # 消息流：研究轨迹时间线 + Markdown 报告
-  src/components/ChatInput.vue     # 输入框：搜索模式切换
-  src/components/ChatSidebar.vue   # 侧栏：知识库/素材/历史/设置 + 记忆管理
-  src/composables/useChat.js       # 聊天逻辑：流式 SSE + 会话持久化 + 轮次跟踪
-  src/services/api.js         # API 客户端：上传、SSE 流式聊天、素材 CRUD、记忆管理
-  src/services/history.js     # localStorage 会话持久化
+  src/main.js                 # 入口：Pinia + Router 挂载
+  src/App.vue                 # 根组件（仅 RouterView 壳）
+  src/router/index.js         # 路由：/ (ChatView) / /history / /settings
+  src/stores/app.js           # Pinia 全局状态：深色模式/偏好/thread_id
+  src/views/
+    ├── ChatView.vue          # 主界面：消息流 + 输入框 + 功能引导页
+    ├── HistoryView.vue       # 研究历史（localStorage）
+    └── SettingsView.vue      # 设置页（API 端点/搜索模式）
+  src/components/
+    ├── ChatSidebar.vue       # 侧栏：自选股/会话历史/系统状态
+    ├── MarketDataCard.vue    # 实时行情卡（Sparkline 走势）
+    ├── FinancialCard.vue     # 财务指标卡
+    ├── ResearchTimeline.vue  # 研究进程时间线（SSE 节点事件驱动）
+    ├── ReportViewer.vue      # Markdown 报告渲染
+    └── ActionBar.vue         # 报告操作条：复制/下载/保存
+  src/composables/
+    ├── useChat.js            # 聊天状态 + SSE 解析 + 消息组装
+    ├── useToast.js / useWatchlist.js / useThrottledRender.js
+  src/services/
+    ├── api.js                # API 客户端（全部走 /api 前缀，SSE 流式聊天在此）
+    ├── finance.js            # 股票行情/财务查询
+    └── history.js            # localStorage 会话持久化
+  src/utils/format.js         # 金融数字格式化（红涨绿跌/亿万亿）
   vite.config.js              # Vite 配置，/api 代理到 localhost:8000
 ```
 
