@@ -12,7 +12,12 @@
         <!-- 空状态 -->
         <div v-if="messages.length === 0" class="h-full flex items-center justify-center text-slate-400">
           <div class="text-center">
-            <div class="text-4xl mb-3">📊</div>
+            <svg class="w-16 h-16 mx-auto mb-4 text-accent/20" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="8" y="32" width="8" height="24" rx="2"/>
+              <rect x="20" y="20" width="8" height="36" rx="2"/>
+              <rect x="32" y="28" width="8" height="28" rx="2"/>
+              <rect x="44" y="12" width="8" height="44" rx="2"/>
+            </svg>
             <div class="text-body">输入股票代码或研究主题，开始投研分析</div>
             <div class="text-label mt-1">也可以直接聊天，例如「你好」或「最近什么值得看」</div>
           </div>
@@ -21,12 +26,12 @@
         <!-- 消息 -->
         <div v-for="msg in messages" :key="msg.id" class="flex gap-3" :class="msg.role === 'user' ? 'justify-end' : ''">
           <!-- AI 头像 -->
-          <div v-if="msg.role !== 'user'" class="w-7 h-7 rounded-lg bg-accent flex items-center justify-center shrink-0 text-white text-xs font-bold mt-1">IR</div>
+          <div v-if="msg.role !== 'user'" class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center shrink-0 text-white text-xs font-bold mt-1 shadow-soft ai-avatar">IR</div>
 
           <div class="max-w-[85%] min-w-0" :class="msg.role === 'user' ? 'order-1' : ''">
             <!-- 用户消息 -->
             <div v-if="msg.role === 'user'">
-              <div class="bg-accent text-white px-4 py-2.5 rounded-2xl rounded-br-md text-body">{{ msg.content }}</div>
+              <div class="bg-accent text-white px-4 py-2.5 rounded-2xl rounded-br-md text-body user-bubble relative">{{ msg.content }}</div>
             </div>
 
             <!-- AI 消息：CHAT -->
@@ -66,7 +71,7 @@
     <!-- 底部输入 -->
     <footer class="border-t border-slate-200 bg-white px-4 py-3 shrink-0">
       <div class="max-w-3xl mx-auto">
-        <div class="flex items-end gap-2 bg-slate-50 rounded-lg border border-slate-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10 transition-all px-4 py-2">
+        <div class="flex items-end gap-2 bg-slate-50 rounded-lg border border-slate-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10 transition-colors duration-200 px-4 py-2">
           <textarea
             ref="inputBox"
             v-model="input"
@@ -203,3 +208,26 @@ async function sendMessage() {
   );
 }
 </script>
+
+<style scoped>
+/* 用户气泡尾：右下角小尖角 */
+.user-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: -5px;
+  width: 10px;
+  height: 10px;
+  background: #4F46E5;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+/* AI 头像：微交互 */
+.ai-avatar {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.ai-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+}
+</style>
