@@ -53,14 +53,16 @@
 import { computed } from 'vue';
 
 const NODE_MAP = {
-  router:        { label: '意图识别',  order: 0 },
-  planner:       { label: '搜索规划',  order: 1 },
-  researcher:    { label: '文档检索',  order: 2 },
-  search_agent:  { label: '网络调研',  order: 3 },
-  data_collector:{ label: '数据采集',  order: 4 },
-  writer:        { label: '报告撰写',  order: 5 },
-  reviewer:      { label: '质量审核',  order: 6 },
-  refiner:       { label: '报告修订',  order: 7 },
+  router:          { label: '意图识别',  order: 0 },
+  planner:         { label: '搜索规划',  order: 1 },
+  researcher:      { label: '文档检索',  order: 2 },
+  search_agent:    { label: '网络调研',  order: 3 },
+  search_tools:    { label: '工具调用',  order: 4 },
+  route_after_tools: { label: '结果汇总', order: 5 },
+  data_collector:  { label: '数据采集',  order: 6 },
+  writer:          { label: '报告撰写',  order: 7 },
+  reviewer:        { label: '质量审核',  order: 8 },
+  refiner:         { label: '报告修订',  order: 9 },
 };
 
 const props = defineProps({
@@ -72,14 +74,18 @@ const nodes = computed(() => {
   return Object.entries(NODE_MAP)
     .sort(([, a], [, b]) => a.order - b.order)
     .map(([key, { label }]) => {
-      const ev = props.events.find(e => e.step === key);
+      // 同一节点会收到多个事件：start / done(+elapsed) / astream data(+artifact)
+      const stepEvents = props.events.filter(e => e.step === key);
+      const statusEvent = [...stepEvents].reverse().find(e => e.status);
+      const dataEvent = stepEvents.find(e => e.data);
+      const elapsed = statusEvent?.elapsed;
       return {
         key,
         label,
-        status: ev?.status || 'waiting',
-        artifact: ev?.artifact || null,
-        elapsed: ev?.elapsed || '',
-        error: ev?.error || '',
+        status: statusEvent?.status || 'waiting',
+        artifact: dataEvent?.artifact || null,
+        elapsed: elapsed ? `${elapsed}s` : '',
+        error: statusEvent?.error || '',
         _expanded: false,
       };
     });

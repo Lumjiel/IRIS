@@ -61,13 +61,19 @@ export function useChat() {
           if (!loadingMsg.events) loadingMsg.events = [];
           const existing = loadingMsg.events.find((e) => e.step === ev.step);
           if (existing) {
-            existing.status = ev.status || "running";
-            if (ev.data)
+            // 状态事件（start/done）→ 更新状态 + 耗时
+            if (ev.status) {
+              existing.status = ev.status;
+              if (ev.elapsed != null) existing.elapsed = ev.elapsed;
+            }
+            // astream data 事件 → 只更新中间产物，不覆盖状态
+            if (ev.data) {
               existing.artifact =
                 ev.data.plan ||
                 ev.data.search_results ||
                 ev.data.critique ||
-                null;
+                existing.artifact;
+            }
           } else if (ev.step !== "chat") {
             loadingMsg.events.push({
               step: ev.step,
@@ -77,6 +83,7 @@ export function useChat() {
                 ev.data?.search_results ||
                 ev.data?.critique ||
                 null,
+              elapsed: ev.elapsed ?? null,
             });
           }
         }
