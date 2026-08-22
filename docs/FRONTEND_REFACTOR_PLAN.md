@@ -1,310 +1,258 @@
-# IRIS 前端重构方案 — 纯投研单页应用
+# IRIS 前端重构方案 — 纯投研对话式应用
 
-> **目标**：砍掉「智能问答」，将投研分析重构成一个专业、克制、过程透明的单页应用。
+> **目标**：砍掉「智能问答」，将投研分析重构成一个**对话式、专业克制、过程透明**的单页应用（类 DeepSeek / 豆包 UX）。
 > **原则**：每阶段可独立交付、可回退（`git checkout`）、验证不依赖人工目测（构建+测试+冒烟清单）。
+> **布局决策**：对话式（消息列表 + 底部输入框），AI 消息内嵌富内容卡片（行情/财务/时间线/报告）。
 > **工时**：总预算约 5-7 天（含 1.5x 缓冲）。
 
 ---
 
-## 〇、现状盘点（2026-08-22）
+## 〇、现状盘点（2026-08-22 更新）
 
-| 现状 | 问题 |
-| ------ | ------ |
-| 双 Tab（智能问答 / 投研分析） | 智能问答与投研重复，砍 |
-| `useChat.js`（15K 上帝 composable） | 上传/流式/轨迹/TTS/历史全塞一起，拆 |
-| 投研页时间线是 `advanceStep()` 模拟的 | 节点名硬编码且顺序乱，改为 SSE 真实驱动 |
-| `v-html` 直接渲染 LLM 输出 | XSS 风险，加 sanitize |
-| `index.html` 加载 Google Fonts | 国内被墙，首次加载卡死，本地化 |
-| 图标 emoji + 手写 SVG 混用 | 统一 lucide-vue-next |
-| 流式每次 token 全量重渲染 `v-html` | 增量渲染优化 |
-| 无深色模式 / 移动端不可用 | Tailwind dark 策略 + 折叠 |
+### ✅ 已完成
 
-**保留资产**：`api.js`（SSE 基建）、`finance.js` 部分、`history.js`、`markdown.js`（改造）、Tailwind 3、lucide-vue-next。
+| 项目 | 状态 | 说明 |
+| ------ | ------ | ------ |
+| 后端三意图路由 | ✅ 运行中 | router.py 支持 RESEARCH / REFINE / CHAT，运行 PID 13588 |
+| chat_node | ✅ | 通用对话节点，流式输出，不调研究 graph |
+| graph 三路径拓扑 | ✅ | planner / refiner / chat 三条路径，chat→END |
+| SSE 首事件带 intent | ✅ | `{step: "intent", data: {intent: "research"\|"refine"\|"chat"}}` |
+| 阶段 0 基线 | ✅ tag `frontend-baseline` | build + test 基线 |
+| 阶段 1 骨架 | ✅ tag `phase1-skeleton` | 删 chat 组件，设计 token，6 个子组件 |
+| 阶段 2 对话壳 | ✅ tag `phase2-conversation-ui` | 消息列表 + 底栏输入框 + 三意图分发 |
 
----
-
-## 一、目标设计（已确认）
-
-```
-┌────────────────────────────────────────────────────────┐
-│ TopBar  品牌  |  全局股票搜索  |  深色切换 | 历史        │
-├──────────────┬─────────────────────────────────────────┤
-│ 左栏 320px   │  主区                                    │
-│ 行情卡       │  报告标题区                               │
-│ 财务卡       │  [章节 TOC 悬浮（sticky + scrollspy）]    │
-│ 研究时间线    │  六章节报告（流式渲染）                   │
-│ 数据来源     │                                          │
-├──────────────┴─────────────────────────────────────────┤
-│ ActionBar  复制 | 下载MD | 保存素材库 | 朗读             │
-│ FollowUpInput  追问（refiner 多轮，流式不禁用）           │
-└────────────────────────────────────────────────────────┘
-```
-
-**设计规范**：背景 `#F8FAFC` / 卡片白 / 涨跌 `#DC2626`·`#059669` / 等宽数字（JetBrains Mono，本地化）/ `rounded-lg` / `shadow-sm + border-slate-200` / 动效仅 200ms 状态过渡。
-
-**时间线节点 = 后端真实 8 节点**：
-`router → planner → researcher → search_agent → data_collector → writer → reviewer → [refiner]`
-（不允许虚构"估值建模"等不存在节点。）
-
----
-
-## 二、阶段总览
+### ❌ 待完成（UI 美化分阶段）
 
 | 阶段 | 名称 | 核心交付 | 最大工期 | 依赖 |
 | ------ | ------ | --------- | --------- | ------ |
-| 0 | 基线与护栏 | 分支 + 构建/测试基线 | 0.5 天 | 无 |
-| 1 | 骨架重构 | 砍 chat、单页化、字体本地化 | 1 天 | 阶段 0 |
-| 2 | 数据面板 | 行情卡 + 财务卡 + 手写 Sparkline | 1 天 | 阶段 1 |
-| 3 | 真实时间线 | SSE 节点状态机 | 1 天 | 阶段 2 |
-| 4 | 报告阅读器 | 流式渲染 + TOC ScrollSpy + XSS 修复 | 1 天 | 阶段 3 |
-| 5 | 交互闭环 | ActionBar + 追问多轮 | 1 天 | 阶段 4 |
-| 6 | 主题与响应式 | 深色模式 + 移动端折叠 | 0.5 天 | 阶段 5 |
-| 7 | 历史与收尾 | 历史记录 + 测试更新 + 回归 | 1 天 | 阶段 6 |
+| A | 设计系统落地 | 6 个组件按 UI_DESIGN_GUIDE.md 规范审校 | 1 天 | 阶段 2 |
+| B | 对话消息 polish | 消息气泡/头像/流式光标/空状态/加载态 | 0.5 天 | 阶段 A |
+| C | 研究路径富渲染 | RESEARCH 意图的行情卡+财务卡+时间线+报告像"券商研报模块" | 1 天 | 阶段 B |
+| D | 交互闭环 | ActionBar(复制/下载/保存) + 追问反馈 | 0.5 天 | 阶段 C |
+| E | 主题 + 响应式 | 深色模式 + 移动端适配 | 0.5 天 | 阶段 D |
+
+---
+
+## 一、后端架构（已完成）
+
+### 三意图路由
+
+```
+用户输入 → Router 判定意图
+              ├─ RESEARCH（新课题）→ planner → researcher → search_agent → data_collector → writer → reviewer → END
+              ├─ REFINE（修订追问）→ refiner → END
+              └─ CHAT（通用对话）  → chat_node → END（新）
+```
+
+**router.py 判定逻辑**：
+
+1. 启发式预判（股票代码/研究动词 → RESEARCH；修订关键词 → REFINE）
+2. LLM 二次分类（`_llm_classify`，三分类 RESEARCH/REFINE/CHAT）
+3. 兜底规则（异常时按关键词匹配）
+
+**chat_node.py**：
+
+- 流式输出纯文本
+- 带对话上下文摘要（`conversation_summary`）
+- 不调研究 graph，响应快（2-4 句）
+
+### SSE 事件契约（前端依赖）
+
+```jsonc
+// 首事件：意图
+{"step": "intent", "data": {"intent": "research", "route": "planner"}}
+
+// 节点事件（研究路径）
+{"step": "planner", "data": {"plan": ["方向1", "方向2"]}}
+{"step": "researcher", "data": {"search_results": ["来源1"]}}
+{"step": "writer", "data": {"token": "报告内容..."}}
+{"step": "writer_token", "data": {"token": "增量token", "final": false}}
+{"step": "reviewer", "data": {"review_status": "PASS"}}
+
+// 修订路径
+{"step": "refiner_token", "data": {"token": "修订内容..."}}
+
+// 对话路径
+{"step": "chat_token", "data": {"token": "回复内容..."}}
+{"step": "chat", "data": {"chat_response": "完整回复"}}
+
+// 错误
+{"step": "error", "data": {"message": "错误信息"}}
+```
+
+---
+
+## 二、前端架构（对话式，已定）
+
+### 布局
+
+```
+┌────────────────────────────────────────┐
+│ 顶栏  品牌 + 副标题                      │
+├────────────────────────────────────────┤
+│ 消息列表（中间主体，max-w-3xl 居中）       │
+│  👤 用户消息（右侧 accent 色气泡）        │
+│  🤖 AI 消息（左侧 IR 头像 + 内容卡片）    │
+│     ├─ CHAT: 纯文本                      │
+│     ├─ RESEARCH: 行情卡+财务卡+时间线+报告│
+│     └─ REFINE: 修订内容                  │
+├────────────────────────────────────────┤
+│ 底栏  [💬 输入框...]            [发送]  │
+└────────────────────────────────────────┘
+```
+
+### 消息类型
+
+| type | 说明 | 渲染内容 |
+| ------ | ------ | --------- |
+| `text` | 用户消息 | accent 色气泡 |
+| `chat` | AI 纯文本回复 | 白底卡片 + IR 头像 |
+| `research` | AI 研究报告 | 行情卡 + 财务卡 + 时间线 + 报告 |
+| `refine` | AI 修订内容 | 修订后报告 |
+| `loading` | 加载中 | 脉冲点 + 状态文字 |
+| `error` | 错误 | 红色 banner |
+
+### 组件清单
+
+| 组件 | 职责 | 阶段 |
+| ------ | ------ | ------ |
+| `Sparkline.vue` | 手写 SVG 迷你走势（32px高/1.5px线宽/涨跌色） | ✅ 已建 |
+| `MarketDataCard.vue` | 行情卡（等宽价+涨跌+Sparkline+四格指标） | ✅ 已建 |
+| `FinancialCard.vue` | 财务卡（营收/净利/ROE/EPS/毛利率/净利率） | ✅ 已建 |
+| `ReportViewer.vue` | 报告渲染 + 章节 TOC ScrollSpy | ✅ 已建 |
+| `ResearchTimeline.vue` | 8 节点真实 SSE 状态机 + 可展开中间产物 | ✅ 已建 |
+| `ActionBar.vue` | 复制/下载/保存 + 数据来源标注 | ✅ 已建（待集成） |
+| `FollowUpInput.vue` | 底栏输入框（流式不禁用） | ✅ 已建（App.vue 已集成） |
+| `format.js` | 涨跌色/大数字/价格格式化工具 | ✅ 已建 |
 
 ---
 
 ## 三、阶段详情
 
-### 阶段 0：基线与护栏
+### 阶段 A：设计系统落地（让"样子"先对）
 
-**目标**：锁定"改动前能跑"的基线，让每个后续阶段可回退。
+**目标**：间距/字号/颜色/圆角全部按 `UI_DESIGN_GUIDE.md` 执行，消除现有原型感。
 
-**改动**：
+**改动文件**：
 
-- `git checkout -b feat/frontend-research-only`（在工作区当前状态上建分支）
-- 运行并记录基线：
-  - `cd frontend && npm run build` → 成功
-  - `npm run test:run` → 记录通过用例数
-- 打 tag：`git tag frontend-baseline`
+- `components/MarketDataCard.vue`
+- `components/FinancialCard.vue`
+- `components/ReportViewer.vue`
+- `components/ResearchTimeline.vue`
+- `components/ActionBar.vue`
+- `components/FollowUpInput.vue`
 
-**✅ 可验证**：
+**审校清单**（每个组件）：
 
-- [ ] `git status` 干净，分支为 `feat/frontend-research-only`
-- [ ] 构建产物 `dist/` 生成且无报错
-- [ ] 测试通过数有记录（用于阶段 7 对比零回归）
-
----
-
-### 阶段 1：骨架重构（砍 chat，单页化）
-
-**目标**：App 根组件变为纯投研页面，删除全部智能问答代码，字体本地化。
-
-**删除**：
-
-- `src/components/ChatHeader.vue` / `ChatInput.vue` / `ChatMessages.vue` / `ChatSidebar.vue`
-- `src/composables/useChat.js`
-- `src/views/InvestmentResearch.vue`（重构为 `src/App.vue` 或 `src/views/Research.vue`）
-
-**保留/改造**：
-
-- `src/services/api.js`：保留 `streamChat`（SSE）、`saveReport`、`ttsSynthesize`；删除 chat 专属 `uploadFiles`/`clearContext`/`getMemory`（若投研不需要）——投研保留 `fetchAihotNews` 可选
-- `src/services/history.js`：保留，改为存"最近分析的股票 + 报告"
-- `src/utils/markdown.js`：保留，阶段 4 加 sanitize 与锚点
-- `index.html`：
-  - 删除 Google Fonts 三行（preconnect + stylesheet）
-  - `<html lang="zh-CN">`、标题改为「IRIS 投研助手」
-  - JetBrains Mono 用本地包或 npmmirror 静态引入（不依赖 Google）
-- `tailwind.config.js`：加 `darkMode: 'class'`（为阶段 6 铺路）
-
-**新结构**（目标）：
-
-```
-src/
-├── App.vue              # 纯投研壳（布局骨架）
-├── main.js
-├── style.css
-├── services/
-│   ├── api.js           # SSE + 业务 API（裁剪后）
-│   ├── finance.js       # 股票数据 API（扩展）
-│   └── history.js
-├── composables/
-│   └── useResearch.js   # 投研状态机（阶段 3 建，先建壳）
-├── components/
-│   ├── TopBar.vue
-│   ├── MarketDataCard.vue
-│   ├── FinancialCard.vue
-│   ├── ResearchTimeline.vue
-│   ├── ReportViewer.vue
-│   ├── SourceList.vue
-│   ├── ActionBar.vue
-│   └── FollowUpInput.vue
-└── utils/
-    └── markdown.js
-```
+- [ ] 未出现 10/11px 字号（只有 24/14/12 三档）
+- [ ] 间距为 4px 网格值（4/8/12/16/24/32/48）
+- [ ] 颜色 ≤ 5 种（slate + 涨跌红绿 + accent）
+- [ ] 圆角符合规范（卡片 rounded-lg 8px / 按钮 rounded-md 6px）
+- [ ] 阴影只有 shadow-sm
+- [ ] 边框统一 border-slate-200
+- [ ] 数字 tabular-nums 右对齐
 
 **✅ 可验证**：
 
 - [ ] `npm run build` 通过
-- [ ] 浏览器打开 `http://localhost:8000/`：只有投研界面，无 Tab、无侧栏、无聊天
-- [ ] Network 面板：无 `fonts.googleapis.com` / `fonts.gstatic.com` 请求（被墙字体消失）
-- [ ] `grep -r "ChatSidebar\|useChat\|ChatInput" src/` 零命中
-- [ ] 输入 `600196` 点击分析 → 仍能走通旧 SSE 流程（功能未退化）
+- [ ] 代码 grep 无 `text-[10px]` / `text-[11px]`
+- [ ] 代码 grep 无 `rounded-xl` / `shadow-md` / `shadow-lg`
+- [ ] 代码 grep 无 `border-black` / `border-gray-900`
 
 ---
 
-### 阶段 2：数据面板（左栏）
+### 阶段 B：对话消息 polish（让"对话"舒服）
 
-**目标**：左栏 320px 渲染真实行情 + 财务数据，数字等宽、涨跌着色。
+**目标**：消息气泡、头像、流式光标、空状态、加载态都有精致感。
 
-**组件**：
+**改动文件**：
 
-- `MarketDataCard.vue`
-  - 数据源：`/api/stock/{code}/quote`（AKShare 实时行情）
-  - 显示：最新价（大号等宽）、涨跌幅（红/绿标签）、换手、PE、PB、市值
-  - **Sparkline**：手写 SVG 30 日迷你走势（无依赖）
-    - 需要后端补一个日线接口：`/api/stock/{code}/kline?days=30`（用 `ak.stock_zh_a_hist`，DataCollector 已有 akshare 基建，约 30 分钟工作量）——**阶段 2 前置依赖**
-    - 若后端接口未就绪：先画随机/静态占位线 + `TODO` 注释，不阻塞布局
-  - 涨跌色工具：`utils/format.js`（将 `+1.25%` → 颜色类 + 方向箭头）
-- `FinancialCard.vue`
-  - 数据源：`/api/stock/{code}/financial`
-  - 显示：营收、净利、ROE、EPS + 同比箭头
-- `SourceList.vue`
-  - 数据源：SSE `state.data_sources`（真实来源，动态渲染）
+- `App.vue`
+
+**具体**：
+
+- 用户气泡：accent 色 + 圆角气泡 + 尾部小尖角（`rounded-br-md`）
+- AI 消息：白底卡片 + 左侧 IR 头像（accent 色圆形 + "IR" 文字）+ `rounded-bl-md`
+- 流式输出：末尾脉冲光标动画（`animate-pulse` 竖线）
+- 空状态：居中插画 + 引导文案（"输入股票代码或研究主题" + "也可以直接聊天"）
+- 加载态：脉冲点 + 状态文字（"思考中…" / "正在启动研究…" / "正在修订报告…"）
+- 错误消息：红色 banner（`bg-red-50 border-red-200 text-red-600`），无 emoji
 
 **✅ 可验证**：
 
-- [ ] 输入 `600196` + 点击分析 → 左栏出现实时行情卡，数值与东方财富/同花顺一致
-- [ ] 涨跌幅为正显示红色 ▲，为负显示绿色 ▼（测试：`format.js` 单测）
-- [ ] 数字使用等宽字体，表格列对齐
-- [ ] Sparkline SVG 正常渲染（30 个点）；后端 kline 接口 `curl /api/stock/600196/kline` 返回数组
-- [ ] 模拟数据兜底（断网）时卡片显示"数据获取失败"，不报错不白屏
+- [ ] 空状态居中显示，有引导文案
+- [ ] 流式输出末尾有脉冲光标
+- [ ] 错误消息不带 emoji，使用红底卡片
 
 ---
 
-### 阶段 3：真实时间线（SSE 状态机）
+### 阶段 C：研究路径富渲染（让"研究成果"专业）
 
-**目标**：左栏时间线由后端真实节点事件驱动，替代模拟 `advanceStep()`。
+**目标**：RESEARCH 意图的 AI 消息内，各组件像"券商研报模块"一样。
 
-**核心**：
+**改动文件**：
 
-- `composables/useResearch.js`（替代 useChat 的核心逻辑）：
-  - 管理状态：`stockCode` / `report` / `timeline` / `dataSources` / `isRunning` / `error`
-  - `start(code)`：调 `streamChat`（复用 api.js SSE 基建）
-  - `onData(ev)`：按 `ev.step` 分发到状态机
-- `ResearchTimeline.vue`：
-  - 节点映射表（真实 8 节点 + 中文名 + 图标）：
-
-    ```js
-    const NODE_MAP = {
-      router:   { label: '意图识别',   icon: 'compass' },
-      planner:  { label: '搜索规划',   icon: 'map' },
-      researcher:{ label: '文档检索',  icon: 'folder-search' },
-      search_agent: { label: '网络调研', icon: 'globe' },
-      data_collector: { label: '数据采集', icon: 'database' },
-      writer:   { label: '报告撰写',   icon: 'pen-line' },
-      reviewer: { label: '质量审核',   icon: 'shield-check' },
-      refiner:  { label: '报告修订',   icon: 'refresh-cw' },
-    }
-    ```
-
-  - 状态机：`waiting → running → done | error`；节点完成可展开看中间产物（planner 的 plan 方向、researcher 的来源数、reviewer 的 critique）
-- 错误处理：`ev.step === 'error'` → 节点标红 + 错误 banner，不再拼进正文
+- `MarketDataCard.vue` — 确保大号等宽价 + 涨跌标签背景色
+- `FinancialCard.vue` — 同比箭头（↑↓）+ 格式化
+- `ResearchTimeline.vue` — 8 节点竖向管道 + 已完成可展开
+- `ReportViewer.vue` — 六章节 Markdown + 表格斑马纹
 
 **✅ 可验证**：
 
-- [ ] 完整分析一次：时间线 8 节点按真实顺序依次点亮（对照后端日志确认顺序一致）
-- [ ] 节点状态跳变正确：进行中脉冲 → 完成打勾 → 失败标红
-- [ ] 点击已完成节点展开中间产物（规划方向/来源数/审查意见）
-- [ ] 后端无 `KeyError` 等异常时，UI 稳定走完
-- [ ] 人为制造后端错误（改错 prompt）→ 时间线停在错误节点，错误 banner 显示，正文无 `[错误:...]` 残留
+- [ ] 行情卡：最新价 24px 等宽，涨跌有背景色标签
+- [ ] 财务卡：6 项指标网格，同比箭头
+- [ ] 时间线：8 节点按 SSE 顺序点亮，已完成可点击展开
+- [ ] 报告：表格有斑马纹（even 行底色），引用块有左边框
 
 ---
 
-### 阶段 4：报告阅读器（主区）
+### 阶段 D：交互闭环（让"操作"顺手）
 
-**目标**：流式渲染六章节报告 + 章节悬浮目录 + XSS 防护 + 性能优化。
+**目标**：ActionBar + 追问都有反馈感。
 
-**改造**：
+**改动文件**：
 
-- `utils/markdown.js`：
-  - 引入 **DOMPurify**（`npm i dompurify`），`md.render()` 后过 sanitize
-  - 提取 `h2` 章节生成锚点 + TOC 数据（`renderMarkdownWithToc(text) → { html, toc: [{id, title}] }`）
-- `ReportViewer.vue`：
-  - 流式渲染：token 增量期间**节流渲染**（每 ~50ms 批量刷新一次，避免每 token 全量重渲）；`v-html` 只挂最终 html 值
-  - 完成态：TOC 悬浮目录（右侧 `position: sticky`），**IntersectionObserver** 驱动当前章节高亮（实心圆 + 竖线）
-- 表格样式：延续现有 `prose :deep(table)` 增强（表头底色、斑马纹）
+- `App.vue` — 集成 ActionBar（在 RESEARCH/REFINE 消息下方显示）
+- 新增 `Toast.vue` — 轻量 toast 反馈
+
+**具体**：
+
+- 复制 → Clipboard API + toast "已复制"
+- 下载 → Blob + 文件名 `投研报告_{code}_{date}.md`
+- 保存素材库 → `/api/save-report`（后端已有）
+- 追问 → 流式运行时不禁用输入框
+- TTS 朗读 → `/api/tts`（后端已有，可选）
 
 **✅ 可验证**：
 
-- [ ] 注入 XSS payload（`<img src=x onerror=alert(1)>`）→ 不弹窗（DOMPurify 生效）；加一条 vitest 单测
-- [ ] 报告流式输出：连续 token 下页面无卡顿（6 章节长报告平均帧率 > 40fps，DevTools Performance 采样）
-- [ ] 完成态 TOC 显示 6 个章节，滚动自动高亮当前章节
-- [ ] TOC 点击跳转到对应章节锚点
-- [ ] 表格、blockquote、h2 样式正常（对照报告全文检查）
+- [ ] 复制后 toast 显示"已复制"
+- [ ] 下载文件名格式正确
+- [ ] 流式运行中输入框可键入
+- [ ] ActionBar 只在 RESEARCH/REFINE 消息显示
 
 ---
 
-### 阶段 5：交互闭环
+### 阶段 E：主题 + 响应式
 
-**目标**：报告完成后的操作 + 多轮追问（refiner）。
+**目标**：深色模式 + 移动端可用。
 
-**组件**：
+**改动文件**：
 
-- `ActionBar.vue`：
-  - 复制（Clipboard API + toast 反馈）
-  - 下载 Markdown（Blob，文件名 `投研报告_{code}_{date}.md`）
-  - 保存素材库（后端 `/api/save-report`）
-  - 朗读（后端 `/api/tts`，截 3000 字，播放中可停止）
-- `FollowUpInput.vue`：
-  - 追问输入框，**流式运行时不禁用**（可提前输入等待）
-  - 发送 → `streamChat(query, {thread_id 同前})` → 后端 router 识别 REFINE → refiner 修订
-  - 追问期间时间线只显示 refiner 段；修订完成后报告**替换**为最终版（保留修订历史可展开对比?先不做）
+- `tailwind.config.js` — 已加 `darkMode: 'class'`
+- `App.vue` — 主题切换按钮 + 所有组件 `dark:` 变体
+- `index.html` — 已改 `lang="zh-CN"`
 
-**✅ 可验证**：
+**具体**：
 
-- [ ] 复制 → 剪贴板内容与报告一致（toast 提示"已复制"）
-- [ ] 下载 → 文件为 `.md`，内容完整
-- [ ] 保存素材库 → 刷新后素材库列表出现该条目（后端 `/api/materials` 可查）
-- [ ] 朗读 → 音频播放，再次点击停止
-- [ ] 追问"补充毛利率分析" → SSE 事件含 `refiner` 节点 → 报告更新
-- [ ] 流式运行中输入框可键入（不受 disabled 影响）
-
----
-
-### 阶段 6：主题与响应式
-
-**目标**：深色模式 + 移动端优雅降级。
-
-**改动**：
-
-- `tailwind.config.js` 已有 `darkMode: 'class'`
-- `TopBar` 加主题切换按钮（localStorage 持久化 + `<html>` class 切换）
-- 全部组件过一遍 `dark:` 变体（背景 #0F172A 系、卡片 #1E293B、文字 #E2E8F0）
-- 移动端（<768px）：
-  - 左栏折叠为 **Accordion**（数据面板 ▼ / 时间线 ▼）
-  - 行情卡横向紧凑布局
-  - 报告全宽
-- 可复用：CSS 变量集中管理色彩（`--bg`、`--card`、`--border`），组件用 var()
+- 深色：`<html class="dark">` + localStorage 持久化
+- 移动端（<768px）：消息全宽、输入框固定底部
+- 触控目标 ≥ 40px
 
 **✅ 可验证**：
 
-- [ ] 切深色：所有面板/卡片/报告/时间线正常，无刺眼对比，刷新后保持
-- [ ] 375px 宽（DevTools 设备模拟）下：无横向滚动，数据面板可展开查看，即可发起分析
-- [ ] 触控目标 ≥ 40px（抽查按钮）
-- [ ] 桌面 1440px 下布局不拉伸变形
-
----
-
-### 阶段 7：历史与收尾
-
-**目标**：最近分析记录 + 测试更新 + 文档收尾 + 全量回归。
-
-**改动**：
-
-- `history.js` 改造：记录 `{code, name, query, report, threadId, timestamp, dataSources}`（最近 20 条，localStorage）
-- `TopBar` 历史下拉：点击恢复上次报告 + 同一 thread 可继续追问
-- 测试更新：
-  - 删除 `useChat.test.js`（组件已删）
-  - 新增：`format.test.js`（涨跌色/格式化）、`markdown.test.js`（sanitize + TOC 提取）、`useResearch.test.js`（SSE 事件驱动状态机，mock fetch）
-  - 更新 `api.test.js` 指向新 API 契约
-- 文档：更新 `README.md` 前端部分、`PROJECT_BRIEFING.md`
-
-**✅ 可验证**：
-
-- [ ] `npm run build` 通过
-- [ ] `npm run test:run` 全绿，用例数 ≥ 基线（阶段 0 记录）且无删除造成的红
-- [ ] 历史：分析 2 只股票 → 下拉出现 2 条 → 点击恢复报告
-- [ ] 手动回归清单（阶段 1-6 的 ✅ 全部过一遍）
+- [ ] 切深色：所有面板/卡片/报告正常，刷新后保持
+- [ ] 375px 宽度下无横向滚动
+- [ ] 按钮最小 40px 触控区域
 
 ---
 
@@ -312,21 +260,38 @@ src/
 
 | 风险 | 对策 |
 | ------ | ------ |
-| 后端 kline 接口未实现，Sparkline 无数据 | 阶段 2 先占位图 + TODO；接口实现单独排期，不阻塞布局 |
-| SSE 事件字段与前端假设不符 | 阶段 3 先打日志核对真实事件结构，再做状态机 |
-| DOMPurify 引入后表格/公式样式被剥 | 配置白名单：`allowedTags` 覆盖 markdown-it 输出 + katex 样式类 |
-| 流式全量重渲性能 | 节流批量刷新（阶段 4），用 `computed` 缓存 html |
-| 重构破坏现有可用功能 | 每阶段 commit + 验证清单；回退 `git checkout` |
-| 报告超长（>100 章）TOC/渲染压力 | 先不做，v1.1 再优化 |
+| 后端 LLM 路由误判（如"分析天气"当 RESEARCH） | router 有启发式预判 + 兜底规则；CHAT 路径轻量，误判代价低 |
+| 前端 SSE 事件与后端实际输出不符 | 阶段 A 前先抓一次真实 SSE 流核对字段 |
+| DOMPurify 引入后表格/公式样式被剥 | 配置 `ALLOWED_TAGS` 白名单覆盖 markdown-it 输出 |
+| 流式全量重渲性能 | 节流批量刷新（阶段 C），用 `computed` 缓存 html |
+| 移动端适配工作量大 | 阶段 E 集中做，先保证桌面端完整 |
 
 ---
 
 ## 五、里程碑验收（全部完成 = 交付）
 
-1. `http://localhost:8000/` 纯投研单页，**无 Tab / 无聊天痕迹**
-2. 输入股票 → 真实行情/财务卡片 + 手写 SVG Sparkline
-3. 时间线 = 后端真实 8 节点，SSE 驱动，可展开审计中间产物
-4. 六章节报告流式渲染 + 章节 TOC 联动 + XSS 安全
-5. 复制/下载/保存/朗读/追问全部可用
-6. 深色模式 + 移动端可用
-7. `build` + `test:run` 全绿，历史记录可恢复
+1. `http://localhost:8000/` 对话式界面，**无 Tab / 无聊天痕迹**
+2. 输入"你好" → 纯文本 CHAT 回复（2-4 句，秒回）
+3. 输入"分析贵州茅台600519" → RESEARCH 消息内嵌行情卡+财务卡+时间线+报告
+4. 输入"毛利率最近怎样"（有报告后）→ REFINE 修订内容
+5. 所有组件通过 UI_DESIGN_GUIDE.md 审校清单
+6. `npm run build` 通过
+
+---
+
+## 六、设计参考
+
+详见 `docs/UI_DESIGN_GUIDE.md`（审美锚定执行标准）。
+
+**参照物**：
+
+- 数据卡 → Stripe Dashboard
+- 时间线 → Linear Issue 状态流
+- 报告正文 → Notion / GitHub README
+- 整体氛围 → Perplexity.ai
+
+**面试话术**："视觉参照 Stripe + Linear + Perplexity 的设计语言。"
+
+---
+
+*最后更新：2026-08-22*
