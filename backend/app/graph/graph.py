@@ -3,7 +3,9 @@ IRIS LangGraph 状态机拓扑
 - LangSmith Traceable 包装
 - RetryPolicy/TimeoutPolicy
 - 条件边循环终止（cosine 早停 + MAX_ITERATIONS）
+- 节点级状态事件（start/done + elapsed）→ 前端时间线真实进度
 """
+import time as _time
 from langgraph.graph import StateGraph, END
 from langsmith import traceable
 import httpx
@@ -20,9 +22,10 @@ from app.graph.nodes.chat_node import chat_node
 from app.graph.nodes.data_collector import data_collector_node
 from app.error_types import ErrorCode
 from app.utils.logger import get_logger
+from app.utils.streaming import emit_node_event
 from app.config import MAX_REVISIONS, LANGSMITH_API_KEY
-log = get_logger("graph")
 
+log = get_logger("graph")
 # === 循环终止配置 ===
 MAX_ITERATIONS = 5  # 最大循环次数（reviewer → planner 回跳）
 COSINE_SIMILARITY_THRESHOLD = 0.95  # cosine 相似度早停阈值
@@ -44,71 +47,122 @@ retry_policy = {
 # === Traceable 包装节点 ===
 @traceable(run_type="chain", name="router")
 def traced_router(state: AgentState):
-    return route_query(state)
+    emit_node_event("router", "start")
+    t0 = _time.time()
+    try:
+        return route_query(state)
+    finally:
+        emit_node_event("router", "done", elapsed=_time.time() - t0)
 
 @traceable(run_type="chain", name="planner")
 async def traced_planner(state: AgentState):
-    return await plan_node(state)
+    emit_node_event("planner", "start")
+    t0 = _time.time()
+    try:
+        return await plan_node(state)
+    finally:
+        emit_node_event("planner", "done", elapsed=_time.time() - t0)
+
 @traceable(run_type="chain", name="researcher")
 def traced_researcher(state: AgentState):
-    return research_node(state)
+    emit_node_event("researcher", "start")
+    t0 = _time.time()
+    try:
+        return research_node(state)
+    finally:
+        emit_node_event("researcher", "done", elapsed=_time.time() - t0)
 
 @traceable(run_type="chain", name="writer")
 async def traced_writer(state: AgentState):
-    return await write_node(state)
+    emit_node_event("writer", "start")
+    t0 = _time.time()
+    try:
+        return await write_node(state)
+    finally:
+        emit_node_event("writer", "done", elapsed=_time.time() - t0)
 @traceable(run_type="chain", name="reviewer")
 def traced_reviewer(state: AgentState):
-    return review_node(state)
+    emit_node_event("reviewer", "start")
+    t0 = _time.time()
+    try:
+        return review_node(state)
+    finally:
+        emit_node_event("reviewer", "done", elapsed=_time.time() - t0)
 
 @traceable(run_type="chain", name="refiner")
 async def traced_refiner(state: AgentState):
-    return await refine_node(state)
+    emit_node_event("refiner", "start")
+    t0 = _time.time()
+    try:
+        return await refine_node(state)
+    finally:
+        emit_node_event("refiner", "done", elapsed=_time.time() - t0)
 
 @traceable(run_type="chain", name="chat")
 async def traced_chat(state: AgentState):
-    return await chat_node(state)
+    emit_node_event("chat", "start")
+    t0 = _time.time()
+    try:
+        return await chat_node(state)
+    finally:
+        emit_node_event("chat", "done", elapsed=_time.time() - t0)
 
 @traceable(run_type="chain", name="search_agent")
 def traced_search_agent(state: AgentState):
-    return search_agent_node(state)
-
-
-@traceable(run_type="chain", name="search_tools")
-@traceable(run_type="chain", name="data_collector")
-def traced_data_collector(state: AgentState):
-    return data_collector_node(state)
-
+    emit_node_event("search_agent", "start")
+    t0 = _time.time()
+    try:
+        return search_agent_node(state)
+    finally:
+        emit_node_event("search_agent", "done", elapsed=_time.time() - t0)
 
 def traced_search_tools(state: AgentState):
-    return search_tool_node(state)
+    emit_node_event("search_tools", "start")
+    t0 = _time.time()
+    try:
+        return search_tool_node(state)
+    finally:
+        emit_node_event("search_tools", "done", elapsed=_time.time() - t0)
 
+@traceable(run_type="chain", name="data_collector")
+def traced_data_collector(state: AgentState):
+    emit_node_event("data_collector", "start")
+    t0 = _time.time()
+    try:
+        return data_collector_node(state)
+    finally:
+        emit_node_event("data_collector", "done", elapsed=_time.time() - t0)
 
 def _route_search_agent(state: AgentState) -> str:
     """Function Calling 路由：agent 决定调工具还是结束"""
+    # 循环终止：超过最大轮次时强制结束
+    if state.get("search_iteration", 0) >= 5:
+        log.info("[FC路由] 搜索轮次已达上限 -> 提取结果 -> data_collector")
+        return "route_after_tools"
+
     messages = state.get("messages", [])
     if not messages:
         log.warning("[FC路由] 无消息，跳过搜索")
         return "route_after_tools"
-    
+
     last_msg = messages[-1]
     # 检查最后一条消息是否有工具调用
     if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
         log.info(f"[FC路由] agent 请求 {len(last_msg.tool_calls)} 个工具调用 -> search_tools")
         return "search_tools"
-    
+
     # 无工具调用 = agent 结束，提取结果
     log.info("[FC路由] agent 无工具调用 -> 提取结果 -> data_collector")
     return "route_after_tools"
 
 
 def route_after_research(state: AgentState):
-    """Researcher 结束后的交通指挥员"""
+    """Researcher 结束后的交通指挥员：正常→search_agent，should_stop→END"""
     if state.get("should_stop", False):
         log.info("[路由] 检测到停止信号 (should_stop=True) -> 提前结束任务")
         return END
     else:
-        return "writer"
-
+        return "search_agent"
 def should_continue(state: AgentState) -> str:
     """
     条件路由决策（4 层终止逻辑）：
@@ -177,6 +231,11 @@ _workflow.set_conditional_entry_point(
     }
 )
 _workflow.add_edge("planner", "researcher")
+_workflow.add_conditional_edges(
+    "researcher",
+    route_after_research,
+    {"search_agent": "search_agent", END: END}
+)
 _workflow.add_edge("refiner", END)
 _workflow.add_edge("chat", END)
 _workflow.add_conditional_edges(

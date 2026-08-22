@@ -12,10 +12,28 @@ log = get_logger("streaming")
 
 _token_queue: ContextVar[asyncio.Queue | None] = ContextVar("token_queue", default=None)
 
+# === 节点状态事件队列（前端时间线真实进度）===
+_node_event_queue: ContextVar[asyncio.Queue | None] = ContextVar("node_event_queue", default=None)
+
 
 def set_token_queue(q: asyncio.Queue | None):
     _token_queue.set(q)
 
+
+def get_node_event_queue() -> asyncio.Queue | None:
+    return _node_event_queue.get()
+
+def set_node_event_queue(q: asyncio.Queue | None):
+    _node_event_queue.set(q)
+
+def emit_node_event(step: str, status: str, elapsed: float = 0.0):
+    """节点发出 start/done 事件（供 traced_* 包装函数调用）。"""
+    q = _node_event_queue.get()
+    if q is not None:
+        payload = {"step": step, "status": status}
+        if elapsed > 0:
+            payload["elapsed"] = round(elapsed, 2)
+        q.put_nowait(payload)
 
 def get_token_queue() -> asyncio.Queue | None:
     return _token_queue.get()

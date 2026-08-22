@@ -27,6 +27,13 @@ def search_agent_node(state: AgentState) -> dict:
     query = state.get("query", "")
     plan = state.get("plan", [])
     messages = state.get("messages", [])
+    iteration = state.get("search_iteration", 0) + 1
+
+    # 循环终止：超过最大轮次时强制结束（即使 LLM 还想搜）
+    _MAX_SEARCH_ITERATIONS = 5
+    if iteration > _MAX_SEARCH_ITERATIONS:
+        log.warning(f"[Function Calling] 已达最大搜索轮次 {_MAX_SEARCH_ITERATIONS}，强制结束")
+        return {"messages": [HumanMessage(content="搜索已达最大轮次，请基于已有结果总结")], "search_iteration": iteration}
 
     # 构建系统提示词
     system_prompt = """你是一个专业的投研分析研究员。你的任务是通过网络搜索收集信息来回答用户的问题。
@@ -63,11 +70,9 @@ def search_agent_node(state: AgentState) -> dict:
         log.info(f"[Function Calling] LLM 返回: tool_calls={response.tool_calls}, content={response.content[:100] if response.content else '(empty)'}")
     except Exception as e:
         log.error(f"[Function Calling] LLM 调用失败: {e}")
-        # 降级：返回空结果
-        return {"messages": [HumanMessage(content=f"搜索代理调用失败: {e}")]}
+        return {"messages": [HumanMessage(content=f"搜索代理调用失败: {e}")], "search_iteration": iteration}
 
-    return {"messages": [response]}
-
+    return {"messages": [response], "search_iteration": iteration}
 
 def search_tool_node(state: AgentState) -> dict:
     """执行 LLM 决定的工具调用（不依赖 langgraph.prebuilt）"""

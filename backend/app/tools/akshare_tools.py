@@ -8,6 +8,8 @@ AKShare A 股数据工具层
 依赖: akshare >= 1.16.0
 """
 import json
+import threading
+import logging
 import os
 import time
 import logging
@@ -67,7 +69,42 @@ def _safe_request(func: Callable, func_name: str = "unknown",
     return None
 
 
+
 # ============================================================
+# 全市场数据缓存 — 消灭 30s 全量拉取（"等半天"最大杀手）
+# ============================================================
+_SPOT_CACHE: Dict[str, Any] = {"ts": 0.0, "em": None, "sina": None}
+_SPOT_TTL = 60  # 60s 缓存，A 股行情延时 15 分钟，60s 完全够用
+
+
+_SPOT_LOCK = threading.Lock()
+
+
+def _get_spot_em_cached():
+    """带 60s TTL 缓存的全市场东方财富行情（线程安全）。
+    首次/缓存过期时真实拉取（~5-15s），命中缓存时 <1ms。"""
+    import time as _t
+    with _SPOT_LOCK:
+        now = _t.time()
+        if _SPOT_CACHE["em"] is not None and now - _SPOT_CACHE["ts"] < _SPOT_TTL:
+            return _SPOT_CACHE["em"]
+        df = ak.stock_zh_a_spot_em()
+        _SPOT_CACHE["em"] = df
+        _SPOT_CACHE["ts"] = now
+        return df
+
+
+def _get_spot_sina_cached():
+    """带 60s TTL 缓存的全市场新浪财经行情（备用源）。"""
+    import time as _t
+    with _SPOT_LOCK:
+        now = _t.time()
+        if _SPOT_CACHE["sina"] is not None and now - _SPOT_CACHE["ts"] < _SPOT_TTL:
+            return _SPOT_CACHE["sina"]
+        df = ak.stock_zh_a_spot_sina()
+        _SPOT_CACHE["sina"] = df
+        return df
+
 # 内置模拟数据 — 网络彻底不可用时的最终兜底
 # ============================================================
 _MOCK_STOCK_INFO: Dict[str, str] = {
@@ -367,7 +404,7 @@ def query_stock_quote(stock_code: str) -> str:
         # ---- 第一层：东方财富实时行情 ----
         logger.info("[Tool] 尝试主数据源: AKShare 东方财富实时行情")
         spot_df = _safe_request(
-            func=lambda: ak.stock_zh_a_spot_em(),
+            func=_get_spot_em_cached,
             func_name="stock_zh_a_spot_em",
             max_retries=2,
         )
@@ -407,7 +444,7 @@ def query_stock_quote(stock_code: str) -> str:
             logger.info("[Tool] 尝试备用数据源: 新浪财经")
             try:
                 sina_df = _safe_request(
-                    func=lambda: ak.stock_zh_a_spot_sina(),
+                    func=_get_spot_sina_cached,
                     func_name="stock_zh_a_spot_sina",
                     max_retries=1,
                 )

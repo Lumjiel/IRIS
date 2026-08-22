@@ -41,6 +41,7 @@ class AgentState(TypedDict):
     # tool_status: 工具调用状态 {name: {success, error}}
     tool_status: dict
     preferences: dict
+    search_iteration: int  # Function Calling 循环计数（防无限循环）
 
     # === 金融数据（阶段 2 新增） ===
     # financial_data: AKShare 拉取的结构化金融数据

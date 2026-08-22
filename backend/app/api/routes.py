@@ -270,6 +270,7 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 "critique": "",
                 "review_status": "PASS",
                 "should_stop": False,
+                "search_iteration": 0,  # Function Calling 循环计数重置
                 # final_report 不重置：router 需要判断是否有已有报告来决定路由
                 # conversation_summary 不重置：由 checkpoint 持久化，跨轮保持
             }
@@ -293,9 +294,11 @@ async def chat_endpoint(request: ChatRequest, req: Request):
 
             async with AsyncSqliteSaver.from_conn_string(DB_PATH) as memory:
                 app = create_graph(memory=memory)
-                from app.utils.streaming import set_token_queue
+                from app.utils.streaming import set_token_queue, set_node_event_queue
                 token_queue: asyncio.Queue = asyncio.Queue()
                 set_token_queue(token_queue)
+                node_event_queue: asyncio.Queue = asyncio.Queue()
+                set_node_event_queue(node_event_queue)
 
                 graph_queue: asyncio.Queue = asyncio.Queue()
 
@@ -340,6 +343,19 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                     except asyncio.QueueEmpty:
                         pass
 
+                    # 节点状态事件（start/done + elapsed）
+                    while True:
+                        try:
+                            n_ev = node_event_queue.get_nowait()
+                            yield f"data: {json.dumps(n_ev, ensure_ascii=False)}\n\n"
+                            had_work = True
+                            last_data_time = time.time()
+                        except asyncio.QueueEmpty:
+                            break
+
+                    if not had_work:
+                        await asyncio.sleep(0.01)
+
                     # 心跳：防止 Nginx 等代理因空闲断开连接
                     if not had_work and time.time() - last_data_time > HEARTBEAT_INTERVAL:
                         yield ": heartbeat\n\n"
@@ -360,8 +376,9 @@ async def chat_endpoint(request: ChatRequest, req: Request):
             error_data = json.dumps({"step": "error", "data": {"message": "研究过程中发生错误，请重试"}}, ensure_ascii=False)
             yield f"data: {error_data}\n\n"
         finally:
-            from app.utils.streaming import set_token_queue
+            from app.utils.streaming import set_token_queue, set_node_event_queue
             set_token_queue(None)
+            set_node_event_queue(None)
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
