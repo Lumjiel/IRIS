@@ -31,6 +31,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { renderMarkdown } from '../utils/markdown';
+import { useThrottledRender } from '../composables/useThrottledRender';
 
 const props = defineProps({
   content: { type: String, default: '' },
@@ -39,7 +40,12 @@ const props = defineProps({
   streaming: { type: Boolean, default: false },
 });
 
-const rendered = computed(() => renderMarkdown(props.content));
+// 节流渲染：流式时 50ms 节流，避免每个 token 都重渲染
+const throttledContent = useThrottledRender(
+  computed(() => props.content),
+  50
+);
+const rendered = computed(() => renderMarkdown(throttledContent.value));
 
 // --- 提取 h2 章节生成 TOC ---
 const toc = ref([]);
