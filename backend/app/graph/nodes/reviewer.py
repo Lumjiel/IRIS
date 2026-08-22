@@ -9,7 +9,6 @@ from langchain_core.messages import HumanMessage
 from app.utils.llm import llm_invoke
 from app.graph.state import AgentState
 from app.utils.logger import get_logger
-from app.config import MAX_REVISIONS
 
 log = get_logger("reviewer")
 
@@ -82,8 +81,6 @@ def review_node(state: AgentState):
             "early_stop": False,
             "should_continue": True,
         }
-    
-    num = state.get("revision_number", 0)
     
     num = state.get("revision_number", 0)
     report_history = state.get("report_history", [])

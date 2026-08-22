@@ -23,7 +23,6 @@ from app.graph.nodes.data_collector import data_collector_node
 from app.error_types import ErrorCode
 from app.utils.logger import get_logger
 from app.utils.streaming import emit_node_event
-from app.config import MAX_REVISIONS, LANGSMITH_API_KEY
 
 log = get_logger("graph")
 # === 循环终止配置 ===
@@ -236,7 +235,6 @@ _workflow.add_conditional_edges(
     route_after_research,
     {"search_agent": "search_agent", END: END}
 )
-_workflow.add_edge("refiner", END)
 _workflow.add_edge("chat", END)
 _workflow.add_conditional_edges(
     "search_agent",

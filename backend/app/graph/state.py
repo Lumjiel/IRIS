@@ -51,3 +51,8 @@ class AgentState(TypedDict):
     data_sources: List[str]
     # pending_stock_code: 待分析股票代码（router/planner 提取 → data_collector 消费）
     pending_stock_code: str
+
+    # === 未声明字段补录（LangGraph 会静默丢弃未在 schema 中声明的节点输出键） ===
+    chat_response: str        # chat_node 的纯对话响应
+    error_log: List[str]      # data_collector 的错误记录（部分成功策略）
+    similarity: float         # reviewer 的 cosine 相似度（早停依据）

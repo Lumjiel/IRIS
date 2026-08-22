@@ -164,8 +164,10 @@ class RateLimiter:
             conn.commit()
             conn.close()
             return True
-        except sqlite3.OperationalError:
-            return True  # 数据库锁定时放行
+        except sqlite3.OperationalError as e:
+            # 限流存储故障时拒绝请求（fail-closed）：放行会让锁竞争成为绕过限流的通道
+            log.warning(f"RateLimiter 存储异常，本次请求按限流拒绝（fail-closed）: {e}")
+            return False
 
 # 每个 IP 每分钟最多 5 次研究请求
 chat_limiter = RateLimiter(db_path=CHECKPOINT_DB, max_requests=5, window_seconds=60)
@@ -258,6 +260,7 @@ async def chat_endpoint(request: ChatRequest, req: Request):
 
     config = {"configurable": {"thread_id": request.thread_id}}
     async def event_generator():
+        graph_task = None  # 断连时在 finally 中取消，避免后台僵尸研究任务白烧 LLM 额度
         try:
             initial_state = {
                 "query": request.query,
@@ -376,6 +379,10 @@ async def chat_endpoint(request: ChatRequest, req: Request):
             error_data = json.dumps({"step": "error", "data": {"message": "研究过程中发生错误，请重试"}}, ensure_ascii=False)
             yield f"data: {error_data}\n\n"
         finally:
+            # 客户端断开（GeneratorExit）或异常时，取消仍在运行的研究任务
+            if graph_task is not None and not graph_task.done():
+                graph_task.cancel()
+                log.info("[SSE] 客户端断开，已取消后台研究任务")
             from app.utils.streaming import set_token_queue, set_node_event_queue
             set_token_queue(None)
             set_node_event_queue(None)
@@ -624,14 +631,21 @@ async def upload_report(file: UploadFile = File(...)):
     """上传研报 PDF 并入库 RAG"""
     from app.rag.report_ingest import ingest_report
     
-    if not file.filename.lower().endswith('.pdf'):
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="仅支持 PDF 文件")
     
-    # 保存上传的文件
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"文件超过 {MAX_FILE_SIZE_MB}MB 限制")
+    
+    # 保存上传的文件：basename 归一化，防止 filename 携带 ../ 实现路径穿越写入
+    safe_name = os.path.basename(file.filename)
+    if not safe_name or safe_name in (".", ".."):
+        raise HTTPException(status_code=400, detail="非法文件名")
+    file_path = os.path.join(UPLOAD_DIR, safe_name)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     with open(file_path, "wb") as f:
-        f.write(await file.read())
+        f.write(content)
     
     # 入库
     result = ingest_report(file_path, file.filename)
@@ -672,8 +686,9 @@ async def system_status():
     # 轻量探测：行情工具自带三层降级，返回的 data_source 即当前实际数据层
     data_source = "未知"
     try:
-        # invoke 返回 JSON 字符串（工具约定），同步在线程池执行避免阻塞事件循环
-        raw = _t_run(lambda: query_stock_quote.invoke("600519"))
+        # invoke 返回 JSON 字符串（工具约定）；AKShare 为同步阻塞调用，
+        # 用 asyncio.to_thread 丢进线程池，避免卡住事件循环（原 fut.result() 同步等待会阻塞最多 30s）
+        raw = await asyncio.to_thread(query_stock_quote.invoke, "600519")
         result = json.loads(raw)
         quote = result.get("quote", {})
         data_source = quote.get("data_source", "未知")
@@ -692,10 +707,3 @@ async def system_status():
     return payload
 
 
-# 同步阻塞调用放入线程池，避免阻塞事件循环
-from concurrent.futures import ThreadPoolExecutor
-_t_executor = ThreadPoolExecutor(max_workers=1)
-
-def _t_run(fn, *args):
-    fut = _t_executor.submit(fn, *args)
-    return fut.result(timeout=30)

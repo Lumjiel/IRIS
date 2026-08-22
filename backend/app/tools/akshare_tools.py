@@ -12,7 +12,6 @@ import threading
 import logging
 import os
 import time
-import logging
 from typing import Any, Callable, Optional, Dict
 
 from langchain_core.tools import tool
@@ -84,6 +83,7 @@ def _get_spot_em_cached():
     """带 60s TTL 缓存的全市场东方财富行情（线程安全）。
     首次/缓存过期时真实拉取（~5-15s），命中缓存时 <1ms。"""
     import time as _t
+    import akshare as ak  # 局部导入：与工具函数保持一致的延迟导入模式（测试可注入 mock）
     with _SPOT_LOCK:
         now = _t.time()
         if _SPOT_CACHE["em"] is not None and now - _SPOT_CACHE["ts"] < _SPOT_TTL:
@@ -97,6 +97,7 @@ def _get_spot_em_cached():
 def _get_spot_sina_cached():
     """带 60s TTL 缓存的全市场新浪财经行情（备用源）。"""
     import time as _t
+    import akshare as ak  # 局部导入：修复 NameError（原实现引用了未定义的模块级 ak）
     with _SPOT_LOCK:
         now = _t.time()
         if _SPOT_CACHE["sina"] is not None and now - _SPOT_CACHE["ts"] < _SPOT_TTL:
