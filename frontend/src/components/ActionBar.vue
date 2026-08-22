@@ -1,7 +1,7 @@
 <template>
-  <div class="border-t border-slate-200 bg-white px-6 py-3 flex items-center gap-3">
+  <div class="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-6 py-3 flex items-center gap-3">
     <div class="text-label text-slate-500 flex-1 truncate">
-      数据来源：<span v-if="sources.length">{{ sources.join('、') }}</span>
+      数据来源：<span v-if="sources.length" class="dark:text-slate-300">{{ sources.join('、') }}</span>
       <span v-else>—</span>
     </div>
 
@@ -39,6 +39,7 @@ defineEmits(['copy', 'download', 'save', 'toggleTheme']);
 .btn-secondary {
   @apply flex items-center gap-1.5 px-3 py-1.5 rounded-md text-label font-medium
          text-slate-600 hover:bg-slate-100 hover:text-slate-900
+         dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200
          disabled:opacity-30 disabled:cursor-not-allowed
          transition-colors duration-200 border border-slate-200;
 }

@@ -1,9 +1,19 @@
 <template>
-  <div class="h-screen flex flex-col">
+  <div class="h-screen flex flex-col" :class="dark ? 'dark' : ''">
     <!-- 顶栏 -->
-    <header class="h-12 border-b border-slate-200 bg-white px-4 flex items-center gap-3 shrink-0">
-      <span class="text-sm font-semibold text-slate-900">IRIS 投研助手</span>
-      <span class="text-label text-slate-400">基于 LangGraph 多智能体协同</span>
+    <header class="h-12 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 flex items-center justify-between gap-3 shrink-0">
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">IRIS 投研助手</span>
+        <span class="text-label text-slate-400 dark:text-slate-500">基于 LangGraph 多智能体协同</span>
+      </div>
+      <button
+        @click="toggleDark"
+        class="w-9 h-9 rounded-md flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors duration-200"
+        :title="dark ? '切换浅色' : '切换深色'"
+      >
+        <svg v-if="dark" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
     </header>
 
     <!-- 消息列表 -->
@@ -12,14 +22,14 @@
         <!-- 空状态 -->
         <div v-if="messages.length === 0" class="h-full flex items-center justify-center text-slate-400">
           <div class="text-center">
-            <svg class="w-16 h-16 mx-auto mb-4 text-accent/20" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="w-16 h-16 mx-auto mb-4 text-accent/20 dark:text-accent/30" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="8" y="32" width="8" height="24" rx="2"/>
               <rect x="20" y="20" width="8" height="36" rx="2"/>
               <rect x="32" y="28" width="8" height="28" rx="2"/>
               <rect x="44" y="12" width="8" height="44" rx="2"/>
             </svg>
-            <div class="text-body">输入股票代码或研究主题，开始投研分析</div>
-            <div class="text-label mt-1">也可以直接聊天，例如「你好」或「最近什么值得看」</div>
+            <div class="text-body dark:text-slate-300">输入股票代码或研究主题，开始投研分析</div>
+            <div class="text-label mt-1 dark:text-slate-500">也可以直接聊天，例如「你好」或「最近什么值得看」</div>
           </div>
         </div>
 
@@ -28,15 +38,15 @@
           <!-- AI 头像 -->
           <div v-if="msg.role !== 'user'" class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center shrink-0 text-white text-xs font-bold mt-1 shadow-soft ai-avatar">IR</div>
 
-          <div class="max-w-[85%] min-w-0" :class="msg.role === 'user' ? 'order-1' : ''">
+          <div class="max-w-[85%] min-w-0 md:max-w-[75%]" :class="msg.role === 'user' ? 'order-1' : ''">
             <!-- 用户消息 -->
             <div v-if="msg.role === 'user'">
-              <div class="bg-accent text-white px-4 py-2.5 rounded-2xl rounded-br-md text-body user-bubble relative">{{ msg.content }}</div>
+              <div class="bg-accent text-white px-4 py-2.5 rounded-2xl rounded-br-md text-body user-bubble relative dark:bg-indigo-600">{{ msg.content }}</div>
             </div>
 
             <!-- AI 消息：CHAT -->
-            <div v-else-if="msg.type === 'chat'" class="bg-white border border-slate-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-soft">
-              <div class="text-body text-slate-700 leading-relaxed">{{ msg.content }}</div>
+            <div v-else-if="msg.type === 'chat'" class="bg-white border border-slate-200 dark:bg-slate-800 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-soft">
+              <div class="text-body text-slate-700 dark:text-slate-300 leading-relaxed">{{ msg.content }}</div>
             </div>
 
             <!-- AI 消息：RESEARCH / REFINE -->
@@ -60,16 +70,16 @@
             </div>
 
             <!-- AI 消息：加载中 -->
-            <div v-else-if="msg.type === 'loading'" class="bg-white border border-slate-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-soft">
-              <div class="flex items-center gap-2 text-body text-slate-500">
+            <div v-else-if="msg.type === 'loading'" class="bg-white border border-slate-200 dark:bg-slate-800 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-soft">
+              <div class="flex items-center gap-2 text-body text-slate-500 dark:text-slate-400">
                 <span class="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
                 {{ msg.content || '思考中…' }}
               </div>
             </div>
 
             <!-- AI 消息：错误 -->
-            <div v-else-if="msg.type === 'error'" class="bg-red-50 border border-red-200 rounded-2xl rounded-bl-md px-4 py-3">
-              <div class="text-body text-red-600">{{ msg.content }}</div>
+            <div v-else-if="msg.type === 'error'" class="bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 rounded-2xl rounded-bl-md px-4 py-3">
+              <div class="text-body text-red-600 dark:text-red-400">{{ msg.content }}</div>
             </div>
           </div>
         </div>
@@ -77,27 +87,27 @@
     </main>
 
     <!-- 底部输入 -->
-    <footer class="border-t border-slate-200 bg-white px-4 py-3 shrink-0">
+    <footer class="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 shrink-0">
       <div class="max-w-3xl mx-auto">
-        <div class="flex items-end gap-2 bg-slate-50 rounded-lg border border-slate-200 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10 transition-colors duration-200 px-4 py-2">
+        <div class="flex items-end gap-2 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10 transition-colors duration-200 px-4 py-2">
           <textarea
             ref="inputBox"
             v-model="input"
             @input="autoResize($event)"
             @keydown.enter.exact.prevent="sendMessage"
-            class="flex-1 bg-transparent resize-none text-body text-slate-700 placeholder-slate-400 focus:outline-none leading-relaxed"
+            class="flex-1 bg-transparent resize-none text-body text-slate-700 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none leading-relaxed"
             :rows="1"
             placeholder="输入股票代码或研究主题，回车发送..."
           />
           <button
             @click="sendMessage"
             :disabled="!input.trim() || isLoading"
-            class="shrink-0 w-9 h-9 rounded-md bg-accent hover:bg-accent/90 text-white flex items-center justify-center transition-colors shadow-sm disabled:opacity-30 disabled:cursor-not-allowed"
+            class="shrink-0 w-10 h-10 rounded-md bg-accent hover:bg-accent/90 text-white flex items-center justify-center transition-colors shadow-sm disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
-        <p class="text-label text-slate-400 text-center mt-1.5">IRIS 可能会犯错，请核实重要信息</p>
+        <p class="text-label text-slate-400 dark:text-slate-500 text-center mt-1.5">IRIS 可能会犯错，请核实重要信息</p>
       </div>
     </footer>
   </div>
@@ -117,6 +127,23 @@ import Toast from './components/Toast.vue';
 import { streamChat } from './services/api';
 
 const input = ref('');
+
+// --- 深色模式 ---
+const dark = ref(false);
+const initDark = () => {
+  const saved = localStorage.getItem('iris-dark');
+  if (saved !== null) {
+    dark.value = saved === 'true';
+  } else {
+    dark.value = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+};
+const toggleDark = () => {
+  dark.value = !dark.value;
+  localStorage.setItem('iris-dark', dark.value);
+};
+onMounted(initDark);
+
 // --- Toast 反馈 ---
 const toastMessage = ref('');
 const toastType = ref('success');
@@ -150,6 +177,7 @@ const handleDownload = () => {
   showToast('报告已下载');
 };
 const handleSave = () => { showToast('保存功能开发中'); };
+
 const isLoading = ref(false);
 const messages = ref([]);
 const scrollEl = ref(null);
