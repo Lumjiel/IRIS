@@ -1,233 +1,213 @@
 <template>
-  <div class="h-screen flex flex-col bg-gray-50">
-    <!-- Tab Navigation -->
-    <div class="flex items-center gap-1 border-b border-gray-200 bg-white px-4 py-2 shrink-0">
-      <button
-        @click="activeTab = 'chat'"
-        :class="[
-          'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
-          activeTab === 'chat' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-        ]"
-      >
-        智能问答
-      </button>
-      <button
-        @click="activeTab = 'research'"
-        :class="[
-          'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
-          activeTab === 'research' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-        ]"
-      >
-        投研分析
-      </button>
-    </div>
-
-    <!-- Chat Tab -->
-    <div v-if="activeTab === 'chat'" class="flex-1 flex overflow-hidden min-h-0">
-    <ChatSidebar
-      :sidebarOpen="sidebarOpen"
-      :uploadedFiles="chat.uploadedFiles.value"
-      :materials="materials"
-      :history="chat.history.value"
-      :activeHistoryId="chat.activeHistoryId.value"
-      :memoryTurns="memoryTurns"
-      @newChat="chat.newChat"
-      @fileSelect="(e) => chat.handleFileSelect(e, showToast)"
-      @loadMaterials="loadMaterials"
-      @viewMaterial="viewMaterial"
-      @deleteMaterial="deleteMaterialItem"
-      @viewHistory="chat.viewHistory"
-      @clearMemory="clearMemory"
-    />
-
-    <div class="flex-1 flex flex-col min-w-0">
-      <ChatHeader
-        :currentQuery="chat.currentQuery.value"
-        :isLoading="chat.isLoading.value"
-        :memoryTurns="memoryTurns"
-        :memorySummary="memorySummary"
-        :summaryLength="summaryLength"
-        :summaryMax="summaryMax"
-        @toggleSidebar="sidebarOpen = !sidebarOpen"
-        @resetMemory="resetMemory"
-      />
-
-      <ChatMessages
-        :messages="chat.messages.value"
-        :isLoading="chat.isLoading.value"
-        :aiNews="aiNews"
-        @loadAiNews="loadAiNews"
-        @useAiNews="(title) => { chat.query.value = title; }"
-        @copyReport="chat.copyReport"
-        @downloadReport="chat.downloadReport"
-        @saveToLibrary="(msg) => chat.saveToLibrary(msg, showToast)"
-        @ttsReport="chat.ttsReport"
-      />
-
-      <ChatInput
-        v-model="chat.query.value"
-        :isLoading="chat.isLoading.value"
-        :uploadedFiles="chat.uploadedFiles.value"
-        :searchMode="chat.searchMode.value"
-        @update:searchMode="(v) => chat.searchMode.value = v"
-        @send="() => chat.sendMessage(showToast)"
-        @stop="chat.stopResearch"
-      />
-    </div>
-    </div>
-
-    <!-- Research Tab -->
-    <div v-else class="flex-1 flex overflow-hidden min-h-0">
-      <InvestmentResearch />
-    </div>
-
-    <!-- Toast -->
-    <Transition name="fade">
-      <div v-if="toastMsg" class="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm shadow-lg z-50" :class="toastType === 'error' ? 'bg-red-500 text-white' : 'bg-gray-800 text-white'">
-        {{ toastMsg }}
+  <div class="h-screen flex flex-col">
+    <!-- 顶部搜索栏 -->
+    <header class="border-b border-slate-200 bg-white px-6 py-3 flex items-center gap-4 shrink-0">
+      <h1 class="text-base font-semibold text-slate-900">IRIS 投研助手</h1>
+      <div class="flex-1 max-w-xl flex gap-2">
+        <input
+          v-model="query"
+          type="text"
+          placeholder="输入股票代码或名称，如 600519 / 贵州茅台"
+          class="flex-1 px-3 py-2 rounded-md border border-slate-200 text-body focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/10"
+          @keyup.enter="startResearch"
+        />
+        <button
+          @click="startResearch"
+          :disabled="isRunning || !query.trim()"
+          class="px-4 py-2 rounded-md bg-accent text-white text-body font-medium hover:bg-accent/90 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          <span v-if="isRunning">分析中…</span>
+          <span v-else>开始分析</span>
+        </button>
       </div>
-    </Transition>
+      <!-- 示例 -->
+      <div class="flex gap-1.5">
+        <button
+          v-for="ex in examples"
+          :key="ex.code"
+          @click="query = ex.code"
+          class="px-2.5 py-1 rounded-md text-label text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors border border-slate-200"
+        >
+          {{ ex.name }}
+        </button>
+      </div>
+    </header>
+
+    <!-- 主体 -->
+    <div class="flex-1 flex overflow-hidden">
+      <!-- 左栏：数据面板 -->
+      <aside class="w-80 border-r border-slate-200 bg-slate-50 p-4 space-y-4 overflow-y-auto shrink-0">
+        <MarketDataCard v-if="quote" :quote="quote" :kline="kline" />
+        <FinancialCard v-if="financial" :financial="financial" />
+        <ResearchTimeline v-if="timelineEvents.length" :events="timelineEvents" />
+      </aside>
+
+      <!-- 右区：报告 -->
+      <main class="flex-1 overflow-y-auto p-6 bg-white">
+        <!-- 空状态 -->
+        <div v-if="!report && !isRunning" class="h-full flex items-center justify-center text-slate-400">
+          <div class="text-center">
+            <div class="text-4xl mb-3">📊</div>
+            <div class="text-body">输入股票代码，开始投研分析</div>
+            <div class="text-label mt-1">数据来源：AKShare 东方财富（延时 15 分钟）</div>
+          </div>
+        </div>
+
+        <!-- 加载中 -->
+        <div v-else-if="isRunning && !report" class="flex items-center justify-center h-full">
+          <div class="text-center">
+            <div class="text-3xl mb-3 animate-pulse">⏳</div>
+            <div class="text-body text-slate-500">正在分析 {{ query }}…</div>
+          </div>
+        </div>
+
+        <!-- 报告 -->
+        <div v-else class="max-w-4xl mx-auto">
+          <ReportViewer
+            :content="report"
+            :title="reportTitle"
+            :subtitle="reportSubtitle"
+            :streaming="isRunning"
+          />
+        </div>
+      </main>
+    </div>
+
+    <!-- 底部操作栏 -->
+    <ActionBar
+      :report="report"
+      :sources="dataSources"
+      @copy="copyReport"
+      @download="downloadReport"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
-import { fetchAihotNews, listMaterials, deleteMaterial, getMaterial, getMemory, resetMemory as apiResetMemory } from './services/api';
-import { getHistory } from './services/history';
-import { useChat } from './composables/useChat';
-import ChatSidebar from './components/ChatSidebar.vue';
-import ChatHeader from './components/ChatHeader.vue';
-import ChatMessages from './components/ChatMessages.vue';
-import ChatInput from './components/ChatInput.vue';
-import InvestmentResearch from './views/InvestmentResearch.vue';
+import { ref, computed, onMounted } from 'vue';
+import MarketDataCard from './components/MarketDataCard.vue';
+import FinancialCard from './components/FinancialCard.vue';
+import ResearchTimeline from './components/ResearchTimeline.vue';
+import ReportViewer from './components/ReportViewer.vue';
+import ActionBar from './components/ActionBar.vue';
+import { streamChat } from './services/api';
 
-const chatContainer = ref(null);
-const activeTab = ref('chat');
-const chat = useChat(chatContainer);
+const query = ref('600519');
+const isRunning = ref(false);
+const report = ref('');
+const quote = ref(null);
+const financial = ref(null);
+const kline = ref([]);
+const dataSources = ref([]);
+const timelineEvents = ref([]);
+const error = ref('');
 
-const sidebarOpen = ref(false);
-const aiNews = ref([]);
-const materials = ref([]);
-const memoryTurns = ref(0);
-const memorySummary = ref('');
-const summaryLength = ref(0);
-const summaryMax = ref(2000);
+const examples = [
+  { code: '600196', name: '复星医药' },
+  { code: '000001', name: '平安银行' },
+  { code: '600519', name: '贵州茅台' },
+  { code: '000333', name: '美的集团' },
+  { code: '601318', name: '中国平安' },
+];
 
-// === Toast ===
-const toastMsg = ref('');
-const toastType = ref('success');
-let toastTimer = null;
-const showToast = (msg, type = 'success') => {
-    if (toastTimer) clearTimeout(toastTimer);
-    toastMsg.value = msg;
-    toastType.value = type;
-    toastTimer = setTimeout(() => { toastMsg.value = ''; }, 3000);
-};
-
-// === AI 新闻 ===
-const loadAiNews = async () => {
-    try {
-        const data = await fetchAihotNews(20);
-        aiNews.value = data.items || [];
-    } catch { aiNews.value = []; }
-};
-
-// === 素材库 ===
-const loadMaterials = async () => {
-    try {
-        const data = await listMaterials();
-        materials.value = data.items || [];
-    } catch { materials.value = []; }
-};
-
-const viewMaterial = async (m) => {
-    chat.messages.value = [];
-    chat.currentQuery.value = m.filename.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '');
-    chat.addMessage('user', 'text', `查看素材：${chat.currentQuery.value}`);
-    try {
-        const data = await getMaterial(m.filename);
-        chat.addMessage('assistant', 'report', data.content);
-    } catch {
-        chat.addMessage('assistant', 'error', '读取素材失败');
-    }
-    chat.scrollToBottom();
-};
-
-const deleteMaterialItem = async (filename) => {
-    try {
-        await deleteMaterial(filename);
-        materials.value = materials.value.filter(m => m.filename !== filename);
-        showToast('已删除', 'success');
-    } catch { showToast('删除失败', 'error'); }
-};
-
-// === 记忆管理 ===
-const loadMemory = async () => {
-    try {
-        const data = await getMemory(chat.getThreadId());
-        memoryTurns.value = data.turns || 0;
-        memorySummary.value = data.summary || '';
-        summaryLength.value = data.summary_length || 0;
-        summaryMax.value = data.summary_max || 2000;
-    } catch {
-        memoryTurns.value = 0;
-        memorySummary.value = '';
-        summaryLength.value = 0;
-    }
-};
-
-const resetMemory = async () => {
-    try {
-        await apiResetMemory(chat.getThreadId());
-        memoryTurns.value = 0;
-        memorySummary.value = '';
-        summaryLength.value = 0;
-        showToast('对话记忆已清空', 'success');
-    } catch {
-        showToast('清空记忆失败', 'error');
-    }
-};
-
-const clearMemory = async () => {
-    // 先用旧 thread_id 清理服务端摘要，再 newChat 生成新 ID
-    try { await apiResetMemory(chat.getThreadId()); } catch {}
-    chat.messages.value = [];
-    chat.currentQuery.value = '';
-    chat.newChat();
-    memoryTurns.value = 0;
-    memorySummary.value = '';
-    summaryLength.value = 0;
-    showToast('对话记忆已清除', 'success');
-};
-
-// === 生命周期 ===
-// 调研完成后自动刷新记忆状态
-watch(() => chat.isLoading.value, (loading, prev) => {
-    if (prev && !loading) loadMemory();
+const reportTitle = computed(() => {
+  if (!quote.value?.name && !query.value) return '';
+  return `${quote.value?.name || query.value}（${extractCode(query.value)}）投资分析报告`;
+});
+const reportSubtitle = computed(() => {
+  const parts = [];
+  if (quote.value?.data_source) parts.push(quote.value.data_source);
+  if (financial.value?.data_source) parts.push(financial.value.data_source);
+  return parts.join(' · ');
 });
 
-const handleKeydown = (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        chat.sendMessage(showToast);
+function extractCode(q) {
+  if (!q) return '';
+  const m = q.match(/(\d{6})/);
+  return m ? m[1] : q;
+}
+
+async function fetchStockData(code) {
+  const extract = async (url, key) => {
+    try {
+      const r = await fetch(url);
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  };
+  const [q, f] = await Promise.all([
+    extract(`/api/stock/${code}/quote`),
+    extract(`/api/stock/${code}/financial`),
+  ]);
+  if (q) quote.value = { ...q.quote, data_source: q.data_source };
+  if (f) financial.value = { ...f.indicators, data_source: f.data_source };
+}
+
+async function startResearch() {
+  if (!query.value.trim() || isRunning.value) return;
+
+  isRunning.value = true;
+  report.value = '';
+  quote.value = null;
+  financial.value = null;
+  kline.value = [];
+  dataSources.value = [];
+  timelineEvents.value = [];
+  error.value = '';
+
+  const code = extractCode(query.value);
+
+  // 先拉行情 + 财务（并行）
+  await fetchStockData(code);
+
+  // SSE 研究流
+  streamChat(
+    `分析${query.value}的投资价值`,
+    'hybrid',
+    (ev) => {
+      // 节点事件
+      if (ev.step) {
+        const cur = timelineEvents.value.find(e => e.step === ev.step);
+        if (cur) {
+          cur.status = ev.status || 'running';
+          if (ev.data) cur.artifact = ev.data.plan || ev.data.search_results || ev.data.critique || null;
+        } else {
+          timelineEvents.value.push({
+            step: ev.step,
+            status: ev.status || 'running',
+            artifact: ev.data?.plan || ev.data?.search_results || ev.data?.critique || null,
+          });
+        }
+      }
+      // 报告流
+      if (ev.data?.final_report) {
+        report.value = ev.data.final_report;
+      } else if (ev.data?.token && !ev.data.final) {
+        report.value += ev.data.token;
+      }
+    },
+    () => {
+      isRunning.value = false;
+      // 标记所有已完成节点
+      timelineEvents.value.forEach(e => { if (e.status === 'running') e.status = 'done'; });
+    },
+    (err) => {
+      isRunning.value = false;
+      error.value = err.message;
     }
-};
+  );
+}
 
-onMounted(() => {
-    chat.history.value = getHistory();
-    loadAiNews();
-    loadMemory();
-    // 不再自动恢复旧 session — 始终从首页开始
-    // 旧会话可通过侧栏「历史」手动恢复
-    document.addEventListener('keydown', handleKeydown);
-});
+async function copyReport() {
+  try { await navigator.clipboard.writeText(report.value); } catch {}
+}
 
-onUnmounted(() => {
-    document.removeEventListener('keydown', handleKeydown);
-});
+function downloadReport() {
+  const blob = new Blob([report.value], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `投研报告_${query.value}_${new Date().toISOString().slice(0, 10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 </script>
-
-<style>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-</style>

@@ -1,3 +1,35 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900;
+    font-feature-settings: "tnum" 1;
+  }
+
+  .dark body {
+    @apply bg-slate-900 text-slate-100;
+  }
+}
+
+/* 卡片基底：纸张感，全站统一（参照 Perplexity / Stripe） */
+@layer components {
+  .card {
+    @apply bg-white border border-slate-200 rounded-card shadow-soft;
+  }
+
+  .dark .card {
+    @apply bg-slate-800 border-slate-700;
+  }
+
+  /* 数字等宽：金融数据必须对齐 */
+  .num {
+    @apply font-mono tabular-nums;
+  }
+}
