@@ -35,8 +35,10 @@ export function formatBigInt(val) {
  const num =
   typeof val === "number" ? val : parseFloat(String(val).replace(/[,，]/g, ""));
  if (isNaN(num)) return String(val);
- if (num >= 1e8) return `${(num / 1e8).toFixed(2)} 万亿`;
- if (num >= 1e4) return `${(num / 1e4).toFixed(2)} 亿`;
+// A 股习惯：市值/成交额以「元」为原始单位 → 1e12=万亿，1e8=亿，1e4=万
+ if (num >= 1e12) return `${(num / 1e12).toFixed(2)} 万亿`;
+ if (num >= 1e8) return `${(num / 1e8).toFixed(2)} 亿`;
+ if (num >= 1e4) return `${(num / 1e4).toFixed(2)} 万`;
  return num.toLocaleString();
 }
 /** 格式化同比数据：带箭头 + 颜色 */

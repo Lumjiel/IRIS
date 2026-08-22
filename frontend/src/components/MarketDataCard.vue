@@ -73,7 +73,7 @@ const turnover = computed(() => {
 });
 
 const pe = computed(() => {
-  const v = pick(props.quote, 'pe', pick(props.quote, '市盈率_动态', pick(props.quote, '市盈率')));
+  const v = pick(props.quote, 'pe', pick(props.quote, '市盈率-动态', pick(props.quote, '市盈率')));
   return v === '-' ? '-' : Number(v).toFixed(2);
 });
 

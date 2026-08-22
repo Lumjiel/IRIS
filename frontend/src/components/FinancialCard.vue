@@ -85,8 +85,8 @@ const netMargin = computed(() => {
 });
 
 // --- 同比数据 ---
-const revenueYoY = computed(() => formatYoY(pick(props.financial, 'revenue_yoy')));
-const netProfitYoY = computed(() => formatYoY(pick(props.financial, 'net_profit_yoy')));
+const revenueYoY = computed(() => formatYoY(pick(props.financial, 'revenue_yoy_growth')));
+const netProfitYoY = computed(() => formatYoY(pick(props.financial, 'net_profit_yoy_growth')));
 const roeYoY = computed(() => formatYoY(pick(props.financial, 'roe_yoy')));
 const epsYoY = computed(() => formatYoY(pick(props.financial, 'eps_yoy')));
 const grossMarginYoY = computed(() => formatYoY(pick(props.financial, 'gross_margin_yoy')));

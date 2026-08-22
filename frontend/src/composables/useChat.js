@@ -107,16 +107,16 @@ export function useChat() {
           }
         }
 
-        // 行情 & 财务数据
-        if (ev.data?.quote)
+        // 行情 & 财务数据：后端 data_collector 节点输出 financial_data 结构
+        // { stock_code, stock_info, indicators: {...}, quote: {...} }
+        const fin = ev.data?.financial_data;
+        if (fin?.quote)
           loadingMsg.quote = {
-            ...ev.data.quote,
-            data_source: ev.data.data_source,
+            ...fin.quote,
           };
-        if (ev.data?.financial)
+        if (fin?.indicators)
           loadingMsg.financial = {
-            ...ev.data.financial,
-            data_source: ev.data.data_source,
+            ...fin.indicators,
           };
       },
       () => {

@@ -49,7 +49,7 @@ export async function uploadFiles(files) {
         formData.append('files', file);
     });
 
-    const response = await fetch(`${API_BASE}/upload`, {
+    const response = await fetch(`${API_BASE}/api/upload`, {
         method: 'POST',
         body: formData,
     });
@@ -58,7 +58,7 @@ export async function uploadFiles(files) {
 }
 
 export async function clearContext() {
-  const response = await fetch(`${API_BASE}/clear`, {
+  const response = await fetch(`${API_BASE}/api/clear`, {
       method: "POST"
   });
   if (!response.ok) throw new Error('Clear failed');
@@ -90,7 +90,9 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
         query,
         search_mode,
         thread_id: getThreadId(),
-        preferences: prefs,
+        // 后端 ChatRequest 契约为顶层 style/language 字段（preferences 对象会被 Pydantic 忽略）
+        style: prefs.style || 'detailed',
+        language: prefs.language || 'zh',
       }),
       signal,
     });
@@ -102,6 +104,14 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let finished = false;
+    // 完成守卫：onDone 只触发一次（[DONE] 行 / type=done 事件 / reader 结束三路任一）
+    const finish = () => {
+      if (!finished) {
+        finished = true;
+        onDone();
+      }
+    };
 
     while (true) {
       const { done, value } = await reader.read();
@@ -113,11 +123,16 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
+          const payload = line.slice(6);
+          if (payload.trim() === '[DONE]') {
+            finish();
+            continue;
+          }
           try {
-            const data = JSON.parse(line.slice(6));
+            const data = JSON.parse(payload);
             onData(data);
             if (data.type === 'done') {
-              onDone();
+              finish();
             }
           } catch {
             // JSON 解析失败时跳过该行
@@ -125,8 +140,11 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
         }
       }
     }
+    // 流自然结束（后端 [DONE] 可能被代理吞掉）：兜底触发完成回调，避免 isLoading 永久挂起
+    finish();
   } catch (error) {
     if (error.name === 'AbortError') {
+      onDone();
       return;
     }
     onError(error);
@@ -139,7 +157,7 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
 export async function fetchAihotNews(take = 20, query = null) {
   const params = new URLSearchParams({ mode: 'selected', take });
   if (query) params.set('q', query);
-  const response = await fetch(`${API_BASE}/aihot/news?${params}`);
+  const response = await fetch(`${API_BASE}/api/aihot/news?${params}`);
   if (!response.ok) throw new Error('Failed to fetch news');
   return await response.json();
 }
@@ -148,7 +166,7 @@ export async function fetchAihotNews(take = 20, query = null) {
  * 保存报告到创作目录
  */
 export async function saveReport(query, report, watermark = true) {
-  const response = await fetch(`${API_BASE}/save-report`, {
+  const response = await fetch(`${API_BASE}/api/save-report`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, report, watermark }),
@@ -158,19 +176,19 @@ export async function saveReport(query, report, watermark = true) {
 }
 
 export async function listMaterials() {
-  const response = await fetch(`${API_BASE}/materials`);
+  const response = await fetch(`${API_BASE}/api/materials`);
   if (!response.ok) throw new Error('Failed to list materials');
   return await response.json();
 }
 
 export async function deleteMaterial(filename) {
-  const response = await fetch(`${API_BASE}/materials/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  const response = await fetch(`${API_BASE}/api/materials/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   if (!response.ok) throw new Error('Failed to delete material');
   return await response.json();
 }
 
 export async function getMaterial(filename) {
-  const response = await fetch(`${API_BASE}/materials/${encodeURIComponent(filename)}`);
+  const response = await fetch(`${API_BASE}/api/materials/${encodeURIComponent(filename)}`);
   if (!response.ok) throw new Error('Failed to get material');
   return await response.json();
 }
@@ -179,7 +197,7 @@ export async function getMaterial(filename) {
  * 获取会话记忆摘要
  */
 export async function getMemory(threadId) {
-  const response = await fetch(`${API_BASE}/memory/${encodeURIComponent(threadId)}`);
+  const response = await fetch(`${API_BASE}/api/memory/${encodeURIComponent(threadId)}`);
   if (!response.ok) return { summary: '', turns: 0 };
   return await response.json();
 }
@@ -188,7 +206,7 @@ export async function getMemory(threadId) {
  * 清空会话记忆摘要（保留报告）
  */
 export async function resetMemory(threadId) {
-  const response = await fetch(`${API_BASE}/memory/${encodeURIComponent(threadId)}/reset`, {
+  const response = await fetch(`${API_BASE}/api/memory/${encodeURIComponent(threadId)}/reset`, {
     method: 'POST'
   });
   if (!response.ok) throw new Error('Failed to reset memory');
@@ -199,7 +217,7 @@ export async function resetMemory(threadId) {
  * TTS 语音合成
  */
 export async function ttsSynthesize(text, voice = 'longtian_v3') {
-  const response = await fetch(`${API_BASE}/tts`, {
+  const response = await fetch(`${API_BASE}/api/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, voice }),
