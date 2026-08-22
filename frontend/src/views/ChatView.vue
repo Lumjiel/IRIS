@@ -1,20 +1,50 @@
 <template>
-  <div class="h-screen flex flex-row" :class="appStore.dark ? 'dark' : ''">
-    <!-- ============ 侧边栏 ============ -->
-    <ChatSidebar
-      :history="recentHistory"
-      @analyze="startPreset"
-      @new-thread="handleNewThread"
-      @replay="handleReplay"
-      @watch-added="toast.success(`已添加自选股 ${$event.name}`)"
-      @watch-removed="toast.success('已移出自选股')"
-    />
+  <div class="h-screen flex flex-row">
+    <!-- ============ 桌面侧边栏（lg 以上常驻） ============ -->
+    <div class="hidden lg:block shrink-0">
+      <ChatSidebar
+        :history="recentHistory"
+        @analyze="startPreset"
+        @new-thread="handleNewThread"
+        @replay="handleReplay"
+        @watch-added="toast.success(`已添加自选股 ${$event.name}`)"
+        @watch-removed="toast.success('已移出自选股')"
+      />
+    </div>
+
+    <!-- ============ 移动端抽屉侧栏（lg 以下） ============ -->
+    <Transition name="drawer">
+      <div
+        v-if="sidebarOpen"
+        class="fixed inset-0 z-40 lg:hidden bg-slate-900/40 backdrop-blur-sm"
+        @click.self="sidebarOpen = false"
+      >
+        <div class="absolute inset-y-0 left-0 shadow-xl">
+          <ChatSidebar
+            :history="recentHistory"
+            @analyze="sidebarOpen = false; startPreset($event)"
+            @new-thread="sidebarOpen = false; handleNewThread()"
+            @replay="sidebarOpen = false; handleReplay($event)"
+            @watch-added="toast.success(`已添加自选股 ${$event.name}`)"
+            @watch-removed="toast.success('已移出自选股')"
+          />
+        </div>
+      </div>
+    </Transition>
 
     <!-- ============ 主区 ============ -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- 顶栏 -->
       <header class="h-12 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 flex items-center justify-between gap-3 shrink-0">
         <div class="flex items-center gap-3 min-w-0">
+          <!-- 移动端：打开抽屉侧栏 -->
+          <button
+            class="lg:hidden p-1.5 -ml-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            aria-label="打开侧栏"
+            @click="sidebarOpen = true"
+          >
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
           <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-soft shrink-0">IR</div>
           <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">IRIS 投研助手</span>
           <span class="text-label text-slate-400 dark:text-slate-500 hidden lg:inline truncate">LangGraph 多智能体协同 · AKShare 真实数据</span>
@@ -178,7 +208,6 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from "vue";
-import { storeToRefs } from "pinia";
 import ChatSidebar from "../components/ChatSidebar.vue";
 import MarketDataCard from "../components/MarketDataCard.vue";
 import FinancialCard from "../components/FinancialCard.vue";
@@ -194,7 +223,9 @@ import { saveReport } from "../services/api";
 
 // --- Store ---
 const appStore = useAppStore();
-const { dark } = storeToRefs(appStore);
+
+// --- 移动端抽屉侧栏 ---
+const sidebarOpen = ref(false);
 
 // --- 聊天 & Toast composables ---
 const { messages, isLoading, scrollEl, sendMessage, getCurrentReport, newThread } = useChat();
@@ -348,5 +379,23 @@ const handleSave = async () => {
 .ai-avatar:hover {
   transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+}
+
+/* 移动端抽屉：滑入滑出 */
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: opacity 0.2s ease;
+}
+.drawer-enter-active > div,
+.drawer-leave-active > div {
+  transition: transform 0.25s ease;
+}
+.drawer-enter-from,
+.drawer-leave-to {
+  opacity: 0;
+}
+.drawer-enter-from > div,
+.drawer-leave-to > div {
+  transform: translateX(-100%);
 }
 </style>

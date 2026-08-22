@@ -32,4 +32,52 @@
   .num {
     @apply font-mono tabular-nums;
   }
+
+  /* 暗色模式 typography 覆盖：tailwind.config 的 prose 颜色为浅色硬编码，
+     暗色下深灰字压深蓝底对比度不足，此处整体反转 */
+  .dark .prose {
+    color: #cbd5e1;
+  }
+  .dark .prose h1,
+  .dark .prose h2,
+  .dark .prose h3,
+  .dark .prose h4,
+  .dark .prose strong {
+    color: #f1f5f9;
+  }
+  .dark .prose a {
+    color: #818cf8;
+  }
+  .dark .prose th {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #e2e8f0;
+  }
+  .dark .prose td {
+    border-color: #334155;
+  }
+  .dark .prose tbody tr:nth-child(even) {
+    background-color: rgb(30 41 59 / 0.5);
+  }
+  .dark .prose blockquote {
+    border-left-color: #6366f1;
+    background-color: rgb(49 46 129 / 0.25);
+    color: #a5b4fc;
+  }
+  .dark .prose code {
+    background-color: #1e293b;
+    color: #e2e8f0;
+  }
+  /* 细滚动条，暗色适配 */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: rgb(100 116 139 / 0.4);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background-color: rgb(71 85 105 / 0.5);
+  }
 }
