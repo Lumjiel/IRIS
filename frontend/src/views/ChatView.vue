@@ -190,6 +190,7 @@ import { useChat } from "../composables/useChat";
 import { useToast } from "../composables/useToast";
 import { useAppStore } from "../stores/app";
 import { getHistory } from "../services/history";
+import { saveReport } from "../services/api";
 
 // --- Store ---
 const appStore = useAppStore();
@@ -316,7 +317,18 @@ const handleDownload = () => {
   URL.revokeObjectURL(url);
   toast.success("报告已下载");
 };
-const handleSave = () => toast.info("保存功能开发中");
+const handleSave = async () => {
+  const msg = getCurrentReport();
+  if (!msg?.report) return;
+  try {
+    // 文件名用股票代码或通用名，服务端会做字符过滤 + 日期前缀
+    const name = msg.quote?.stock_code ? `分析${msg.quote.stock_code}` : "投研报告";
+    await saveReport(name, msg.report);
+    toast.success("报告已保存到创作目录");
+  } catch {
+    toast.error("保存失败，请稍后重试");
+  }
+};
 </script>
 
 <style scoped>

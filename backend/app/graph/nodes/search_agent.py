@@ -54,11 +54,15 @@ def search_agent_node(state: AgentState) -> dict:
         # 已有搜索历史，追加上下文
         user_content += "\n\n请评估已有搜索结果是否充分，如不充分请继续搜索。"
 
-    # 组装消息列表
+    # 组装消息列表：System + 任务消息 + 历史对话重放
     all_messages = [
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_content),
     ]
+    if messages:
+        # 重放此前的 assistant tool_calls + ToolMessage 搜索结果。
+        # 缺了这段 LLM 每轮都看不到已搜内容，只能盲目重复搜索（原实现的缺陷）。
+        all_messages.extend(messages)
 
     # 获取带工具绑定的 LLM
     llm = get_llm(model_type="fast", node="researcher")

@@ -86,6 +86,33 @@ class TestSearchAgentNode:
         assert isinstance(result["messages"][0], AIMessage)
         assert result["messages"][0].tool_calls == []
 
+    @patch("app.graph.nodes.search_agent.get_llm")
+    def test_replays_message_history(self, mock_get_llm):
+        """多轮搜索时必须重放历史（含 ToolMessage），LLM 才能基于已搜结果决策"""
+        mock_llm = MagicMock()
+        mock_response = AIMessage(content="信息已充分", tool_calls=[])
+        mock_llm.bind_tools.return_value.invoke.return_value = mock_response
+        mock_get_llm.return_value = mock_llm
+
+        from app.graph.nodes.search_agent import search_agent_node
+        state = make_sample_state()
+        history = [
+            AIMessage(
+                content="我来搜索",
+                tool_calls=[{"id": "call_1", "name": "search_web", "args": {"query": "复星医药 2025 年报"}}],
+            ),
+            ToolMessage(content="2025 年报要点……", tool_call_id="call_1", name="search_web"),
+        ]
+        state["messages"] = list(history)
+        state["search_iteration"] = 1
+
+        search_agent_node(state)
+
+        # 校验传给 LLM 的消息包含完整历史重放
+        invoked = mock_llm.bind_tools.return_value.invoke.call_args[0][0]
+        assert len(invoked) == 2 + len(history)  # System + Human + 历史
+        assert any(isinstance(m, ToolMessage) for m in invoked), "历史中的工具结果必须出现在 LLM 输入中"
+
 
 class TestSearchToolNode:
     """search_tool_node 测试。"""
