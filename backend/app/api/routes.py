@@ -276,9 +276,23 @@ async def chat_endpoint(request: ChatRequest, req: Request):
 
             log.info(f"新任务开启 | 模式: {request.search_mode} | 问题: {request.query}")
 
+            # === 先跑 router 获取意图，作为首事件发出 ===
+            from app.graph.nodes.router import route_query
+            from app.graph.state import AgentState
+            _route_state = AgentState(
+                query=request.query,
+                final_report=initial_state.get("final_report", ""),
+                revision_number=initial_state.get("revision_number", 0),
+            )
+            route_result = route_query(_route_state)
+            # 映射到前端 intent: planner→research, refiner→refine, chat→chat
+            INTENT_MAP = {"planner": "research", "refiner": "refine", "chat": "chat"}
+            intent = INTENT_MAP.get(route_result, "chat")
+            yield f"data: {json.dumps({'step': 'intent', 'data': {'intent': intent, 'route': route_result}}, ensure_ascii=False)}\n\n"
+            log.info(f"意图判定: {intent} (route={route_result})")
+
             async with AsyncSqliteSaver.from_conn_string(DB_PATH) as memory:
                 app = create_graph(memory=memory)
-
                 from app.utils.streaming import set_token_queue
                 token_queue: asyncio.Queue = asyncio.Queue()
                 set_token_queue(token_queue)

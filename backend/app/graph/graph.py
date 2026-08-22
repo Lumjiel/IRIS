@@ -16,6 +16,7 @@ from app.graph.nodes.search_agent import search_agent_node, search_tool_node, ro
 from app.graph.nodes.writer import write_node
 from app.graph.nodes.reviewer import review_node
 from app.graph.nodes.refiner import refine_node
+from app.graph.nodes.chat_node import chat_node
 from app.graph.nodes.data_collector import data_collector_node
 from app.error_types import ErrorCode
 from app.utils.logger import get_logger
@@ -62,6 +63,10 @@ def traced_reviewer(state: AgentState):
 @traceable(run_type="chain", name="refiner")
 async def traced_refiner(state: AgentState):
     return await refine_node(state)
+
+@traceable(run_type="chain", name="chat")
+async def traced_chat(state: AgentState):
+    return await chat_node(state)
 
 @traceable(run_type="chain", name="search_agent")
 def traced_search_agent(state: AgentState):
@@ -160,17 +165,20 @@ _workflow.add_node("writer", traced_writer)
 _workflow.add_node("reviewer", traced_reviewer)
 _workflow.add_node("refiner", traced_refiner)
 _workflow.add_node("data_collector", traced_data_collector)
+_workflow.add_node("chat", traced_chat)
 
 # START -> planner -> researcher -> search_agent -> tools -> search_agent (loop) -> data_collector -> writer
 _workflow.set_conditional_entry_point(
     route_query,
     {
         "planner": "planner",
-        "refiner": "refiner"
+        "refiner": "refiner",
+        "chat": "chat",
     }
 )
 _workflow.add_edge("planner", "researcher")
-_workflow.add_edge("researcher", "search_agent")
+_workflow.add_edge("refiner", END)
+_workflow.add_edge("chat", END)
 _workflow.add_conditional_edges(
     "search_agent",
     _route_search_agent,

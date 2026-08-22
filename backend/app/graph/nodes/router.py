@@ -1,3 +1,9 @@
+"""
+IRIS Router — 三意图路由
+- RESEARCH : 新课题，启动完整研究 graph
+- REFINE   : 对现有报告的修改/追问
+- CHAT     : 通用问答，不调 graph（对话模式）
+"""
 from langchain_core.messages import HumanMessage
 from app.graph.state import AgentState
 from app.utils.llm import llm_invoke
@@ -6,52 +12,88 @@ from app.utils.logger import get_logger
 log = get_logger("router")
 
 
-def looks_like_refine(q: str) -> bool:
-    """兜底策略：关键词匹配"""
-    q = q.strip()
-    refine_triggers = [
+def _looks_like_refine(q: str) -> bool:
+    """兜底：关键词匹配修订意图"""
+    triggers = [
         "改", "润色", "优化", "补充", "扩写", "写详细", "更通俗", "更正式",
         "重写", "调整", "删", "加", "第", "章", "段", "标题", "格式",
         "总结", "结论", "引用",
-        # 对话延续 / 模糊后续
         "你觉得", "你认为", "怎么看", "然后呢", "接着", "继续",
         "还有呢", "再说说", "深入", "详细说", "具体说",
     ]
-    return any(t in q for t in refine_triggers)
+    return any(t in q.strip() for t in triggers)
 
-def route_query(state: AgentState):
-    """判断用户输入是"新查询"还是"修改指令" """
+
+def _looks_like_research(q: str) -> bool:
+    """启发式：是否像研究请求（含股票代码、公司名、行业词等）"""
+    q = q.strip()
+    # 含 6 位数字（股票代码）
+    import re
+    if re.search(r'\b(\d{6})\b', q):
+        return True
+    # 研究类动词
+    research_verbs = [
+        "分析", "研究", "调研", "评估", "看看", "了解", "查一下",
+        "怎么样", "如何", "怎样", "值得", "投资", "买入", "卖出",
+        "对比", "比较", "排行", "排名", "推荐",
+    ]
+    return any(v in q for v in research_verbs)
+
+
+def route_query(state: AgentState) -> str:
+    """三意图路由：RESEARCH / REFINE / CHAT"""
     query = state["query"]
     has_report = bool(state.get("final_report", "").strip())
 
-    log.info(f"正在分析意图: '{query}' (已有报告: {has_report})")
+    log.info(f"意图识别: '{query}' (已有报告: {has_report})")
 
+    # 无报告时：只有 RESEARCH 或 CHAT
     if not has_report:
-        return "planner"
+        if _looks_like_research(query):
+            return "planner"
+        # 走 LLM 二次确认（防启发式误判）
+        intent = _llm_classify(query, has_report=False)
+        return "planner" if intent == "RESEARCH" else "chat"
 
-    prompt = f"""
-    当前系统已经生成了一份研究报告。
-    用户的最新输入是: "{query}"。
-    用户最近一次生成的报告片段是："{state['final_report'][:500]}"
-
-    请判断用户的意图：
-    1. "NEW_TOPIC": 用户明确提出了一个与现有报告无关的全新研究课题。
-    2. "REFINE": 用户想要讨论、评价、修改、补充现有报告，或发出模糊的后续提问。
-
-    重要规则：
-    - 如果用户的问题可以理解为对现有报告的追问、评价、讨论，默认归类为 "REFINE"
-    - 只有当用户明确提出了一个全新的、与现有报告无关的主题时，才归类为 "NEW_TOPIC"
-    - 模糊的后续消息（如"你觉得呢"、"然后呢"、"继续"等）归类为 "REFINE"
-
-    只输出 "NEW_TOPIC" 或 "REFINE"。
-    """
-
-    result = llm_invoke([HumanMessage(content=prompt)], node="router").content.strip().upper()
-    log.info(f"LLM 判定结果: {result}")
-
-    if result == "REFINE":
+    # 有报告时：RESEARCH / REFINE / CHAT 三分
+    if _looks_like_refine(query):
         return "refiner"
-    if result == "NEW_TOPIC":
+
+    intent = _llm_classify(query, has_report=True)
+    if intent == "REFINE":
+        return "refiner"
+    if intent == "RESEARCH":
         return "planner"
-    log.warning(f"非法输出: {result!r}，启用兜底规则")
-    return "refiner" if looks_like_refine(query) else "planner"
+    return "chat"
+
+
+def _llm_classify(query: str, has_report: bool) -> str:
+    """LLM 意图分类，返回 RESEARCH / REFINE / CHAT"""
+    context = "当前已有一份研究报告。" if has_report else "当前没有研究报告。"
+    prompt = f"""
+{context}
+用户最新输入: "{query}"
+
+判断用户意图，只输出一个词：
+- "RESEARCH"：用户提出全新的研究课题（如分析某只股票、某行业），需要启动完整研究流程
+- "REFINE"：用户想要讨论、评价、修改、补充现有报告，或对报告内容的追问
+- "CHAT"：通用闲聊、非研究问题（如问天气、打招呼、问你是谁、一般知识问答）
+
+规则：
+- 含股票代码(6位数字)或"分析/研究/看看"等研究动词 → RESEARCH
+- 对现有报告的追问、评价、修改 → REFINE
+- 无法归类为以上两者 → CHAT
+- 模糊短句默认 REFINE（有报告）或 CHAT（无报告）
+"""
+    try:
+        result = llm_invoke([HumanMessage(content=prompt)], node="router").content.strip().upper()
+        if result in ("RESEARCH", "REFINE", "CHAT"):
+            return result
+        log.warning(f"Router 非法输出: {result!r}")
+    except Exception as e:
+        log.error(f"Router LLM 失败: {e}")
+
+    # 兜底
+    if has_report:
+        return "REFINE" if _looks_like_refine(query) else "CHAT"
+    return "CHAT"
