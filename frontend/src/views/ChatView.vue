@@ -152,9 +152,9 @@
                   v-if="msg.report && msg.type !== 'loading'"
                   :report="msg.report"
                   :sources="msg.quote?.data_source ? [msg.quote.data_source] : []"
-                  @copy="handleCopy"
-                  @download="handleDownload"
-                  @save="handleSave"
+                  @copy="handleCopy(msg)"
+                  @download="handleDownload(msg)"
+                  @save="handleSave(msg)"
                 />
               </div>
 
@@ -235,7 +235,7 @@ const appStore = useAppStore();
 const sidebarOpen = ref(false);
 
 // --- 聊天 & Toast composables ---
-const { messages, isLoading, scrollEl, sendMessage, getCurrentReport, newThread } = useChat();
+const { messages, isLoading, scrollEl, sendMessage, newThread } = useChat();
 const toast = useToast();
 
 // --- 空状态引导数据 ---
@@ -334,15 +334,13 @@ const formatTime = (ts) => {
 };
 
 // --- ActionBar 操作 ---
-const handleCopy = () => {
-  const msg = getCurrentReport();
+const handleCopy = (msg) => {
   if (!msg?.report) return;
   navigator.clipboard.writeText(msg.report)
     .then(() => toast.success("已复制到剪贴板"))
     .catch(() => toast.error("复制失败"));
 };
-const handleDownload = () => {
-  const msg = getCurrentReport();
+const handleDownload = (msg) => {
   if (!msg?.report) return;
   const blob = new Blob([msg.report], { type: "text/markdown" });
   const url = URL.createObjectURL(blob);
@@ -355,8 +353,7 @@ const handleDownload = () => {
   URL.revokeObjectURL(url);
   toast.success("报告已下载");
 };
-const handleSave = async () => {
-  const msg = getCurrentReport();
+const handleSave = async (msg) => {
   if (!msg?.report) return;
   try {
     // 文件名用股票代码或通用名，服务端会做字符过滤 + 日期前缀
