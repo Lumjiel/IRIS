@@ -164,6 +164,13 @@
                   <span class="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
                   {{ msg.content || '思考中…' }}
                 </div>
+                <!-- 骨架屏：研究流程耗时数分钟，shimmer 块降低等待焦虑 -->
+                <div class="mt-3 space-y-2.5" aria-hidden="true">
+                  <div class="skeleton-line h-3 rounded bg-slate-100 dark:bg-slate-700/60 w-3/4"></div>
+                  <div class="skeleton-line h-3 rounded bg-slate-100 dark:bg-slate-700/60 w-full"></div>
+                  <div class="skeleton-line h-3 rounded bg-slate-100 dark:bg-slate-700/60 w-5/6"></div>
+                  <div class="skeleton-line h-14 rounded-lg bg-slate-100 dark:bg-slate-700/60 w-full"></div>
+                </div>
               </div>
 
               <!-- AI 消息：错误 -->

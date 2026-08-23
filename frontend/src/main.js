@@ -3,6 +3,14 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import router from './router';
 import { useAppStore } from './stores/app';
+// 自托管字体（tailwind.config fontFamily 已声明 Inter/JetBrains Mono）：
+// 英文/数字走 Inter 与 JetBrains Mono，中文回落 PingFang/雅黑
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/600.css';
 import 'katex/dist/katex.min.css';
 import './style.css';
 
