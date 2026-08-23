@@ -72,14 +72,20 @@ const turnover = computed(() => {
   return v === '-' ? '-' : v;
 });
 
+// 数值兜底：mock/异常数据可能给 NaN、"NaN"、空串等，统一显示 "-"
+const toFixedOrDash = (v) => {
+  const n = Number(v);
+  return v == null || v === '-' || v === '' || !Number.isFinite(n) ? '-' : n.toFixed(2);
+};
+
 const pe = computed(() => {
   const v = pick(props.quote, 'pe', pick(props.quote, '市盈率-动态', pick(props.quote, '市盈率')));
-  return v === '-' ? '-' : Number(v).toFixed(2);
+  return toFixedOrDash(v);
 });
 
 const pb = computed(() => {
   const v = pick(props.quote, 'pb', pick(props.quote, '市净率'));
-  return v === '-' ? '-' : Number(v).toFixed(2);
+  return toFixedOrDash(v);
 });
 
 const mktCap = computed(() => formatBigInt(pick(props.quote, 'mkt_cap', pick(props.quote, '总市值'))));
