@@ -106,77 +106,28 @@ def _get_spot_sina_cached():
         _SPOT_CACHE["sina"] = df
         return df
 
-# 内置模拟数据 — 网络彻底不可用时的最终兜底
+# 内置模拟快照 —— 网络彻底不可用时的最终兜底
+# 数据维护在 mock_snapshot.py：真实感静态快照，字段与真实接口 schema 一致；
+# 所有 data_source 标签含「模拟」二字，保证 degraded 标记检测不被绕过。
 # ============================================================
-_MOCK_STOCK_INFO: Dict[str, str] = {
-    "公司名称": "示例公司",
-    "公司全称": "示例股份有限公司",
-    "所属行业": "制造业",
-    "上市日期": "2000-01-01",
-    "上市板块": "上海证券交易所主板",
-    "总股本": "10亿股",
-    "流通股本": "8亿股",
-    "注册地址": "上海市浦东新区",
-    "主营业务": "（模拟数据）",
-    "董事长": "（模拟）",
-    "员工人数": "约10000人",
-}
-
-_MOCK_FINANCIAL: Dict[str, Any] = {
-    "stock_code": "000000",
-    "report_period": "最近报告期",
-    "total_revenue": "模拟数据",
-    "revenue_yoy_growth": "模拟数据",
-    "net_profit": "模拟数据",
-    "net_profit_yoy_growth": "模拟数据",
-    "gross_margin": "模拟数据",
-    "net_margin": "模拟数据",
-    "roe": "模拟数据",
-    "eps": "模拟数据",
-    "data_source": "内置模拟数据（网络不可用时的最终兜底）",
-}
-
-_MOCK_QUOTE: Dict[str, Any] = {
-    "stock_code": "000000",
-    "最新价": "模拟",
-    "涨跌幅": "模拟",
-    "涨跌额": "模拟",
-    "成交量": "模拟",
-    "成交额": "模拟",
-    "振幅": "模拟",
-    "最高": "模拟",
-    "最低": "模拟",
-    "今开": "模拟",
-    "昨收": "模拟",
-    "换手率": "模拟",
-    "市盈率": "模拟",
-    "市净率": "模拟",
-    "总市值": "模拟",
-    "流通市值": "模拟",
-    "延时": "15分钟（模拟）",
-    "data_source": "内置模拟数据（网络不可用时的最终兜底）",
-}
 
 
 def _get_mock_info(stock_code: str) -> Dict[str, str]:
     """根据股票代码返回对应的模拟基本信息"""
-    data = dict(_MOCK_STOCK_INFO)
-    data["股票代码"] = stock_code
-    return data
+    from app.tools.mock_snapshot import get_mock_info
+    return get_mock_info(stock_code)
 
 
 def _get_mock_financial(stock_code: str) -> Dict[str, Any]:
     """根据股票代码返回对应的模拟财务指标"""
-    data = dict(_MOCK_FINANCIAL)
-    data["stock_code"] = stock_code
-    return data
+    from app.tools.mock_snapshot import get_mock_financial
+    return get_mock_financial(stock_code)
 
 
 def _get_mock_quote(stock_code: str) -> Dict[str, Any]:
     """根据股票代码返回对应的模拟行情"""
-    data = dict(_MOCK_QUOTE)
-    data["stock_code"] = stock_code
-    return data
+    from app.tools.mock_snapshot import get_mock_quote
+    return get_mock_quote(stock_code)
 
 
 # ============================================================
@@ -583,27 +534,9 @@ def query_stock_news(stock_code: str) -> str:
 
 
 def _get_mock_news(stock_code: str) -> list:
-    """内置模拟新闻数据"""
-    return [
-        {
-            "title": f"[{stock_code}] 公司发布2025年半年度业绩预告",
-            "content": "公司预计2025年上半年实现归母净利润同比增长15%-20%...",
-            "publish_time": "2025-07-15",
-            "source": "模拟数据",
-        },
-        {
-            "title": f"[{stock_code}] 公司公告：关于回购股份的进展公告",
-            "content": "截至2025年6月30日，公司累计回购股份约500万股...",
-            "publish_time": "2025-07-01",
-            "source": "模拟数据",
-        },
-        {
-            "title": f"[{stock_code}] 分析师点评：行业景气度持续提升",
-            "content": "近期行业政策利好频出，公司业务有望受益...",
-            "publish_time": "2025-06-20",
-            "source": "模拟数据",
-        },
-    ]
+    """内置模拟新闻数据（来自 mock_snapshot.py 快照）"""
+    from app.tools.mock_snapshot import get_mock_news
+    return get_mock_news(stock_code)
 
 
 
