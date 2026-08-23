@@ -1,6 +1,8 @@
 // frontend/src/services/api.js
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+// 默认相对路径：开发走 vite proxy，Docker 生产走 nginx 反代（见 deploy/nginx.conf）。
+// 仅特殊部署（前后端不同域）才需要设置 VITE_API_BASE。
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {

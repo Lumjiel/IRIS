@@ -1,5 +1,6 @@
 import { ref, nextTick } from "vue";
-import { streamChat, newThreadId } from "../services/api";
+import { streamChat, newThreadId, getThreadId } from "../services/api";
+import { saveSession } from "../services/history";
 
 let msgId = 0;
 
@@ -128,6 +129,16 @@ export function useChat() {
           });
         }
         if (loadingMsg.type === "loading") loadingMsg.type = "chat";
+        // 持久化研究/修订报告，供侧栏历史与 HistoryView 展示（chat 对话不入库）
+        if (loadingMsg.report) {
+          saveSession({
+            threadId: getThreadId(),
+            query,
+            report: loadingMsg.report,
+            messages: messages.value,
+            mode,
+          });
+        }
       },
       (err) => {
         isLoading.value = false;
