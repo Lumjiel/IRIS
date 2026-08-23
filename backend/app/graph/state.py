@@ -51,6 +51,9 @@ class AgentState(TypedDict):
     data_sources: List[str]
     # pending_stock_code: 待分析股票代码（router/planner 提取 → data_collector 消费）
     pending_stock_code: str
+    # 预设路由结果（planner/refiner/chat）：SSE 端点已跑过一次 route_query 发意图事件，
+    # 图入口条件边直接复用该结果，避免同一请求做两次 LLM 意图分类
+    preset_route: str
 
     # === 未声明字段补录（LangGraph 会静默丢弃未在 schema 中声明的节点输出键） ===
     chat_response: str        # chat_node 的纯对话响应

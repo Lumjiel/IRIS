@@ -54,7 +54,9 @@ def get_llm(model_type="fast", node=None):
     temp = 0.7 if model_type == "fast" else 0
     timeout = LLM_TIMEOUT_FAST if model_type == "fast" else LLM_TIMEOUT_SMART
 
-    model = FALLBACK_MODEL if _primary_exhausted else _resolve_model(node)
+    # 必须走 TTL 感知的 _is_exhausted()：读裸标志会让流式路径在 5 分钟 TTL 到期后
+    # 仍永久钉死在 fallback 模型，无法自动恢复主模型
+    model = FALLBACK_MODEL if _is_exhausted() else _resolve_model(node)
 
     return ChatOpenAI(
         model=model,

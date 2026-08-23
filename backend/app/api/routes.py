@@ -331,6 +331,8 @@ async def chat_endpoint(request: ChatRequest, req: Request):
             intent = INTENT_MAP.get(route_result, "chat")
             yield f"data: {json.dumps({'step': 'intent', 'data': {'intent': intent, 'route': route_result}}, ensure_ascii=False)}\n\n"
             log.info(f"意图判定: {intent} (route={route_result})")
+            # 预设路由结果：图入口的 route_query 直接复用，避免同一请求二次 LLM 意图分类
+            initial_state["preset_route"] = route_result
 
             async with AsyncSqliteSaver.from_conn_string(DB_PATH) as memory:
                 app = create_graph(memory=memory)

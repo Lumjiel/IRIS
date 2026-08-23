@@ -41,6 +41,13 @@ def _looks_like_research(q: str) -> bool:
 
 def route_query(state: AgentState) -> str:
     """三意图路由：RESEARCH / REFINE / CHAT"""
+    # SSE 端点已预跑过一次路由（用于发 intent 事件），有预设结果时直接复用，
+    # 避免同一请求做两次 LLM 意图分类（双倍延迟 + 两次结果可能不一致）
+    preset = state.get("preset_route", "")
+    if preset in ("planner", "refiner", "chat"):
+        log.info(f"意图识别(复用预设): {preset}")
+        return preset
+
     query = state["query"]
     has_report = bool(state.get("final_report", "").strip())
 

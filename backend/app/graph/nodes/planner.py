@@ -44,7 +44,14 @@ async def plan_node(state: AgentState):
         response = llm_invoke([HumanMessage(content=prompt_text)], node="planner")
         response_text = response.content
 
-    plans = [p.strip() for p in response_text.split(",")]
+    # LLM 在中文语境下常输出全角逗号/顿号/换行，统一按多种分隔符切分并过滤空项，
+    # 否则整段文本会退化成单元素计划传给 search_agent
+    import re as _re
+    plans = [p.strip() for p in _re.split(r"[,，、;；\n]", response_text) if p.strip()]
+    if not plans:
+        # 空计划守卫：LLM 输出异常时至少保留原始查询作为搜索方向
+        log.warning("planner 输出解析为空计划，回退为原始 query")
+        plans = [state.get("query", "")]
 
     # 首次进入 planner（NEW_TOPIC）时清理旧报告状态
     # revision_number > 0 表示是审查失败后的重试，不清
