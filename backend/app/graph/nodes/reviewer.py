@@ -19,12 +19,22 @@ REVIEW_PROMPT = ChatPromptTemplate.from_template(
     报告内容：
     {report}
 
+    数据源状态：{degraded_note}
+
     请严格按照以下 JSON 格式返回结果（不要包含 Markdown 代码块）：
     {{
         "status": "PASS" 或 "FAIL",
         "feedback": "如果是 PASS，这里留空。如果是 FAIL，请列出 1 个具体的改进建议或需要补充搜索的方向。"
     }}
     """
+)
+
+# 方案 A：降级时放宽审查口径——数据缺失是数据源问题，不是报告质量问题
+NORMAL_NOTE = "正常（所有数据源可用）。"
+DEGRADED_NOTE = (
+    "⚠️ 本次研究处于数据降级模式（部分行情/财务/搜索数据源不可用，已使用兜底数据）。"
+    "报告中因数据源缺失导致的「数据不足」章节属于预期行为，不得仅因数据缺失判 FAIL；"
+    "请只评估报告的结构完整性、逻辑一致性和基于现有内容的分析质量。"
 )
 
 
@@ -118,7 +128,14 @@ def review_node(state: AgentState):
     
     # === 原有审查逻辑 ===
     response = llm_invoke(
-        [HumanMessage(content=REVIEW_PROMPT.format(query=query, report=report))],
+        [HumanMessage(
+            content=REVIEW_PROMPT.format(
+                query=query,
+                report=report,
+                # 数据降级时放宽审查口径（方案 A），正常时传常规说明
+                degraded_note=DEGRADED_NOTE if state.get("degraded") else NORMAL_NOTE,
+            )
+        )],
         model_type="smart",
         node="reviewer"
     )

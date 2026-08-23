@@ -125,3 +125,26 @@ class TestReviewNode:
         mock_llm.return_value = MagicMock(content='{"status": "PASS", "feedback": ""}')
         result = review_node(sample_state)
         assert result["revision_number"] == 2
+
+    @patch("app.graph.nodes.reviewer.llm_invoke")
+    def test_degraded_prompt_injects_relaxed_note(self, mock_llm, sample_state):
+        """方案 A：degraded=True 时 prompt 注入降级说明，数据缺失不作为 FAIL 依据。"""
+        from app.graph.nodes.reviewer import review_node, DEGRADED_NOTE, NORMAL_NOTE
+        sample_state["final_report"] = "这是一份足够长的报告，包含了详细的信息和分析。" * 3
+        sample_state["degraded"] = True
+        mock_llm.return_value = MagicMock(content='{"status": "PASS", "feedback": ""}')
+        review_node(sample_state)
+        prompt = mock_llm.call_args[0][0][0].content
+        assert DEGRADED_NOTE in prompt
+        assert NORMAL_NOTE not in prompt
+
+    @patch("app.graph.nodes.reviewer.llm_invoke")
+    def test_normal_prompt_uses_normal_note(self, mock_llm, sample_state):
+        """未降级时 prompt 使用常规数据源状态说明。"""
+        from app.graph.nodes.reviewer import review_node, DEGRADED_NOTE, NORMAL_NOTE
+        sample_state["final_report"] = "这是一份足够长的报告，包含了详细的信息和分析。" * 3
+        mock_llm.return_value = MagicMock(content='{"status": "PASS", "feedback": ""}')
+        review_node(sample_state)
+        prompt = mock_llm.call_args[0][0][0].content
+        assert NORMAL_NOTE in prompt
+        assert DEGRADED_NOTE not in prompt
