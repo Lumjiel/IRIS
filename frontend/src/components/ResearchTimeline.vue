@@ -30,13 +30,13 @@
           <!-- 中间产物（已完成节点可展开） -->
           <button
             v-if="node.status === 'done' && node.artifact"
-            @click="node._expanded = !node._expanded"
+            @click="expanded[node.key] = !expanded[node.key]"
             class="text-label text-accent mt-1 flex items-center gap-1"
           >
-            <svg class="w-3 h-3 transition-transform" :class="node._expanded ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
+            <svg class="w-3 h-3 transition-transform" :class="expanded[node.key] ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6" /></svg>
             查看中间产物
           </button>
-          <div v-if="node._expanded && node.artifact" class="mt-2 p-3 bg-slate-50 rounded-md text-label text-slate-700 space-y-1">
+          <div v-if="expanded[node.key] && node.artifact" class="mt-2 p-3 bg-slate-50 rounded-md text-label text-slate-700 space-y-1">
             <div v-for="(line, i) in node.artifact" :key="i">→ {{ line }}</div>
           </div>
         </div>
@@ -50,8 +50,7 @@
  * ResearchTimeline — SSE 真实节点驱动
  * 节点 = 后端真实 8 节点（router→refiner），不做假动画
  */
-import { computed } from 'vue';
-
+import { computed, reactive } from 'vue';
 const NODE_MAP = {
   router:          { label: '意图识别',  order: 0 },
   planner:         { label: '搜索规划',  order: 1 },
@@ -70,6 +69,9 @@ const props = defineProps({
   events: { type: Array, default: () => [] },
 });
 
+// 展开态放在 computed 外：nodes 每次事件更新都会重算，内联 _expanded 会被重置
+const expanded = reactive({});
+
 const nodes = computed(() => {
   return Object.entries(NODE_MAP)
     .sort(([, a], [, b]) => a.order - b.order)
@@ -77,16 +79,18 @@ const nodes = computed(() => {
       // 同一节点会收到多个事件：start / done(+elapsed) / astream data(+artifact)
       const stepEvents = props.events.filter(e => e.step === key);
       const statusEvent = [...stepEvents].reverse().find(e => e.status);
-      const dataEvent = stepEvents.find(e => e.data);
+      // useChat.js 写入的事件键是 artifact（不存在 e.data 键）
+      const dataEvent = stepEvents.find(e => e.artifact);
       const elapsed = statusEvent?.elapsed;
+      // artifact 可能是数组（plan/search_results）或字符串（critique），统一成行数组供 v-for 渲染
+      const raw = dataEvent?.artifact;
       return {
         key,
         label,
         status: statusEvent?.status || 'waiting',
-        artifact: dataEvent?.artifact || null,
+        artifact: raw == null ? null : (Array.isArray(raw) ? raw : String(raw).split('\n')),
         elapsed: elapsed ? `${elapsed}s` : '',
         error: statusEvent?.error || '',
-        _expanded: false,
       };
     });
 });

@@ -149,7 +149,7 @@
                 <ResearchTimeline v-if="msg.events && msg.events.length" :events="msg.events" />
                 <ReportViewer v-if="msg.report" :content="msg.report" :streaming="msg.streaming" />
                 <ActionBar
-                  v-if="msg.report && msg.type !== 'loading'"
+                  v-if="msg.report && !msg.streaming && msg.type !== 'loading'"
                   :report="msg.report"
                   :sources="msg.quote?.data_source ? [msg.quote.data_source] : []"
                   @copy="handleCopy(msg)"
@@ -165,8 +165,15 @@
                   {{ msg.content || '思考中…' }}
                 </div>
                 <!-- 骨架屏：研究流程耗时数分钟，shimmer 块降低等待焦虑 -->
-                <div class="mt-3 space-y-2.5" aria-hidden="true">
-                  <div class="skeleton-line h-3 rounded bg-slate-100 dark:bg-slate-700/60 w-3/4"></div>
+                <!-- 研究流程节点时间线：intent 为 research/refine 时 type 仍是 loading，
+                     必须在 loading 分支内渲染，否则整个流程期间看不到任何 agent 进度 -->
+                <ResearchTimeline
+                  v-if="msg.events && msg.events.length"
+                  :events="msg.events"
+                  class="mt-3"
+                />
+                <!-- 骨架屏：研究流程耗时数分钟，shimmer 块降低等待焦虑（有时间线时隐藏） -->
+                <div v-if="!(msg.events && msg.events.length)" class="mt-3 space-y-2.5" aria-hidden="true">
                   <div class="skeleton-line h-3 rounded bg-slate-100 dark:bg-slate-700/60 w-full"></div>
                   <div class="skeleton-line h-3 rounded bg-slate-100 dark:bg-slate-700/60 w-5/6"></div>
                   <div class="skeleton-line h-14 rounded-lg bg-slate-100 dark:bg-slate-700/60 w-full"></div>

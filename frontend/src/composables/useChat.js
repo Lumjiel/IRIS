@@ -1,4 +1,4 @@
-import { ref, nextTick } from "vue";
+import { ref, reactive, nextTick } from "vue";
 import { streamChat, newThreadId, getThreadId } from "../services/api";
 import { saveSession } from "../services/history";
 
@@ -18,8 +18,10 @@ export function useChat() {
     if (el) el.scrollTop = el.scrollHeight;
   };
 
+  // 必须用 reactive 包装：push 进 ref 数组后若直接改原始对象，绕过 Vue3 的 Proxy，
+  // 不会触发任何依赖更新——这正是研究流程 UI 卡在「思考中…」的根因
   const newMsg = (role, type, content, extra = {}) => {
-    const m = { id: ++msgId, role, type, content, ...extra };
+    const m = reactive({ id: ++msgId, role, type, content, ...extra });
     messages.value.push(m);
     nextTick(scrollToBottom);
     return m;
@@ -103,7 +105,11 @@ export function useChat() {
               ev.data.token;
           } else {
             loadingMsg.streaming = true;
+            // 首个研究/修订 token 到达即切换类型：让 ReportViewer 立即进入流式渲染，
+            // 不必干等最后一条 final_report 完整事件（SSE 结束与 astream 收尾存在时序差）
             if (!loadingMsg.report) loadingMsg.report = "";
+            if (loadingMsg.type !== currentIntent)
+              loadingMsg.type = currentIntent || "research";
             loadingMsg.report += ev.data.token;
           }
         }
