@@ -95,12 +95,14 @@ class TestQueryStockInfo:
         assert data["info"]["公司名称"] == "复星医药"
         assert data["info"]["行业"] == "医药制造业"
         assert "东方财富" in data["data_source"]
+        assert data["degraded"] is False  # 真实数据源不得误标降级
 
     def test_fallback_to_mock(self, mock_akshare_all_fail):
         """降级路径：全部数据源失败 → 模拟数据且标注来源"""
         result = query_stock_info.invoke("600196")
         data = json.loads(result)
         assert data["error"] is False
+        assert data["degraded"] is True  # mock 兜底必须带降级标记，不得伪装成真实数据
         assert data["stock_code"] == "600196"
         assert "模拟" in data["data_source"]
         assert "公司名称" in data["info"]
@@ -131,6 +133,7 @@ class TestQueryFinancialIndicators:
         result = query_financial_indicators.invoke("600196")
         data = json.loads(result)
         assert data["error"] is False
+        assert data["degraded"] is True
         assert "模拟" in data["indicators"].get("data_source", "")
 
     def test_never_raises(self, mock_akshare_all_fail):
@@ -156,6 +159,7 @@ class TestQueryStockQuote:
         result = query_stock_quote.invoke("600196")
         data = json.loads(result)
         assert data["error"] is False
+        assert data["degraded"] is True
         assert "模拟" in data["quote"].get("data_source", "")
 
     def test_never_raises(self, mock_akshare_all_fail):

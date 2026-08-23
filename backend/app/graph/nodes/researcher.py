@@ -63,6 +63,12 @@ def research_node(state: AgentState):
 
     # 初始化 tool_status
     state["tool_status"] = {}
+
+    # 每轮研究从干净状态开始：清空上一轮残留的降级标志，
+    # 否则 error_code 一旦设置会经 checkpoint 持久化，导致 should_continue 永远强制打回 planner 重写
+    state["error_code"] = ""
+    state["degraded"] = False
+    state["failed_tools"] = []
     
     log.info(f"开始搜索 | 模式: {mode}")
     

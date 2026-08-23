@@ -113,6 +113,7 @@ def review_node(state: AgentState):
             "review_status": "PASS",
             "early_stop": True,
             "should_continue": False,
+            "report_history": report_history,  # 必须经返回值持久化，就地改 state 不会被 LangGraph 保存
         }
     
     # === 原有审查逻辑 ===
@@ -158,6 +159,7 @@ def review_node(state: AgentState):
         "early_stop": False,
         "should_continue": result.get("status", "FAIL") == "FAIL",
         "similarity": similarity,
+        "report_history": report_history,  # 必须经返回值持久化，就地改 state 不会被 LangGraph 保存
     }
     
     return review_result

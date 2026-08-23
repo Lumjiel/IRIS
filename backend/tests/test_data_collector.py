@@ -144,6 +144,26 @@ class TestDataCollectorNode:
         assert "error_log" in result
         assert len(result["error_log"]) > 0  # 记录了错误
 
+    def test_degraded_mock_data_recorded(self, base_state):
+        """mock 降级数据（degraded=True）应被接受，但必须写入 error_log 提示非真实数据"""
+        base_state["query"] = "分析 600196"
+
+        with patch("app.graph.nodes.data_collector.query_stock_info") as mock_info_fn, \
+             patch("app.graph.nodes.data_collector.query_financial_indicators") as mock_fin_fn, \
+             patch("app.graph.nodes.data_collector.query_stock_quote") as mock_quote_fn:
+
+            mock_info_fn.invoke.return_value = json.dumps({"error": False, "degraded": True, "info": {"公司名称": "示例公司"}, "data_source": "内置模拟数据"})
+            mock_fin_fn.invoke.return_value = json.dumps({"error": False, "degraded": True, "indicators": {"stock_code": "600196", "roe": "模拟数据"}})
+            mock_quote_fn.invoke.return_value = json.dumps({"error": False, "degraded": True, "quote": {"最新价": "模拟", "data_source": "内置模拟数据"}})
+
+            result = data_collector_node(base_state)
+
+        # 数据被接受（演示模式可用）
+        assert result["financial_data"]["stock_info"]["公司名称"] == "示例公司"
+        # 但降级必须被记录，不能静默流入报告
+        assert len(result["error_log"]) == 3
+        assert all("模拟数据" in entry for entry in result["error_log"])
+
     def test_partial_success(self, base_state):
         """部分成功：一个工具失败不影响其他"""
         base_state["query"] = "分析 600196"

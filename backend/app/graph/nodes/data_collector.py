@@ -119,6 +119,8 @@ def data_collector_node(state: AgentState) -> Dict[str, Any]:
                 financial_data["stock_info"] = info_data["info"]
                 data_sources.append(info_data.get("data_source", "AKShare"))
                 log.info("[DataCollector] 股票信息: %d 字段", len(info_data["info"]))
+                if info_data.get("degraded"):
+                    error_log.append("[DataCollector] 股票信息为内置模拟数据（数据源降级），非真实数据")
             else:
                 error_log.append(f"[DataCollector] 股票信息查询失败: {info_data.get('message', '未知错误')}")
         except Exception as e:
@@ -132,6 +134,8 @@ def data_collector_node(state: AgentState) -> Dict[str, Any]:
                 financial_data["indicators"] = fin_data["indicators"]
                 data_sources.append(fin_data["indicators"].get("data_source", "AKShare"))
                 log.info("[DataCollector] 财务指标: period=%s", fin_data["indicators"].get("report_period", "N/A"))
+                if fin_data.get("degraded"):
+                    error_log.append("[DataCollector] 财务指标为内置模拟数据（数据源降级），非真实数据")
             else:
                 error_log.append(f"[DataCollector] 财务指标查询失败: {fin_data.get('message', '未知错误')}")
         except Exception as e:
@@ -145,6 +149,8 @@ def data_collector_node(state: AgentState) -> Dict[str, Any]:
                 financial_data["quote"] = quote_data["quote"]
                 data_sources.append(quote_data["quote"].get("data_source", "AKShare"))
                 log.info("[DataCollector] 实时行情: price=%s", quote_data["quote"].get("最新价", "N/A"))
+                if quote_data.get("degraded"):
+                    error_log.append("[DataCollector] 实时行情为内置模拟数据（数据源降级），非真实数据")
             else:
                 error_log.append(f"[DataCollector] 实时行情查询失败: {quote_data.get('message', '未知错误')}")
         except Exception as e:

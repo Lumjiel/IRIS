@@ -259,8 +259,10 @@ def query_stock_info(stock_code: str) -> str:
         info_dict = _get_mock_info(stock_code)
         data_source = f"内置模拟数据（异常降级: {str(e)[:50]}）"
 
+    # 降级标记：mock 兜底的数据必须可被下游识别，不能伪装成真实数据
     result = {
         "error": False,
+        "degraded": "模拟数据" in data_source,
         "stock_code": stock_code,
         "info": info_dict,
         "data_source": data_source,
@@ -376,7 +378,7 @@ def query_financial_indicators(stock_code: str) -> str:
         indicators["data_source"] = data_source
 
     logger.info("[Tool] query_financial_indicators 完成: source=%s", data_source)
-    return json.dumps({"error": False, "indicators": indicators}, ensure_ascii=False, indent=2)
+    return json.dumps({"error": False, "degraded": "模拟数据" in data_source, "indicators": indicators}, ensure_ascii=False, indent=2)
 
 
 # ============================================================
@@ -497,7 +499,7 @@ def query_stock_quote(stock_code: str) -> str:
         quote["data_source"] = data_source
 
     logger.info("[Tool] query_stock_quote 完成: source=%s", data_source)
-    return json.dumps({"error": False, "quote": quote}, ensure_ascii=False, indent=2)
+    return json.dumps({"error": False, "degraded": "模拟数据" in data_source, "quote": quote}, ensure_ascii=False, indent=2)
 
 
 
@@ -577,7 +579,7 @@ def query_stock_news(stock_code: str) -> str:
         data_source = f"内置模拟数据（异常降级: {str(e)[:50]}）"
 
     logger.info("[Tool] query_stock_news 完成: source=%s, count=%d", data_source, len(news_list))
-    return json.dumps({"error": False, "news": news_list, "data_source": data_source}, ensure_ascii=False, indent=2)
+    return json.dumps({"error": False, "degraded": "模拟数据" in data_source, "news": news_list, "data_source": data_source}, ensure_ascii=False, indent=2)
 
 
 def _get_mock_news(stock_code: str) -> list:

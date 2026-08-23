@@ -94,24 +94,49 @@ def _reset_checkpoint_summary(thread_id: str) -> bool:
 
 
 def cleanup_old_checkpoints(max_age_days: int = 7):
-    """清理过期的会话检查点，防止 SQLite 文件无限增长"""
+    """清理过期的会话检查点，防止 SQLite 文件无限增长。
+
+    langgraph 的 checkpoints 表没有时间戳列，时间存在 checkpoint blob 的 ts 字段（ISO 字符串）。
+    checkpoint_id 是 uuid6（按时间单调递增），因此每个线程只需解包最新一条 blob 判断过期；
+    线程整体过期则删除其全部 checkpoints 及关联 writes（避免孤儿写入记录）。
+    """
+    import sqlite3
+    import msgpack
+    from datetime import datetime, timedelta, timezone
+    if not os.path.exists(DB_PATH):
+        return
+    conn = sqlite3.connect(DB_PATH, timeout=5)
     try:
-        import sqlite3
-        if not os.path.exists(DB_PATH):
-            return
-        conn = sqlite3.connect(DB_PATH, timeout=5)
         conn.execute("PRAGMA journal_mode=WAL")
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-        if 'checkpoints' in tables:
-            cutoff = int((time.time() - max_age_days * 86400) * 1000)
-            cursor.execute("DELETE FROM checkpoints WHERE created_at < ?", (cutoff,))
-            deleted = cursor.rowcount
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        stale_threads: list = []
+        seen: set = set()
+        # 最新优先遍历：每线程遇到的第一条即最新 checkpoint，只需解包这一条 blob
+        for thread_id, blob in conn.execute(
+            "SELECT thread_id, checkpoint FROM checkpoints ORDER BY checkpoint_id DESC"
+        ):
+            if thread_id in seen:
+                continue
+            seen.add(thread_id)
+            try:
+                ts = msgpack.unpackb(blob, raw=False).get("ts", "")
+                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                if dt < cutoff:
+                    stale_threads.append(thread_id)
+            except Exception as e:
+                log.debug("跳过无法解析的检查点 %s: %s", thread_id, e)
+        if stale_threads:
+            placeholders = ",".join("?" * len(stale_threads))
+            cur = conn.execute(
+                f"DELETE FROM checkpoints WHERE thread_id IN ({placeholders})", stale_threads
+            )
+            deleted = cur.rowcount
+            conn.execute(
+                f"DELETE FROM writes WHERE thread_id IN ({placeholders})", stale_threads
+            )
             conn.commit()
             if deleted:
-                log.info(f"清理了 {deleted} 条过期检查点")
-        conn.close()
+                log.info(f"清理了 {deleted} 条过期检查点（{len(stale_threads)} 个过期会话）")
     except sqlite3.OperationalError as e:
         if "locked" in str(e):
             log.debug("数据库被占用，跳过清理")
@@ -119,6 +144,8 @@ def cleanup_old_checkpoints(max_age_days: int = 7):
             log.warning(f"清理检查点时出错: {e}")
     except Exception as e:
         log.warning(f"清理检查点时出错: {e}")
+    finally:
+        conn.close()
 
 
 # --- SQLite 共享限流（多 worker 安全） ---
@@ -274,10 +301,20 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 "review_status": "PASS",
                 "should_stop": False,
                 "search_iteration": 0,  # Function Calling 循环计数重置
+                # 错误/降级标志必须重置：LangGraph 会把输入合并进 checkpoint 持久化的线程状态，
+                # 不显式重置的字段会残留上一轮的值（一次降级 → 后续每轮被强制打回 planner 重写）
+                "error_code": "",
+                "degraded": False,
+                "failed_tools": [],
+                "tool_status": {},
+                "report_history": [],  # 防止旧报告触发 cosine 早停误判
+                "financial_data": {},  # 上一只股票的数据不得泄漏进新查询
+                "data_sources": [],
+                "pending_stock_code": "",
+                "error_log": [],
                 # final_report 不重置：router 需要判断是否有已有报告来决定路由
                 # conversation_summary 不重置：由 checkpoint 持久化，跨轮保持
             }
-
             log.info(f"新任务开启 | 模式: {request.search_mode} | 问题: {request.query}")
 
             # === 先跑 router 获取意图，作为首事件发出 ===
