@@ -274,6 +274,29 @@ async def upload_files(files: List[UploadFile] = File(...)):
         log.error(f"上传处理失败: {e}")
         raise HTTPException(status_code=500, detail="文档处理失败，请检查文件格式后重试")
 
+async def _pre_run_route(app, config: dict, query: str) -> tuple:
+    """从 checkpoint 读已持久化的 final_report 并预跑意图路由（SSE 首事件用）。
+
+    必须在 saver 上下文内、astream 之前调用。final_report 只能从 checkpoint 读——
+    initial_state 里没有该字段（故意不重置以保留跨轮报告），从 initial_state 兜底
+    永远得到空串，导致第二轮追问 has_report=False 被误判为 chat。
+
+    返回 (route_result, has_report)。
+    """
+    from app.graph.nodes.router import route_query
+    from app.graph.state import AgentState
+    persisted_report = ""
+    try:
+        snap = await app.aget_state(config)
+        if snap and snap.values:
+            persisted_report = snap.values.get("final_report") or ""
+    except Exception as e:
+        log.warning(f"读取 checkpoint 状态失败，预跑路由按无报告处理: {e}")
+    _route_state = AgentState(query=query, final_report=persisted_report)
+    route_result = route_query(_route_state)
+    return route_result, bool(persisted_report.strip())
+
+
 @router.post("/chat")
 async def chat_endpoint(request: ChatRequest, req: Request):
     # 限流检查
@@ -317,25 +340,19 @@ async def chat_endpoint(request: ChatRequest, req: Request):
             }
             log.info(f"新任务开启 | 模式: {request.search_mode} | 问题: {request.query}")
 
-            # === 先跑 router 获取意图，作为首事件发出 ===
-            from app.graph.nodes.router import route_query
-            from app.graph.state import AgentState
-            _route_state = AgentState(
-                query=request.query,
-                final_report=initial_state.get("final_report", ""),
-                revision_number=initial_state.get("revision_number", 0),
-            )
-            route_result = route_query(_route_state)
-            # 映射到前端 intent: planner→research, refiner→refine, chat→chat
-            INTENT_MAP = {"planner": "research", "refiner": "refine", "chat": "chat"}
-            intent = INTENT_MAP.get(route_result, "chat")
-            yield f"data: {json.dumps({'step': 'intent', 'data': {'intent': intent, 'route': route_result}}, ensure_ascii=False)}\n\n"
-            log.info(f"意图判定: {intent} (route={route_result})")
-            # 预设路由结果：图入口的 route_query 直接复用，避免同一请求二次 LLM 意图分类
-            initial_state["preset_route"] = route_result
 
             async with AsyncSqliteSaver.from_conn_string(DB_PATH) as memory:
                 app = create_graph(memory=memory)
+
+                # === 预跑路由（首事件 intent）：checkpoint 读取逻辑见 _pre_run_route ===
+                route_result, has_report = await _pre_run_route(app, config, request.query)
+                # 映射到前端 intent: planner→research, refiner→refine, chat→chat
+                INTENT_MAP = {"planner": "research", "refiner": "refine", "chat": "chat"}
+                intent = INTENT_MAP.get(route_result, "chat")
+                yield f"data: {json.dumps({'step': 'intent', 'data': {'intent': intent, 'route': route_result}}, ensure_ascii=False)}\n\n"
+                log.info(f"意图判定: {intent} (route={route_result}, has_report={has_report})")
+                # 预设路由结果：图入口的 route_query 直接复用，避免同一请求二次 LLM 意图分类
+                initial_state["preset_route"] = route_result
                 from app.utils.streaming import set_token_queue, set_node_event_queue
                 token_queue: asyncio.Queue = asyncio.Queue()
                 set_token_queue(token_queue)
