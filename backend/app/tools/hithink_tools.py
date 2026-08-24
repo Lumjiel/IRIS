@@ -192,3 +192,42 @@ def fetch_financial_indicators(stock_code: str, limit: int = 2) -> Dict[str, str
         "eps": str(fields["eps"] if fields["eps"] is not None else "N/A"),
         "data_source": DATA_SOURCE_TAG,
     }
+
+
+def fetch_quotes_batch(stock_codes) -> Dict[str, Dict[str, str]]:
+    """批量实时行情快照（一次请求，行情页轮询用，省 API 配额）。
+
+    返回 {6位代码: quote_dict}（字段形态与 fetch_quote 一致）。
+    未返回的代码不出现在结果中——由调用方逐股降级，本函数只做一层。
+    指数代码需自带交易所后缀（如 000001.SH），纯 6 位按个股规则补后缀。
+    """
+    if not stock_codes:
+        return {}
+
+    reverse = {}  # thscode -> 原始入参代码
+    for c in stock_codes[:30]:  # 上限保护：单次最多 30 只
+        reverse[_to_thscode(c)] = str(c)
+
+    data = _get("/api/a-share/prices/snapshot", {"thscodes": ",".join(reverse.keys())})
+    items = data.get("item") or []
+
+    result: Dict[str, Dict[str, str]] = {}
+    for it in items:
+        code = reverse.get(str(it.get("thscode", "")))
+        if not code:
+            continue  # 服务端返回了未请求的代码，忽略
+        result[code] = {
+            "stock_code": code,
+            "最新价": str(it.get("last_price", "N/A")),
+            "涨跌幅": str(it.get("price_change_ratio_pct", "N/A")),
+            "涨跌额": str(it.get("price_change", "N/A")),
+            "成交量": str(it.get("volume", "N/A")),
+            "成交额": str(it.get("turnover", "N/A")),
+            "最高": str(it.get("high_price", "N/A")),
+            "最低": str(it.get("low_price", "N/A")),
+            "今开": str(it.get("open_price", "N/A")),
+            "昨收": str(it.get("prev_price", "N/A")),
+            "延时": "实时",
+            "data_source": DATA_SOURCE_TAG,
+        }
+    return result

@@ -71,4 +71,18 @@ export async function getStockQuote(stockCode) {
  return await response.json();
 }
 
+/**
+ * 批量行情快照（行情页轮询用）：三大指数 + 自选股一次拉回。
+ * @param {string[]} codes 6 位股票代码数组（≤30）
+ * @returns {{indexes: Array, stocks: Array, errors: Array, updated_at: number}}
+ */
+export async function getMarketSnapshot(codes) {
+ const qs = (codes || []).join(",");
+ const response = await fetch(
+  `${API_BASE}/api/market/snapshot?codes=${encodeURIComponent(qs)}`
+ );
+ if (!response.ok) throw new Error("Failed to fetch market snapshot");
+ return await response.json();
+}
+
 export { getThreadId, newThreadId };

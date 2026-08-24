@@ -138,16 +138,29 @@
               </div>
 
               <!-- AI 消息：CHAT -->
-              <div v-else-if="msg.type === 'chat'" class="bg-white border border-slate-200 dark:bg-slate-800 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-soft">
-                <div class="text-body text-slate-700 dark:text-slate-300 leading-relaxed">{{ msg.content }}</div>
+              <div v-else-if="msg.type === 'chat'" class="space-y-2">
+                <div class="bg-white border border-slate-200 dark:bg-slate-800 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-soft">
+                  <div class="text-body text-slate-700 dark:text-slate-300 leading-relaxed">{{ msg.content }}</div>
+                </div>
+                <!-- 闲聊路径也展示过程（记忆注入 + 对话节点） -->
+                <ProcessBar
+                  v-if="msg.events && msg.events.length"
+                  :events="msg.events"
+                  :intent="msg.intent"
+                  :done="true"
+                />
               </div>
 
               <!-- AI 消息：RESEARCH / REFINE -->
               <div v-else-if="msg.type === 'research' || msg.type === 'refine'" class="space-y-3">
                 <MarketDataCard v-if="msg.quote" :quote="msg.quote" :kline="msg.kline || []" />
                 <FinancialCard v-if="msg.financial" :financial="msg.financial" />
-                <ResearchTimeline v-if="msg.events && msg.events.length" :events="msg.events" />
-                <ReportViewer v-if="msg.report" :content="msg.report" :streaming="msg.streaming" />
+                <ProcessBar
+                  :events="msg.events || []"
+                  :intent="msg.intent"
+                  :done="!msg.streaming"
+                  :data-source="msg.quote?.data_source || ''"
+                />
                 <ActionBar
                   v-if="msg.report && !msg.streaming && msg.type !== 'loading'"
                   :report="msg.report"
@@ -167,9 +180,10 @@
                 <!-- 骨架屏：研究流程耗时数分钟，shimmer 块降低等待焦虑 -->
                 <!-- 研究流程节点时间线：intent 为 research/refine 时 type 仍是 loading，
                      必须在 loading 分支内渲染，否则整个流程期间看不到任何 agent 进度 -->
-                <ResearchTimeline
-                  v-if="msg.events && msg.events.length"
-                  :events="msg.events"
+                <ProcessBar
+                  :events="msg.events || []"
+                  :intent="msg.intent"
+                  :done="false"
                   class="mt-3"
                 />
                 <!-- 骨架屏：研究流程耗时数分钟，shimmer 块降低等待焦虑（有时间线时隐藏） -->
@@ -192,6 +206,8 @@
       <!-- 底部输入 -->
       <footer class="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 shrink-0">
         <div class="max-w-3xl mx-auto">
+          <!-- 热点新闻横滚条（非核心功能，加载失败静默降级） -->
+          <NewsTicker class="mb-2" />
           <div class="flex items-end gap-2 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10 transition-colors duration-200 px-4 py-2">
             <textarea
               ref="inputBox"
@@ -225,7 +241,8 @@ import { ref, onMounted, onUnmounted } from "vue";
 import ChatSidebar from "../components/ChatSidebar.vue";
 import MarketDataCard from "../components/MarketDataCard.vue";
 import FinancialCard from "../components/FinancialCard.vue";
-import ResearchTimeline from "../components/ResearchTimeline.vue";
+import ProcessBar from "../components/ProcessBar.vue";
+import NewsTicker from "../components/NewsTicker.vue";
 import ReportViewer from "../components/ReportViewer.vue";
 import ActionBar from "../components/ActionBar.vue";
 import Toast from "../components/Toast.vue";

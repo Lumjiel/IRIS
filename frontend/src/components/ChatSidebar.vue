@@ -91,6 +91,13 @@
 
       <div class="flex items-center gap-1">
         <router-link
+          to="/market"
+          class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-label text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+          行情
+        </router-link>
+        <router-link
           to="/history"
           class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-label text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
         >

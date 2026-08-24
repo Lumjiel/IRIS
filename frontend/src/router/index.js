@@ -13,6 +13,11 @@ const routes = [
     name: "history",
     component: () => import("../views/HistoryView.vue"),
   },
+  {
+    path: "/market",
+    name: "market",
+    component: () => import("../views/MarketView.vue"),
+  },
   { path: "/:pathMatch(.*)*", redirect: "/" },
 ];
 

@@ -17,19 +17,19 @@
 
     <div class="grid grid-cols-2 gap-3 text-body">
       <div>
-        <span class="text-slate-500">换手率</span>
+        <TermTip term="换手率" />
         <div class="num text-slate-900 mt-0.5">{{ turnover }}</div>
       </div>
       <div>
-        <span class="text-slate-500">市盈率</span>
+        <TermTip term="市盈率PE" />
         <div class="num text-slate-900 mt-0.5">{{ pe }}</div>
       </div>
       <div>
-        <span class="text-slate-500">市净率</span>
+        <TermTip term="市净率PB" />
         <div class="num text-slate-900 mt-0.5">{{ pb }}</div>
       </div>
       <div>
-        <span class="text-slate-500">总市值</span>
+        <TermTip term="总市值" />
         <div class="num text-slate-900 mt-0.5">{{ mktCap }}</div>
       </div>
     </div>
@@ -39,6 +39,7 @@
 <script setup>
 import { computed } from 'vue';
 import Sparkline from './Sparkline.vue';
+import TermTip from './TermTip.vue';
 import { parseChange, formatPrice, formatBigInt, pick, formatYoY } from '../utils/format';
 
 const props = defineProps({

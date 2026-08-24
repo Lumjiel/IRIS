@@ -113,10 +113,15 @@ from app.graph.nodes.load_memories import load_memories_node
 async def traced_load_memories(state: AgentState, *, store=None):
     emit_node_event("load_memories", "start")
     t0 = _time.time()
+    mem_data = None  # 异常时 done 事件不带记忆数据，行为与旧版一致
     try:
-        return await load_memories_node(state, store=store)
+        result = await load_memories_node(state, store=store)
+        # 记忆条数随 done 事件透传前端（"已结合 N 条记忆"提示）
+        mem_data = {"memories": list((result or {}).get("user_memories") or [])[:5],
+                    "count": len((result or {}).get("user_memories") or [])}
     finally:
-        emit_node_event("load_memories", "done", elapsed=_time.time() - t0)
+        emit_node_event("load_memories", "done", elapsed=_time.time() - t0,
+                        data=mem_data)
 
 @traceable(run_type="chain", name="search_agent")
 def traced_search_agent(state: AgentState):

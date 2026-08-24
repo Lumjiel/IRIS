@@ -26,13 +26,18 @@ def get_node_event_queue() -> asyncio.Queue | None:
 def set_node_event_queue(q: asyncio.Queue | None):
     _node_event_queue.set(q)
 
-def emit_node_event(step: str, status: str, elapsed: float = 0.0):
-    """节点发出 start/done 事件（供 traced_* 包装函数调用）。"""
+def emit_node_event(step: str, status: str, elapsed: float = 0.0, data: dict | None = None):
+    """节点发出 start/done 事件（供 traced_* 包装函数调用）。
+
+    data 可选：随事件透传给前端的附加产物（如 load_memories 的记忆列表）。
+    """
     q = _node_event_queue.get()
     if q is not None:
         payload = {"step": step, "status": status}
         if elapsed > 0:
             payload["elapsed"] = round(elapsed, 2)
+        if data is not None:
+            payload["data"] = data
         q.put_nowait(payload)
 
 def get_token_queue() -> asyncio.Queue | None:

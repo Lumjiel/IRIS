@@ -354,11 +354,13 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 app = create_graph(memory=memory, store=store)
 
                 # === 预跑路由（首事件 intent）：checkpoint 读取逻辑见 _pre_run_route ===
+                _t_route = time.time()
                 route_result, has_report = await _pre_run_route(app, config, request.query)
+                route_elapsed = round(time.time() - _t_route, 2)
                 # 映射到前端 intent: planner→research, refiner→refine, chat→chat
                 INTENT_MAP = {"planner": "research", "refiner": "refine", "chat": "chat"}
                 intent = INTENT_MAP.get(route_result, "chat")
-                yield f"data: {json.dumps({'step': 'intent', 'data': {'intent': intent, 'route': route_result}}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'step': 'intent', 'data': {'intent': intent, 'route': route_result, 'elapsed': route_elapsed}}, ensure_ascii=False)}\n\n"
                 log.info(f"意图判定: {intent} (route={route_result}, has_report={has_report})")
                 # 预设路由结果：图入口的 route_query 直接复用，避免同一请求二次 LLM 意图分类
                 initial_state["preset_route"] = route_result
@@ -719,6 +721,65 @@ async def get_stock_news(stock_code: str):
     result = query_stock_news.invoke(stock_code)
     return json.loads(result)
 
+
+# ============================================================
+# 行情页批量快照（移动端行情 Tab 轮询用）
+# ============================================================
+
+MARKET_INDEX_CODES = [
+    {"code": "000001.SH", "name": "上证指数"},
+    {"code": "399001.SZ", "name": "深证成指"},
+    {"code": "399006.SZ", "name": "创业板指"},
+]
+
+
+@router.get("/market/snapshot")
+async def market_snapshot(codes: str = ""):
+    """三大指数 + 自选股批量实时快照。
+
+    fail-open：任何一只失败不影响其他——错误进 errors 如实返回，绝不 500。
+    指数走同花顺批量层；个股先批量，缺漏逐股落完整降级链（hithink→akshare→…）。
+    """
+    from app.tools import hithink_tools as ht
+
+    raw = [c.strip() for c in codes.split(",") if c.strip()][:30]
+    updated_at = int(time.time() * 1000)
+
+    # 指数（仅同花顺层；akshare 链面向个股设计，指数失败则指数区为空不报错）
+    indexes = []
+    try:
+        if ht.is_enabled():
+            idx_map = await asyncio.to_thread(
+                ht.fetch_quotes_batch, [i["code"] for i in MARKET_INDEX_CODES])
+            for i in MARKET_INDEX_CODES:
+                if i["code"] in idx_map:
+                    indexes.append({"name": i["name"], **idx_map[i["code"]]})
+    except Exception as e:
+        log.warning(f"行情页指数获取失败（fail-open 跳过）: {e}")
+
+    stocks, errors = [], []
+    batch: dict = {}
+    if raw and ht.is_enabled():
+        try:
+            batch = await asyncio.to_thread(ht.fetch_quotes_batch, raw)
+        except Exception as e:
+            log.warning(f"行情页批量获取失败，逐股降级: {e}")
+
+    for code in raw:
+        q = batch.get(code)
+        if q:
+            stocks.append(q)
+            continue
+        # 单股走完整降级链兜底；再失败只记 error，不炸整体响应
+        try:
+            result = json.loads(await asyncio.to_thread(query_stock_quote.invoke, code))
+            if result.get("error"):
+                raise RuntimeError(str(result.get("message") or "查询失败")[:120])
+            stocks.append({"stock_code": code, **(result.get("quote") or {})})
+        except Exception as e:
+            errors.append({"code": code, "error": str(e)[:120]})
+
+    return {"indexes": indexes, "stocks": stocks, "errors": errors, "updated_at": updated_at}
 
 # ============================================================
 # 研报 RAG 入库与检索（阶段 5 新增）

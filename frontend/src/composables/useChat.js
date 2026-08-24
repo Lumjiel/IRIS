@@ -47,8 +47,18 @@ export function useChat() {
       mode,
       (ev) => {
         // 意图事件（首事件）
+        // 意图事件（首事件）：intent + 识别耗时，供 ProcessBar 溯源徽章
         if (ev.step === "intent") {
           currentIntent = ev.data?.intent || "chat";
+          loadingMsg.intent = currentIntent;
+          loadingMsg.intentElapsed = ev.data?.elapsed ?? null;
+          // chat 路径也保留事件记录（不再黑箱），但消息类型直接进入流式输出
+          if (!loadingMsg.events) loadingMsg.events = [];
+          loadingMsg.events.push({
+            step: "router",
+            status: "done",
+            elapsed: ev.data?.elapsed ?? null,
+          });
           loadingMsg.type = currentIntent === "chat" ? "chat" : "loading";
           loadingMsg.content =
             currentIntent === "research"
@@ -60,7 +70,12 @@ export function useChat() {
         }
 
         // 节点事件（研究/修订路径）
-        if (ev.step && ev.step !== "intent" && currentIntent !== "chat") {
+        // 节点事件：所有路径（含 chat）都记录，不再丢弃——ProcessBar 全程可见
+        // 只收两类事件：带 status 的节点状态（start/done）、带可展示产物的 astream 数据
+        const artifactData =
+          ev.data?.plan || ev.data?.search_results || ev.data?.critique || null;
+        const memoryCount = ev.data?.memories?.count ?? null;
+        if (ev.step && ev.step !== "intent" && (ev.status || artifactData || memoryCount != null)) {
           if (!loadingMsg.events) loadingMsg.events = [];
           const existing = loadingMsg.events.find((e) => e.step === ev.step);
           if (existing) {
@@ -69,25 +84,21 @@ export function useChat() {
               existing.status = ev.status;
               if (ev.elapsed != null) existing.elapsed = ev.elapsed;
             }
-            // astream data 事件 → 只更新中间产物，不覆盖状态
-            if (ev.data) {
-              existing.artifact =
-                ev.data.plan ||
-                ev.data.search_results ||
-                ev.data.critique ||
-                existing.artifact;
+            // astream data / done 附加数据 → 只更新中间产物，不覆盖状态
+            if (artifactData) existing.artifact = artifactData;
+            if (memoryCount != null) {
+              existing.memories = { count: memoryCount };
+              loadingMsg.memoryCount = memoryCount;
             }
-          } else if (ev.step !== "chat") {
+          } else {
             loadingMsg.events.push({
               step: ev.step,
               status: ev.status || "running",
-              artifact:
-                ev.data?.plan ||
-                ev.data?.search_results ||
-                ev.data?.critique ||
-                null,
+              artifact: artifactData,
+              memories: memoryCount != null ? { count: memoryCount } : null,
               elapsed: ev.elapsed ?? null,
             });
+            if (memoryCount != null) loadingMsg.memoryCount = memoryCount;
           }
         }
 
