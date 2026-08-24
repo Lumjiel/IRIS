@@ -18,6 +18,10 @@ from app.tools.akshare_tools import query_stock_info, query_financial_indicators
 
 log = get_logger("routes")
 
+# 后台长期记忆写入任务的强引用集合（防止 task 被 GC 中途丢弃）
+_background_mem_tasks: set = set()
+from app.utils.memory_store import open_store
+
 # 安全序列化：处理 AIMessage 等非 JSON 可序列化对象
 def _safe_json_serialize(obj):
     """递归处理非 JSON 可序列化对象"""
@@ -309,11 +313,15 @@ async def chat_endpoint(request: ChatRequest, req: Request):
         cleanup_old_checkpoints(max_age_days=CHECKPOINT_MAX_AGE_DAYS)
 
     config = {"configurable": {"thread_id": request.thread_id}}
+    # 长期记忆用户标识：前端 localStorage UUID 随 X-User-Id header 携带，缺省 default
+    user_id = req.headers.get("X-User-Id") or "default"
+
     async def event_generator():
         graph_task = None  # 断连时在 finally 中取消，避免后台僵尸研究任务白烧 LLM 额度
         try:
             initial_state = {
                 "query": request.query,
+                "user_id": user_id,  # 长期记忆：load_memories 按此读取用户背景
                 "revision_number": 0,
                 "search_mode": request.search_mode,
                 "preferences": {"style": request.style, "language": request.language},
@@ -341,8 +349,9 @@ async def chat_endpoint(request: ChatRequest, req: Request):
             log.info(f"新任务开启 | 模式: {request.search_mode} | 问题: {request.query}")
 
 
-            async with AsyncSqliteSaver.from_conn_string(DB_PATH) as memory:
-                app = create_graph(memory=memory)
+            async with AsyncSqliteSaver.from_conn_string(DB_PATH) as memory, \
+                      open_store() as store:
+                app = create_graph(memory=memory, store=store)
 
                 # === 预跑路由（首事件 intent）：checkpoint 读取逻辑见 _pre_run_route ===
                 route_result, has_report = await _pre_run_route(app, config, request.query)
@@ -362,9 +371,12 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 graph_queue: asyncio.Queue = asyncio.Queue()
 
                 async def _run_graph():
+                    final_snapshot: dict = {}  # 会话终态快照（后台记忆写入用）
                     try:
                         async for event in app.astream(initial_state, config=config):
                             for node_name, state_update in event.items():
+                                if isinstance(state_update, dict):
+                                    final_snapshot.update(state_update)
                                 safe_data = _safe_json_serialize(state_update)
                                 ev = json.dumps({"step": node_name, "data": safe_data}, ensure_ascii=False, default=str)
                                 await graph_queue.put(ev)
@@ -372,6 +384,15 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                         log.error(f"Graph error: {type(e).__name__}: {e}", exc_info=True)
                         await graph_queue.put(json.dumps({"step": "error", "data": {"message": f"研究过程中发生错误: {type(e).__name__}: {e}"}}, ensure_ascii=False))
                     finally:
+                        # 后台长期记忆写入：规则+LLM 抽取 → 独立短命 store 上下文，不阻塞响应、
+                        # 不依赖本请求的 store 连接（fail-open，失败只打日志）
+                        from app.utils.memory_store import remember_from_session
+                        mem_task = asyncio.create_task(
+                            remember_from_session(user_id, request.query, final_snapshot,
+                                                  thread_id=request.thread_id)
+                        )
+                        _background_mem_tasks.add(mem_task)
+                        mem_task.add_done_callback(_background_mem_tasks.discard)
                         await graph_queue.put(None)
 
                 graph_task = asyncio.create_task(_run_graph())
@@ -476,6 +497,27 @@ async def reset_memory(thread_id: str):
         raise HTTPException(status_code=404, detail="会话不存在或无摘要")
     return {"status": "success", "message": "对话记忆已清空"}
 
+
+
+# --- 长期记忆管理（方案 B） ---
+@router.get("/memory-items")
+async def list_memory_items(user_id: str):
+    """列出该用户全部长期记忆（管理页/调试用）。"""
+    from app.utils.memory_store import list_all_memories
+
+    items = await list_all_memories(user_id)
+    return {"status": "ok", "items": items, "count": len(items)}
+
+
+@router.delete("/memory-items/{memory_key}")
+async def delete_memory_item(memory_key: str, user_id: str):
+    """删除单条长期记忆（红线操作，前端需二次确认）。"""
+    from app.utils.memory_store import delete_memory
+
+    ok = await delete_memory(user_id, memory_key)
+    if not ok:
+        raise HTTPException(status_code=500, detail="删除失败")
+    return {"status": "success", "message": "记忆已删除"}
 
 # --- AI HOT 新闻代理 ---
 import httpx

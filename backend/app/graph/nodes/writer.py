@@ -67,6 +67,9 @@ async def write_node(state: AgentState):
     # 组装对话上下文（摘要 + 最近对话 + 已搜方向避让）
     conversation_context = build_conversation_context(state)
 
+    # 长期记忆注入（有记忆才拼，空则不加）
+    from app.graph.nodes.load_memories import build_memory_block
+    memory_block = build_memory_block(state)
     # 根据用户偏好调整写作风格
     prefs = state.get("preferences", {})
     style = prefs.get("style", "detailed")
@@ -90,6 +93,10 @@ async def write_node(state: AgentState):
 
 ### 网络调研资料
 {search_content}
+
+
+### 用户长期背景
+{memory_block}
 
 ### 对话上下文
 {conversation_context}

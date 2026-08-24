@@ -29,6 +29,10 @@ async def plan_node(state: AgentState):
     # 组装对话上下文（含历史摘要、已搜方向避让、当前问题）
     conversation_context = build_conversation_context(state)
 
+    # 长期记忆注入（有记忆才拼，空则不加）——影响"怎么搜"，不参与路由
+    from app.graph.nodes.load_memories import build_memory_block
+    conversation_context = build_memory_block(state) + conversation_context
+
     prompt_text = PLAN_PROMPT.format(
         conversation_context=conversation_context,
     )

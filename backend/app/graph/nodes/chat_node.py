@@ -24,6 +24,9 @@ async def chat_node(state: AgentState):
 
 如果用户询问与股票/投资无关的问题，先简短回答，然后引导用户使用研究功能。
 """
+    from app.graph.nodes.load_memories import build_memory_block
+    prompt += build_memory_block(state)
+
     if summary:
         prompt += f"\n【对话上下文摘要】\n{summary[:1000]}\n"
 

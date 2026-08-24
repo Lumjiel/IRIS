@@ -61,6 +61,18 @@ def _preheat_data_cache():
 
 _preheat_data_cache()
 
+
+@app.on_event("startup")
+async def _setup_memory_store():
+    """长期记忆 Store 建表 + 预置演示记忆（幂等，失败不影响服务）。"""
+    from app.utils.memory_store import ensure_store_setup, seed_demo_memories
+
+    try:
+        await ensure_store_setup()
+        await seed_demo_memories()
+    except Exception as e:
+        log.warning(f"[Memory] 启动初始化失败（记忆功能降级，不影响服务）: {e}")
+
 # 挂载前端静态文件
 FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.isdir(FRONTEND_DIST):

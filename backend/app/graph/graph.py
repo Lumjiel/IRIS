@@ -106,6 +106,18 @@ async def traced_chat(state: AgentState):
     finally:
         emit_node_event("chat", "done", elapsed=_time.time() - t0)
 
+from app.graph.nodes.load_memories import load_memories_node
+
+
+@traceable(run_type="chain", name="load_memories")
+async def traced_load_memories(state: AgentState, *, store=None):
+    emit_node_event("load_memories", "start")
+    t0 = _time.time()
+    try:
+        return await load_memories_node(state, store=store)
+    finally:
+        emit_node_event("load_memories", "done", elapsed=_time.time() - t0)
+
 @traceable(run_type="chain", name="search_agent")
 def traced_search_agent(state: AgentState):
     emit_node_event("search_agent", "start")
@@ -220,8 +232,11 @@ _workflow.add_node("refiner", traced_refiner)
 _workflow.add_node("data_collector", traced_data_collector)
 _workflow.add_node("chat", traced_chat)
 
-# START -> planner -> researcher -> search_agent -> tools -> search_agent (loop) -> data_collector -> writer
-_workflow.set_conditional_entry_point(
+# START -> load_memories（长期记忆注入首节点，只读不路由）-> 条件路由 -> ...
+_workflow.add_node("load_memories", traced_load_memories)
+_workflow.set_entry_point("load_memories")
+_workflow.add_conditional_edges(
+    "load_memories",
     route_query,
     {
         "planner": "planner",

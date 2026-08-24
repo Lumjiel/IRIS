@@ -59,3 +59,7 @@ class AgentState(TypedDict):
     chat_response: str        # chat_node 的纯对话响应
     error_log: List[str]      # data_collector 的错误记录（部分成功策略）
     similarity: float         # reviewer 的 cosine 相似度（早停依据）
+
+    # === 长期记忆（方案 B 新增） ===
+    user_id: str              # 用户标识（前端 X-User-Id header，缺省 default）
+    user_memories: List[str]  # load_memories 首节点注入的用户长期记忆内容列表
