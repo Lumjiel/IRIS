@@ -141,7 +141,6 @@ async def extract_explicit_memory(query: str) -> Optional[Dict[str, Any]]:
 # 读写
 # ============================================================
 
-
 async def save_memories(user_id: str, memories: List[Dict[str, Any]], thread_id: str = "") -> int:
     """批量写入并执行容量淘汰。独立短命 store 上下文，供后台任务调用。"""
     if not memories or not user_id:
@@ -159,7 +158,10 @@ async def save_memories(user_id: str, memories: List[Dict[str, Any]], thread_id:
 
 
 async def save_memory_into(store, user_id: str, memory: Dict[str, Any], thread_id: str = "") -> Optional[str]:
-    """save_memory 的显式 store 版本（同一上下文内多次写入复用连接）。"""
+    """写入单条记忆到指定 store（同一上下文内多次写入复用连接）。
+
+    watch_stock 用确定性 key `watch:{code}` 幂等去重；其余用 uuid。
+    """
     kind = memory.get("kind", "fact")
     if kind == "watch_stock" and memory.get("stock_code"):
         key = f"watch:{memory['stock_code']}"

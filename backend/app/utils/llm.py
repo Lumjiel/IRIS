@@ -7,6 +7,43 @@ from app.utils.logger import get_logger
 
 log = get_logger("llm")
 
+# === Token 用量统计（进程级累计，GET /api/usage 读取）===
+# real：provider 返回的真实 usage（仅 invoke 路径）；
+# est：流式路径 provider 不回传 usage，按中文字符≈1.6 chars/token 估算。两者分开累计。
+import threading as _threading
+
+_usage_lock = _threading.Lock()
+_usage = {"calls": 0, "prompt": 0, "completion": 0,
+          "calls_est": 0, "prompt_est": 0, "completion_est": 0}
+_CHARS_PER_TOKEN = 1.6  # 中文混合文本经验值
+
+
+def _record_usage_real(prompt_tokens: int, completion_tokens: int):
+    with _usage_lock:
+        _usage["calls"] += 1
+        _usage["prompt"] += int(prompt_tokens)
+        _usage["completion"] += int(completion_tokens)
+
+
+def _record_usage_estimated(prompt_text: str, completion_text: str):
+    with _usage_lock:
+        _usage["calls_est"] += 1
+        _usage["prompt_est"] += int(len(prompt_text) / _CHARS_PER_TOKEN)
+        _usage["completion_est"] += int(len(completion_text) / _CHARS_PER_TOKEN)
+
+
+def get_usage_snapshot(reset: bool = False) -> dict:
+    with _usage_lock:
+        snap = dict(_usage)
+        if reset:
+            for k in _usage:
+                _usage[k] = 0
+    total_prompt = snap["prompt"] + snap["prompt_est"]
+    total_completion = snap["completion"] + snap["completion_est"]
+    snap["total_tokens"] = total_prompt + total_completion
+    snap["estimated_partial"] = snap["calls_est"] > 0
+    return snap
+
 # 默认模型（向后兼容）
 PRIMARY_MODEL = os.getenv("LLM_MODEL_PRIMARY", "qwen3.7-plus")
 FALLBACK_MODEL = os.getenv("LLM_MODEL_FALLBACK", "deepseek-v4-flash")
@@ -36,6 +73,23 @@ def _is_exhausted() -> bool:
         _primary_exhausted = False
         return False
     return True
+
+
+_QUOTA_KEYWORDS = ("quota", "limit", "insufficient", "balance", "429", "rate", "freetier", "allocation")
+
+
+def is_quota_error(e: Exception) -> bool:
+    """判断异常是否为额度/限流类错误（需要触发主模型降级）。"""
+    msg = str(e).lower()
+    return any(kw in msg for kw in _QUOTA_KEYWORDS)
+
+
+def mark_primary_exhausted(reason: str = ""):
+    """外部（含流式路径）标记主模型降级，TTL 后自动恢复。"""
+    global _primary_exhausted, _primary_exhausted_at
+    _primary_exhausted = True
+    _primary_exhausted_at = time.time()
+    log.warning(f"主模型标记降级（{_EXHAUSTED_TTL}s 后自动恢复尝试）: {reason}")
 
 
 def _resolve_model(node: str | None = None) -> str:
@@ -87,7 +141,11 @@ def llm_invoke(messages: list[BaseMessage], model_type="fast", node=None):
                 api_key=os.getenv("OPENAI_API_KEY"),
                 request_timeout=timeout
             )
-            return llm.invoke(messages)
+            resp = llm.invoke(messages)
+            um = getattr(resp, "usage_metadata", None)
+            if um:
+                _record_usage_real(um.get("input_tokens", 0), um.get("output_tokens", 0))
+            return resp
         except Exception as e:
             global _primary_exhausted, _primary_exhausted_at
             err_msg = str(e).lower()
@@ -107,7 +165,11 @@ def llm_invoke(messages: list[BaseMessage], model_type="fast", node=None):
             api_key=os.getenv("OPENAI_API_KEY"),
             request_timeout=timeout
         )
-        return llm.invoke(messages)
+        resp = llm.invoke(messages)
+        um = getattr(resp, "usage_metadata", None)
+        if um:
+            _record_usage_real(um.get("input_tokens", 0), um.get("output_tokens", 0))
+        return resp
     except Exception as e:
         log.error(f"备用模型 {FALLBACK_MODEL} 也失败: {e}")
         raise

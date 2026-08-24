@@ -46,6 +46,7 @@ def _get_db() -> str:
 
     return DB_PATH
 
+
 TOP_K = 5
 FETCH_K = 20
 MRR_DEPTH = 10
@@ -160,7 +161,7 @@ DEMO_COMPANIES = [
 ]
 
 
-def _seed_demo_corpus(db_path: str | None):
+def _seed_demo_corpus(db_path):
     """写入合成语料到目标库（幂等：先删后建）。"""
     import shutil
 
@@ -170,9 +171,12 @@ def _seed_demo_corpus(db_path: str | None):
     from app.rag.engine import embeddings
 
     target = db_path or _get_db()
-    if os.path.exists(target):
-        shutil.rmtree(target)
-    os.makedirs(target, exist_ok=True)
+    try:
+        if os.path.exists(target):
+            shutil.rmtree(target)
+        os.makedirs(target, exist_ok=True)
+    except OSError as e:
+        raise SystemExit(f"[Eval] 语料目录重置失败（{target}）: {e}")
 
     docs = []
     for comp in DEMO_COMPANIES:
@@ -283,7 +287,7 @@ def main():
         "|------|------|---------|-----------|---------|-----------|",
     ]
     for r in rows:
-        fmt = lambda v: f"{v:.2f}" if v is not None else "-"
+        fmt = lambda v: f"{v:.2f}" if v is not None else "-"  # noqa: E731
         lines.append(
             f"| {r['query']} | {r['target']} | {fmt(r['base_p3'])} "
             f"| {fmt(r['rr_p3'])} | {fmt(r['base_mrr'])} | {fmt(r['rr_mrr'])} |"

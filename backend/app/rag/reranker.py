@@ -28,7 +28,7 @@ class DashScopeReranker:
 
     def rerank(self, query: str, docs: List[Document], top_k: int) -> List[Document]:
         """
-        对候选文档精排，返回按相关度降序的 top_k 文档。
+        对候选文档精排，返回按相关度降序的 top_k 文档（代码侧强制截断）。
 
         异常时抛 RerankError（fail-open 由上层处理），绝不返回部分错误结果。
         同步网络调用——事件循环中的调用方需用 asyncio.to_thread 包装。

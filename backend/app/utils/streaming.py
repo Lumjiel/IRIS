@@ -61,12 +61,30 @@ async def llm_stream_tokens(
     full_text = ""
 
     def _producer():
-        """在线程中运行同步的 llm.stream()，token 推入 channel"""
+        """在线程中运行同步的 llm.stream()，token 推入 channel。
+
+        降级修复：流式路径此前无 quota 降级（llm_invoke 有、这里漏了），
+        主模型 403 FreeTierOnly 时 writer 直接拿空报告。现对齐 invoke 行为：
+        额度类错误 → 标记降级 → 用 fallback 模型重试一次。
+        """
         try:
-            for chunk in llm.stream(messages):
-                token = chunk.content or ""
-                if token:
-                    asyncio.run_coroutine_threadsafe(channel.put(token), loop)
+            try:
+                for chunk in llm.stream(messages):
+                    token = chunk.content or ""
+                    if token:
+                        asyncio.run_coroutine_threadsafe(channel.put(token), loop)
+            except Exception as e:
+                from app.utils import llm as llm_mod
+
+                if not llm_mod.is_quota_error(e):
+                    raise
+                llm_mod.mark_primary_exhausted(str(e)[:150])
+                log.warning("流式调用触发额度降级，改用备用模型重试")
+                fallback_llm = get_llm(model_type=model_type, node=node)  # _is_exhausted 后自动选 FALLBACK
+                for chunk in fallback_llm.stream(messages):
+                    token = chunk.content or ""
+                    if token:
+                        asyncio.run_coroutine_threadsafe(channel.put(token), loop)
         except Exception as e:
             log.warning(f"流式调用异常: {e}")
         finally:
@@ -93,5 +111,14 @@ async def llm_stream_tokens(
         "step": f"{node_name}_token",
         "data": {"token": "", "final": True},
     })
+
+    # 流式路径 provider 不回传 usage，按字符数估算计入用量统计（与真实值分开累计）
+    try:
+        from app.utils.llm import _record_usage_estimated
+
+        prompt_text = "".join(getattr(m, "content", "") or "" for m in messages)
+        _record_usage_estimated(prompt_text, full_text)
+    except Exception:
+        pass
 
     return full_text

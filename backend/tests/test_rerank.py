@@ -37,8 +37,7 @@ def fake_dashscope(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reset_singleton():
-    # app.rag.reranker 的模块级单例；每个用例前后重置避免跨用例污染
-    """每个用例重置单例，避免跨用例污染。"""
+    """每个用例重置单例（app.rag.reranker 模块级），避免跨用例污染。"""
     import app.rag.reranker as rr
 
     rr._reranker = None
@@ -243,6 +242,7 @@ class TestSearchReports:
         asyncio.run(ri.search_reports("测试查询", stock_code="600196", top_k=3))
         assert FakeChroma.last_call_kwargs is not None
         assert FakeChroma.last_call_kwargs["filter"] == {"stock_code": "600196"}
+
     def test_empty_db_returns_empty(self, monkeypatch, tmp_path):
         import app.rag.report_ingest as ri
 

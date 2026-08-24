@@ -771,6 +771,18 @@ _status_cache = {"ts": 0.0, "data": None}
 _STATUS_TTL = 60  # 60s 缓存，避免每次侧边栏渲染都真查
 
 
+
+@router.get("/usage")
+async def usage_stats(reset: bool = False):
+    """进程级 LLM token 用量（benchmark/成本观测用）。
+
+    real=provider 真实回传（invoke 路径）；est=流式路径字符估算。口径分开累计。
+    """
+    from app.utils.llm import get_usage_snapshot
+
+    return {"status": "ok", "usage": get_usage_snapshot(reset=reset)}
+
+
 @router.get("/status")
 async def system_status():
     """返回数据源与 LLM 降级状态（60s 缓存）"""
