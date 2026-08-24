@@ -148,6 +148,22 @@ def query_stock_info(stock_code: str) -> str:
     """
     logger.info("[Tool] query_stock_info: stock_code=%s", stock_code)
 
+    # ---- 第零层：同花顺官方 API（四层降级链 L0，docs/HITHINK_INTEGRATION_PLAN.md）----
+    from app.tools.hithink_tools import is_enabled as _hithink_on
+    if _hithink_on():
+        try:
+            from app.tools.hithink_tools import fetch_info as _ht_info
+
+            info_dict = _ht_info(stock_code)
+            data_source = "同花顺官方API"
+            logger.info("[Tool] 同花顺官方API信息成功: %d个字段", len(info_dict))
+            return json.dumps({
+                "error": False, "degraded": False, "stock_code": stock_code,
+                "info": info_dict, "data_source": data_source,
+            }, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("[Tool] 同花顺官方API失败，落回 AKShare 链: %s", str(e)[:120])
+
     info_dict: Dict[str, str] = {}
     data_source: str = "未知"
 
@@ -239,6 +255,20 @@ def query_financial_indicators(stock_code: str) -> str:
         网络不可用时返回内置模拟数据（标注数据来源）。
     """
     logger.info("[Tool] query_financial_indicators: stock_code=%s", stock_code)
+
+    # ---- 第零层：同花顺官方 API（四层降级链 L0，docs/HITHINK_INTEGRATION_PLAN.md）----
+    from app.tools.hithink_tools import is_enabled as _hithink_on
+    if _hithink_on():
+        try:
+            from app.tools.hithink_tools import fetch_financial_indicators as _ht_fin
+
+            indicators = _ht_fin(stock_code)
+            indicators.setdefault("data_source", "同花顺官方API")
+            logger.info("[Tool] 同花顺官方API财务指标成功: period=%s", indicators.get("report_period"))
+            return json.dumps({"error": False, "degraded": False, "indicators": indicators},
+                              ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("[Tool] 同花顺官方API失败，落回 AKShare 链: %s", str(e)[:120])
 
     indicators: Dict[str, Any] = {}
     data_source: str = "未知"
@@ -348,6 +378,20 @@ def query_stock_quote(stock_code: str) -> str:
         标注 "延时": "15分钟"。网络不可用时返回内置模拟数据。
     """
     logger.info("[Tool] query_stock_quote: stock_code=%s", stock_code)
+
+    # ---- 第零层：同花顺官方 API（四层降级链 L0，docs/HITHINK_INTEGRATION_PLAN.md）----
+    from app.tools.hithink_tools import is_enabled as _hithink_on
+    if _hithink_on():
+        try:
+            from app.tools.hithink_tools import fetch_quote as _ht_quote
+
+            quote = _ht_quote(stock_code)
+            quote.setdefault("data_source", "同花顺官方API")
+            logger.info("[Tool] 同花顺官方API行情成功: price=%s", quote.get("最新价"))
+            return json.dumps({"error": False, "degraded": False, "quote": quote},
+                              ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("[Tool] 同花顺官方API失败，落回 AKShare 链: %s", str(e)[:120])
 
     quote: Dict[str, Any] = {}
     data_source: str = "未知"

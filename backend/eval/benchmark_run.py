@@ -17,7 +17,6 @@ IRIS 端到端 Benchmark 运行器（docs/benchmark.md 数据来源）
 import argparse
 import json
 import re
-import sys
 import time
 from pathlib import Path
 
@@ -117,7 +116,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--stocks", default=None, help="逗号分隔的股票代码子集")
     args = parser.parse_args()
-
 
     stocks = STOCKS
     if args.stocks:

@@ -27,6 +27,9 @@ def _mock_env_vars(monkeypatch):
     monkeypatch.setenv("OPENAI_API_BASE", "http://localhost:1234/v1")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+    # 同花顺层默认关闭：防止单测真实外呼；hithink 专项用例自行 setenv 开启
+    # （is_enabled() 动态读环境变量，此处 setenv 对动态读取生效）
+    monkeypatch.setenv("ENABLE_HITHINK", "false")
 
 
 @pytest.fixture
