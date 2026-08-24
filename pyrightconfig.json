@@ -1,0 +1,20 @@
+{
+  // Pyright 配置（仓库根，供编辑器/pi-lens 等工具从仓库根分析时使用）。
+  // 注意：① backend/venv 是历史遗留的空壳（无 python.exe），不要指向它；
+  //       ② "pythonPath" 不是合法的 pyrightconfig 键（那是 VS Code 设置），勿加。
+  //       ③ backend/pyrightconfig.json 是后端目录内等价配置，两处需保持同步。
+  "extraPaths": [
+    "backend",
+    "C:\\Users\\JIE\\AppData\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\Lib\\site-packages"
+  ],
+  "include": ["backend/app", "backend/tests", "backend/eval", "backend/main.py", "backend/conftest.py"],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/chroma_db",
+    "frontend"
+  ],
+  "reportMissingImports": "error",
+  "reportAttributeAccessIssue": "warning",
+  "reportGeneralTypeIssues": "warning"
+}

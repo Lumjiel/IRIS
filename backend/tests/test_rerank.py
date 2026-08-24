@@ -37,6 +37,7 @@ def fake_dashscope(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reset_singleton():
+    # app.rag.reranker 的模块级单例；每个用例前后重置避免跨用例污染
     """每个用例重置单例，避免跨用例污染。"""
     import app.rag.reranker as rr
 
