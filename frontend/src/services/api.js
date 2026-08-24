@@ -21,6 +21,22 @@ try {
   _threadId = generateUUID();
 }
 
+// 用户级 ID：长期记忆隔离用（跨会话稳定，与 thread_id 不同）
+let _userId;
+try {
+  _userId = localStorage.getItem('iris_user_id') || crypto.randomUUID();
+  localStorage.setItem('iris_user_id', _userId);
+} catch {
+  _userId = generateUUID();
+}
+
+export function getUserId() { return _userId; }
+
+/** 长期记忆请求头（后端按 X-User-Id 隔离记忆命名空间） */
+function memoryHeaders() {
+  return { 'X-User-Id': _userId };
+}
+
 export function getThreadId() { return _threadId; }
 export function setThreadId(id) {
   _threadId = id;
@@ -87,7 +103,7 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
   try {
     const response = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...memoryHeaders() },
       body: JSON.stringify({
         query,
         search_mode,
@@ -226,4 +242,31 @@ export async function ttsSynthesize(text, voice = 'longtian_v3') {
   });
   if (!response.ok) throw new Error('TTS failed');
   return await response.blob();
+}
+
+// ============================================================
+// 长期记忆管理（跨会话，X-User-Id 隔离）
+// ============================================================
+
+/**
+ * 列出当前用户的长期记忆
+ */
+export async function listMemories() {
+  const response = await fetch(`${API_BASE}/api/memory-items?user_id=${encodeURIComponent(_userId)}`, {
+    headers: memoryHeaders(),
+  });
+  if (!response.ok) throw new Error('Failed to list memories');
+  return await response.json();
+}
+
+/**
+ * 删除单条长期记忆（调用方负责二次确认）
+ */
+export async function deleteMemory(key) {
+  const response = await fetch(`${API_BASE}/api/memory-items/${encodeURIComponent(key)}?user_id=${encodeURIComponent(_userId)}`, {
+    method: 'DELETE',
+    headers: memoryHeaders(),
+  });
+  if (!response.ok) throw new Error('Failed to delete memory');
+  return await response.json();
 }

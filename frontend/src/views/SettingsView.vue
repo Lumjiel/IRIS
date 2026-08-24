@@ -37,7 +37,24 @@
         </button>
       </div>
 
-      <div class="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+        <div class="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700 w-full">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-label text-slate-600 dark:text-slate-400">长期记忆（跨会话）</span>
+            <button @click="loadMemories" class="text-label text-accent hover:underline">刷新</button>
+          </div>
+          <p v-if="!memories.length" class="text-caption text-slate-400">暂无记忆。研究过的股票和"记住…"的偏好会自动保存到这里。</p>
+          <ul v-else class="space-y-2 max-h-48 overflow-y-auto">
+            <li v-for="m in memories" :key="m.key" class="flex items-start justify-between gap-2 px-2 py-1.5 rounded bg-slate-50 dark:bg-slate-800/60">
+              <div class="min-w-0">
+                <span class="text-[10px] uppercase tracking-wide text-accent/80 mr-1">{{ m.kind }}</span>
+                <span class="text-body text-slate-700 dark:text-slate-300 break-all">{{ m.content }}</span>
+              </div>
+              <button @click="handleDeleteMemory(m)" class="shrink-0 text-label text-red-400 hover:text-red-600">删除</button>
+            </li>
+          </ul>
+        </div>
+
+      <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
         <button
           @click="handleResetSession"
           class="text-label text-red-500 hover:text-red-600 transition-colors"
@@ -50,9 +67,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useAppStore } from '../stores/app';
 import { useToast } from '../composables/useToast';
+import { listMemories, deleteMemory } from '../services/api';
 
 const appStore = useAppStore();
 const toast = useToast();
@@ -71,4 +89,30 @@ const handleResetSession = () => {
   appStore.resetSession();
   toast.success('会话已重置');
 };
+
+// === 长期记忆管理 ===
+const memories = ref([]);
+
+async function loadMemories() {
+  try {
+    const data = await listMemories();
+    memories.value = data.items || [];
+  } catch {
+    toast.error('记忆加载失败');
+  }
+}
+
+async function handleDeleteMemory(m) {
+  // 红线操作：二次确认
+  if (!confirm(`确定删除这条记忆吗？\n\n${m.content}`)) return;
+  try {
+    await deleteMemory(m.key);
+    memories.value = memories.value.filter((x) => x.key !== m.key);
+    toast.success('记忆已删除');
+  } catch {
+    toast.error('删除失败');
+  }
+}
+
+onMounted(loadMemories);
 </script>
