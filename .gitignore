@@ -18,6 +18,7 @@ frontend/dist/
 
 # Data & Runtime
 backend/app/rag/chroma_db/
+backend/eval/demo_chroma_db/
 backend/app/rag/uploads/
 backend/app/api/checkpoints.db
 *.db

@@ -4,7 +4,7 @@ DashScope gte-rerank 精排器（替代本地 CrossEncoder）。
 设计要点（docs/DESIGN_rerank_and_memory.md 方案 A）：
 - 与现有 embedding 同供应商同 Key，毫秒级、零本地依赖（无 torch/sentence-transformers）
 - fail-open：任何异常抛 RerankError，由上层捕获降级为纯向量序，不阻塞主流程
-- 显式短超时（默认 3s），rerank 是锦上添花，不值得阻塞检索热路径
+- 显式短超时（默认 3s，RERANK_TIMEOUT_S 可配）：rerank 是锦上添花，不值得阻塞检索热路径
 """
 from typing import List
 
