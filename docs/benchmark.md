@@ -76,4 +76,4 @@ python -m eval.evaluator
 
 1. **SearchAgent 循环**：Function Calling 支持多轮迭代，但会增加延迟。可通过限制最大轮数（当前 5 轮）控制。
 2. **并行调用**：DataCollector 使用 ThreadPoolExecutor 并行调用 3 个 AKShare 工具。
-3. **RAG 检索**：ChromaDB 本地检索 < 100ms，CrossEncoder rerank 额外 +200ms。
+3. **RAG 检索**：ChromaDB 本地检索 < 100ms；gte-rerank 精排为 DashScope API 调用（毫秒级网络往返 + 3s 超时上限），失败自动降级纯向量序。

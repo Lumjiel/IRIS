@@ -11,11 +11,11 @@
 | ChromaDB（向量库） | ~100-200MB |
 | DashScope Embeddings | ~50MB（API 调用） |
 | Nginx（前端静态） | ~5MB |
-| **总计（不开 reranker）** | **~650MB** |
-| CrossEncoder reranker | +400MB ❌ |
+| **总计** | **~650MB** |
+| gte-rerank 精排 | ~0MB（DashScope API 调用，无本地模型） |
 
-> ⚠️ 2G 服务器 **不要开** `ENABLE_RERANKER`，会 OOM。
-
+> ✅ reranker 已从本地 CrossEncoder（+400MB torch）迁移为 DashScope `gte-rerank-v2` API 调用，
+> 2G 服务器可放心保持默认 `ENABLE_RERANKER=true`。API 超时（3s）或失败时自动降级纯向量检索，不影响可用性。
 ---
 
 ## Docker Compose 部署（推荐）
@@ -96,7 +96,7 @@ docker compose exec backend bash
 environment:
   - WORKERS=2           # 多 worker（注意限流器内存共享问题）
   - LOG_LEVEL=debug     # 调试日志
-  - ENABLE_RERANKER=true # ⚠️ 2G 不要开
+  - ENABLE_RERANKER=true # 默认开启（gte-rerank API，无内存开销）
 ```
 
 ---
@@ -174,7 +174,9 @@ sudo nginx -t && sudo systemctl reload nginx
 | `LLM_MODEL_PRIMARY` | 主模型 | ❌ | `qwen3.7-plus` |
 | `LLM_MODEL_FALLBACK` | 备用模型 | ❌ | `deepseek-v4-flash` |
 | `CORS_ORIGINS` | 允许的域名 | ✅（生产） | `*` |
-| `ENABLE_RERANKER` | 精排模型（2G 不要开） | ❌ | `false` |
+| `ENABLE_RERANKER` | gte-rerank 精排（DashScope API，失败自动降级） | ❌ | `true` |
+| `RERANK_MODEL` | 精排模型名 | ❌ | `gte-rerank-v2` |
+| `RERANK_TIMEOUT_S` | 精排超时秒数 | ❌ | `3` |
 | `CREATION_DIR` | 报告保存目录 | ❌ | `/data/creation` |
 | `CHECKPOINT_DB` | SQLite 路径 | ❌ | `checkpoints.db`（相对于 DATA_DIR） |
 | `DATA_DIR` | 数据根目录 | ❌ | `backend/` 目录 |

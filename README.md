@@ -4,7 +4,7 @@
 >
 > `Python 3.11+` `FastAPI` `LangGraph 1.0+` `Vue 3` `AKShare` `DeepSeek` `ChromaDB` `PyMuPDF`
 
-**八节点多智能体协同 + Function Calling + AKShare 真实 A 股数据 + 中文六章节投研报告 + 研报 RAG + Vue 前端**
+**九节点多智能体协同（含长期记忆）+ Function Calling + AKShare 真实 A 股数据 + 中文六章节投研报告 + 研报 RAG + Vue 前端**
 
 ---
 
@@ -16,7 +16,7 @@
 
 ### 方案
 
-IRIS 基于 **LangGraph StateGraph** 搭建 **八节点多智能体协同架构**，将投研分析拆解为 8 个独立子任务，分别交给 8 个专业 Agent 执行。系统接入 AKShare 真实 A 股数据（行情/财务/新闻）+ 研报 PDF 入库检索，输出符合券商规范的中文六章节研报。
+IRIS 基于 **LangGraph StateGraph** 搭建 **九节点多智能体协同架构**，将投研分析拆解为独立子任务交给各专业 Agent 执行（入口新增 load_memories 长期记忆注入节点）。系统接入 AKShare 真实 A 股数据（行情/财务/新闻）+ 研报 PDF 入库检索，输出符合券商规范的中文六章节研报。
 
 ### 适用场景
 
@@ -43,11 +43,12 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **八节点多智能体协同架构*
 └─────────────────────────────┬───────────────────────────────────┘
                               │
 ┌─────────────────────────────▼───────────────────────────────────┐
-│              LangGraph StateGraph (8 节点协同)                    │
+│              LangGraph StateGraph (9 节点协同)                    │
 │                                                                  │
-│  router → planner → researcher → search_agent ⇄ search_tools    │
-│                                   ↓                              │
-│  route_after_tools → data_collector → writer → reviewer ──FAIL──→ planner│
+│  load_memories（长期记忆注入）                                    │
+│      → router → planner → researcher → search_agent ⇄ tools     │
+│                                        ↓                         │
+│  route_after_tools → data_collector → writer → reviewer ─FAIL─→ planner │
 │                                        │                        │
 │                                   refiner (多轮追问/修改)         │
 └─────────────────────────────┬───────────────────────────────────┘
@@ -66,7 +67,7 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **八节点多智能体协同架构*
 
 ## 核心特性
 
-### 1. 八节点多智能体协同 + Function Calling
+### 1. 九节点多智能体协同 + Function Calling + 长期记忆
 
 | 节点 | 职责 | 关键技术 |
 | ------ | ------ | --------- |
@@ -204,8 +205,8 @@ IRIS/
 │   │   │   └── routes.py             # REST + SSE 路由（含股票查询/研报 API）
 │   │   ├── graph/
 │   │   │   ├── state.py              # AgentState（含 financial_data, messages）
-│   │   │   ├── graph.py              # StateGraph 拓扑（8 节点 + Function Calling 循环）
-│   │   │   └── nodes/                # 8 个 Agent 节点
+│   │   │   ├── graph.py              # StateGraph 拓扑（9 节点 + Function Calling 循环 + 长期记忆入口）
+│   │   │   └── nodes/                # 9 个 Agent 节点（含 load_memories）
 │   │   │       ├── router.py         # 意图路由
 │   │   │       ├── planner.py        # 搜索规划
 │   │   │       ├── researcher.py     # RAG 检索 + Grader 审计
@@ -317,7 +318,7 @@ IRIS/
 
 ### ✅ 已完成（v1.0）
 
-- [x] 基于 LangGraph StateGraph 的十节点多智能体协同架构
+- [x] 基于 LangGraph StateGraph 的九节点多智能体协同架构（+ Rerank 重排 / 长期记忆 Store）
 - [x] Function Calling 改造（LLM 驱动工具调用 + ≤5 轮循环终止）
 - [x] AKShare 真实 A 股数据接入（4 个工具 + 三层降级 + 60s 缓存）
 - [x] 中文六章节投研报告格式（数据与观点分离）
@@ -362,10 +363,13 @@ IRIS/
 | 如何防幻觉？ | 数据与观点分离 + 来源标注 + 诚实告知原则 |
 | 如何降级？ | 三层数据源 + LLM 主备切换 + 工具级不抛异常 |
 | Function Calling？ | `@tool` 声明 + `bind_tools` + 自定义 `ToolNode` + LLM 自主决策 |
-| 多 Agent 架构？ | 8 节点协同，每节点独立解耦，可单独测试替换 |
-| 记忆系统？ | conversation_summary 增量摘要 + checkpoint 跨会话持久化 |
-| 研报 RAG？ | PyMuPDF 抽取 + 正则实体抽取 + ChromaDB 按标的检索 |
-
+| 多 Agent 架构？ | 9 节点协同，每节点独立解耦，可单独测试替换 |
+| 记忆系统？ | 双层：conversation_summary 增量摘要（会话内，checkpoint 持久化）+ 长期记忆 AsyncSqliteStore（跨会话） |
+| 为什么长期记忆「只注入不路由」？ | 记忆影响"怎么答"不影响"走哪条边"——错误记忆误导路由会造成 refine/research 误判；注入只改变 prompt 上下文，风险可控且用户可删 |
+| 为什么 watch_stock 用规则抽取而不是每轮 LLM？ | 省成本、行为可预期：严格正则识别股票代码零成本零幻觉；LLM 只兜底"记住我喜欢…"这类无结构化信号的显式请求 |
+| 为什么 rerank 选 DashScope gte-rerank 而不是本地 CrossEncoder？ | 同供应商同 Key 零额外依赖；本地模型 +400MB 内存且 Windows/容器安装易翻车；API 失败 fail-open 降级纯向量序，可用性优先于精排收益 |
+| rerank 怎么证明有效？ | score 契约用 `reranked` 字段区分语义（relevance_score vs Chroma distance），可观测可回归；20 query 手工标注小评测待补（诚实边界） |
+| 研报 RAG？ | PyMuPDF 抽取 + 正则实体抽取 + ChromaDB 按标的检索 + gte-rerank 精排 |
 ---
 
 ## 开源协议
