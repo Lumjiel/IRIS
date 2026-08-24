@@ -16,6 +16,21 @@
 
 > ✅ reranker 已从本地 CrossEncoder（+400MB torch）迁移为 DashScope `gte-rerank-v2` API 调用，
 > 2G 服务器可放心保持默认 `ENABLE_RERANKER=true`。API 超时（3s）或失败时自动降级纯向量检索，不影响可用性。
+
+### 目标服务器实测评估（2026-08-24，49.234.178.53 / OpenCloudOS 9）
+
+| 项目 | 实测值 | 结论 |
+|------|--------|------|
+| CPU | 2 核，load 0.2（很闲） | ✅ |
+| 内存 | 1963MB 总量，可用 1246MB + 2G swap | ✅ IRIS 需 ~700MB，够用；构建峰值靠 swap 兜底 |
+| 磁盘 | 50G 用 45%，剩 28G | ✅ |
+| Docker | v29.3.1 + Compose v2.30.3 | ✅ 已装 |
+| 出网 | DashScope 90ms / Tavily 200 OK | ✅ 国内云直连无障碍 |
+| 端口 | **80/443 已被现有 nginx:alpine 容器占用** | ⚠️ 前端映射改 `8080:80`（见 docker-compose.yml）|
+
+> ⚠️ **安全组前提**：需在腾讯云控制台安全组放行 TCP 8080 入站，否则外网无法访问。
+> 同机已有服务：alist(5244)、nginx(80/443)——部署时不得影响。
+
 ---
 
 ## Docker Compose 部署（推荐）
@@ -54,13 +69,13 @@ docker compose ps
 # 查看日志
 docker compose logs -f
 
-# 访问 http://your-server-ip
+# 访问 http://your-server-ip:8080（端口映射见 docker-compose.yml；80/443 常被已有 nginx 占用）
 ```
 
 ### 架构
 
 ```
-用户浏览器 → :80 (Nginx)
+用户浏览器 → :8080 (Nginx 容器)
               ├── /           → 前端静态文件（Vue 构建产物）
               └── /api/*      → proxy_pass → backend:8000
 ```

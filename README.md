@@ -162,9 +162,9 @@ npm run dev
 ### Docker 部署
 
 ```bash
-docker-compose up -d
-# 前端: http://localhost
-# 后端: http://localhost:8000
+docker compose up -d
+# 前端: http://localhost:8080（80/443 常被已有 nginx 占用，映射见 docker-compose.yml）
+# 后端: 容器内 8000，仅经前端 /api 反代访问
 ```
 
 ### 两种使用方式

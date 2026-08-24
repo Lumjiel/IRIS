@@ -30,7 +30,9 @@ services:
     container_name: iris-frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      # 8080：目标服务器 80/443 已被现有 nginx 容器占用（评估见 backend/DEPLOY.md）；
+      # 需在云厂商安全组放行 TCP 8080 入站
+      - "8080:80"
     depends_on:
       - backend
 
