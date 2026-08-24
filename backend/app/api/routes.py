@@ -717,7 +717,7 @@ async def search_reports(q: str, stock_code: str = None, top_k: int = 5):
     """检索已入库的研报"""
     from app.rag.report_ingest import search_reports
     
-    results = search_reports(q, stock_code=stock_code, top_k=top_k)
+    results = await search_reports(q, stock_code=stock_code, top_k=top_k)
     return {"status": "ok", "results": results, "count": len(results)}
 
 

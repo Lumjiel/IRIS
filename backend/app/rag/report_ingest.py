@@ -5,6 +5,7 @@
 - 分块入库 ChromaDB（带元数据）
 """
 import os
+import asyncio
 import re
 import json
 from typing import Optional, Dict, List, Any
@@ -217,50 +218,76 @@ def ingest_reports_from_dir(dir_path: str) -> List[Dict[str, Any]]:
 # 研报检索
 # ============================================================
 
-def search_reports(
+async def search_reports(
     query: str,
     stock_code: Optional[str] = None,
     top_k: int = 5,
 ) -> List[Dict[str, Any]]:
     """
-    检索已入库的研报。
-    
+    检索已入库的研报（向量召回 + 可选 gte-rerank 精排）。
+
     参数:
         query: 搜索关键词
         stock_code: 可选，按股票代码过滤
         top_k: 返回数量
-    
+
     返回:
-        [{"text": "...", "metadata": {...}, "score": 0.95}, ...]
+        [{"text": "...", "metadata": {...}, "score": 0.95, "reranked": bool}, ...]
+        score 契约：reranked=true 时为 relevance_score（0-1，越大越相关）；
+                  reranked=false 时为 Chroma distance（越小越相关）。
     """
     try:
         from langchain_community.vectorstores import Chroma
         from app.rag.engine import embeddings
-        
+        from app.config import ENABLE_RERANKER, FETCH_K
+
         if not os.path.exists(DB_PATH) or not os.listdir(DB_PATH):
             return []
-        
-        vectorstore = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
-        
-        # 构建过滤条件
-        filter_dict = None
-        if stock_code:
-            filter_dict = {"stock_code": stock_code}
-        
-        # 检索
-        if filter_dict:
-            results = vectorstore.similarity_search_with_score(query, k=top_k, filter=filter_dict)
-        else:
-            results = vectorstore.similarity_search_with_score(query, k=top_k)
-        
-        return [
-            {
-                "text": doc.page_content,
-                "metadata": doc.metadata,
-                "score": float(score),
-            }
-            for doc, score in results
-        ]
+
+        def _vector_search():
+            """阻塞的向量检索，丢线程池执行（避免阻塞事件循环）。"""
+            vectorstore = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
+            fetch = max(top_k, FETCH_K)
+            if stock_code:
+                return vectorstore.similarity_search_with_score(query, k=fetch, filter={"stock_code": stock_code})
+            return vectorstore.similarity_search_with_score(query, k=fetch)
+
+        results = await asyncio.to_thread(_vector_search)
+        docs = [doc for doc, _score in results]
+        dists = [float(score) for _doc, score in results]
+
+        # 候选数不超过 top_k：全量返回，不值得多花一次 rerank 调用
+        if not (ENABLE_RERANKER and len(docs) > top_k):
+            return [
+                {"text": d.page_content, "metadata": d.metadata, "score": s, "reranked": False}
+                for d, s in zip(docs[:top_k], dists[:top_k])
+            ]
+
+        # 精排（同步网络调用丢线程池；失败降级纯向量序，fail-open）
+        try:
+            from app.rag.reranker import get_reranker
+
+            ranked = await asyncio.to_thread(get_reranker().rerank, query, docs, top_k)
+            log.info(f"[研报检索] rerank 精排完成: {len(docs)} 候选 -> {len(ranked)} 结果")
+            return [
+                {
+                    "text": d.page_content,
+                    "metadata": d.metadata,
+                    "score": float(d.metadata.get("relevance_score", 0.0)),
+                    "reranked": True,
+                }
+                for d in ranked
+            ]
+        except Exception as e:
+            log.warning(f"[研报检索] rerank 失败，降级为纯向量序: {e}")
+            return [
+                {"text": d.page_content, "metadata": d.metadata, "score": s, "reranked": False}
+                for d, s in zip(docs[:top_k], dists[:top_k])
+            ]
+
+    except Exception as e:
+        log.error(f"[研报检索] 失败: {e}")
+        return []
         
     except Exception as e:
         log.error(f"[研报检索] 失败: {e}")

@@ -14,30 +14,24 @@ from app.config import MAX_KNOWLEDGE_BASE_CHUNKS, CHUNK_SIZE, CHUNK_OVERLAP, TOP
 
 log = get_logger("rag.engine")
 
-try:
-    from sentence_transformers import CrossEncoder
-except ImportError:
-    CrossEncoder = None
+from app.config import (
+    MAX_KNOWLEDGE_BASE_CHUNKS,
+    CHUNK_SIZE,
+    CHUNK_OVERLAP,
+    TOP_K,
+    FETCH_K,
+    ENABLE_RERANKER,
+)
+from app.rag.reranker import DashScopeReranker, RerankError, get_reranker
 
-RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-_reranker = None
+log = get_logger("rag.engine")
 
-def get_reranker():
-    global _reranker
-    if _reranker is not None:
-        return _reranker
-    if CrossEncoder is None:
-        raise RuntimeError(
-            "未安装 sentence-transformers，无法启用 reranking。请执行：pip install sentence-transformers"
-        )
-    _reranker = CrossEncoder(RERANKER_MODEL_NAME)
-    return _reranker
 
 class RerankRetriever(BaseRetriever):
     """
     两阶段检索：
     1) Chroma 向量召回 fetch_k 个候选
-    2) Cross-Encoder rerank
+    2) DashScope gte-rerank 精排（fail-open：失败降级为向量序）
     3) 返回 top_k
     """
 
@@ -52,15 +46,12 @@ class RerankRetriever(BaseRetriever):
         if not candidates:
             return []
 
-        # 2) rerank：对 (query, doc_text) 打分
-        pairs = [(query, d.page_content) for d in candidates]
-        scores = self.reranker.predict(pairs)
-
-        # 3) 按分数排序，取 top_k
-        ranked = sorted(zip(candidates, scores), key=lambda x: float(x[1]), reverse=True)
-        top_docs = [doc for doc, _ in ranked[: self.top_k]]
-
-        return top_docs
+        # 2) rerank 精排；任何异常降级为纯向量序（rerank 是锦上添花，不阻塞检索）
+        try:
+            return self.reranker.rerank(query, candidates, self.top_k)
+        except RerankError as e:
+            log.warning(f"[RAG] rerank 失败，降级为纯向量序: {e}")
+            return candidates[: self.top_k]
 
 # 定义数据存储路径
 # 数据存储路径（从配置读取，Docker 部署时改为持久化卷）
@@ -138,15 +129,14 @@ def process_documents(file_paths: List[str]):
 
 def get_retriever():
     """
-    获取检索器：给 Agent 用的接口
-    启用 ENABLE_RERANKER=true 时使用 CrossEncoder 精排（额外 ~400MB 内存）
+    获取检索器：给 Agent 用的接口。
+    ENABLE_RERANKER=true（默认）时走 DashScope gte-rerank 两阶段精排，失败自动降级纯向量。
     """
     if not os.path.exists(DB_PATH) or not os.listdir(DB_PATH):
         return None
     vectorstore = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
 
-    enable_reranker = os.getenv("ENABLE_RERANKER", "false").lower() == "true"
-    if enable_reranker:
+    if ENABLE_RERANKER:
         try:
             reranker = get_reranker()
             return RerankRetriever(vectorstore=vectorstore, reranker=reranker, top_k=TOP_K, fetch_k=FETCH_K)

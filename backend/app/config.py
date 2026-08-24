@@ -16,7 +16,9 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
 TOP_K = int(os.getenv("TOP_K", "5"))
 FETCH_K = int(os.getenv("FETCH_K", "20"))
-ENABLE_RERANKER = os.getenv("ENABLE_RERANKER", "false").lower() == "true"
+ENABLE_RERANKER = os.getenv("ENABLE_RERANKER", "true").lower() == "true"
+RERANK_MODEL = os.getenv("RERANK_MODEL", "gte-rerank-v2")
+RERANK_TIMEOUT_S = float(os.getenv("RERANK_TIMEOUT_S", "3"))
 MAX_KNOWLEDGE_BASE_CHUNKS = int(os.getenv("MAX_KNOWLEDGE_BASE_CHUNKS", "2000"))
 CHECKPOINT_MAX_AGE_DAYS = int(os.getenv("CHECKPOINT_MAX_AGE_DAYS", "7"))
 

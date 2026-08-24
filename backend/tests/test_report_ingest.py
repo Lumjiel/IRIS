@@ -121,6 +121,7 @@ class TestSearchReports:
     @patch("langchain_community.vectorstores.Chroma")
     def test_search_with_stock_code_filter(self, mock_chroma, mock_embeddings):
         """按股票代码过滤检索"""
+        import asyncio
         from app.rag.report_ingest import search_reports
         mock_vectorstore = MagicMock()
         mock_chroma.return_value = mock_vectorstore
@@ -128,9 +129,11 @@ class TestSearchReports:
             (MagicMock(page_content="研报内容", metadata={"stock_code": "600196"}), 0.95)
         ]
 
-        results = search_reports("复星医药", stock_code="600196")
+        results = asyncio.run(search_reports("复星医药", stock_code="600196"))
 
         assert len(results) == 1
+        # 候选数(1) <= top_k(5)，不触发 rerank，score 保持 Chroma distance 语义
+        assert results[0]["reranked"] is False
         assert results[0]["score"] == 0.95
         assert results[0]["metadata"]["stock_code"] == "600196"
         mock_vectorstore.similarity_search_with_score.assert_called_once()
@@ -138,6 +141,7 @@ class TestSearchReports:
     @patch("app.rag.report_ingest.os.path.exists", return_value=False)
     def test_search_no_database(self, mock_exists):
         """数据库不存在时返回空"""
+        import asyncio
         from app.rag.report_ingest import search_reports
-        results = search_reports("复星医药")
+        results = asyncio.run(search_reports("复星医药"))
         assert results == []
