@@ -365,40 +365,58 @@ def query_financial_indicators(stock_code: str) -> str:
 # ============================================================
 # 工具 3: A 股实时行情查询（延时 15 分钟）
 # ============================================================
-def _tencent_quote_supplement(stock_code: str) -> Dict:
-    """腾讯行情补充字段（换手率/市盈率/市净率/总市值）。
+def _tencent_quote_supplement_batch(stock_codes) -> Dict[str, Dict]:
+    """批量版腾讯行情补充（单次请求，最多 30 只）。返回 {6位代码: supplement_dict}。
 
-    同花顺行情快照端点不含这四个字段（估值端点也只有 PE/PB），用 qt.gtimg.cn 补齐。
-    非官方接口，仅作 L0 增强：任何失败静默返回空 dict，绝不影响主流程。
     字段下标实测校准（2026-08-30，与同花顺估值端点交叉验证：PE 18.02/PB 1.25 一致）：
     [38]=换手率% [39]=PE(TTM) [45]=总市值(亿) [46]=PB
+    任何失败静默返回空 dict，绝不影响主流程。
     """
-    code = str(stock_code).strip().split(".")[0]
-    if not (len(code) == 6 and code.isdigit()):
+    qids, valid = [], []
+    for c in stock_codes[:30]:
+        code = str(c).strip().split(".")[0]
+        if not (len(code) == 6 and code.isdigit()):
+            continue
+        suffix = "sh" if code.startswith("6") else ("bj" if code.startswith(("4", "8")) else "sz")
+        qids.append(f"{suffix}{code}")
+        valid.append(code)
+    if not qids:
         return {}
-    suffix = "sh" if code.startswith("6") else ("bj" if code.startswith(("4", "8")) else "sz")
     try:
         import httpx
-        resp = httpx.get(f"https://qt.gtimg.cn/q={suffix}{code}", timeout=3)
+        resp = httpx.get("https://qt.gtimg.cn/q=" + ",".join(qids), timeout=3)
         resp.raise_for_status()
-        fields = resp.content.decode("gbk", errors="ignore").split('"')[1].split("~")
-        if len(fields) <= 46:
-            return {}
-        out: Dict = {}
-        if fields[38] and fields[38] not in ("", "0"):
-            out["换手率"] = f"{fields[38]}%"
-        if fields[39]:
-            out["市盈率"] = fields[39]
-        if fields[46]:
-            out["市净率"] = fields[46]
-        if fields[45]:
-            try:
-                out["总市值"] = str(float(fields[45]) * 1e8)  # 亿 → 元，对齐前端 formatBigInt
-            except ValueError:
-                pass
+        out: Dict[str, Dict] = {}
+        for line in resp.content.decode("gbk", errors="ignore").splitlines():
+            if '="' not in line or "v_" not in line:
+                continue
+            code = line.split("v_")[1].split("=")[0][2:]  # v_sh600196 → 600196
+            fields = line.split('="')[1].split("~")
+            if code not in valid or len(fields) <= 46:
+                continue
+            supp: Dict = {}
+            if fields[38] and fields[38] not in ("", "0"):
+                supp["换手率"] = f"{fields[38]}%"
+            if fields[39]:
+                supp["市盈率"] = fields[39]
+            if fields[46]:
+                supp["市净率"] = fields[46]
+            if fields[45]:
+                try:
+                    supp["总市值"] = str(float(fields[45]) * 1e8)  # 亿 → 元，对齐前端 formatBigInt
+                except ValueError:
+                    pass
+            if supp:
+                out[code] = supp
         return out
     except Exception:
         return {}
+
+
+def _tencent_quote_supplement(stock_code: str) -> Dict:
+    """单股腾讯行情补充字段（换手率/市盈率/市净率/总市值）。"""
+    return _tencent_quote_supplement_batch([stock_code]).get(
+        str(stock_code).strip().split(".")[0], {})
 
 
 @tool

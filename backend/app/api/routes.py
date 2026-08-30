@@ -809,6 +809,20 @@ async def market_snapshot(codes: str = ""):
         except Exception as e:
             errors.append({"code": code, "error": str(e)[:120]})
 
+    # 批量行情缺换手率/PE/PB/总市值，腾讯行情一次性补齐（fail-open）
+    try:
+        from app.tools.akshare_tools import _tencent_quote_supplement_batch
+        supplements = await asyncio.to_thread(
+            _tencent_quote_supplement_batch, [s.get("stock_code") for s in stocks if s.get("stock_code")])
+        for s in stocks:
+            supp = supplements.get(str(s.get("stock_code", "")).split(".")[0])
+            if supp:
+                for k, v in supp.items():
+                    s.setdefault(k, v)
+                s["data_source"] = "同花顺官方API·腾讯行情补充"
+    except Exception as e:
+        log.warning(f"行情补充字段获取失败（fail-open 跳过）: {e}")
+
     return {"indexes": indexes, "stocks": stocks, "errors": errors, "updated_at": updated_at}
 
 # ============================================================
