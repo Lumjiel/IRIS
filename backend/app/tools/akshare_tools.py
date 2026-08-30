@@ -365,6 +365,42 @@ def query_financial_indicators(stock_code: str) -> str:
 # ============================================================
 # 工具 3: A 股实时行情查询（延时 15 分钟）
 # ============================================================
+def _tencent_quote_supplement(stock_code: str) -> Dict:
+    """腾讯行情补充字段（换手率/市盈率/市净率/总市值）。
+
+    同花顺行情快照端点不含这四个字段（估值端点也只有 PE/PB），用 qt.gtimg.cn 补齐。
+    非官方接口，仅作 L0 增强：任何失败静默返回空 dict，绝不影响主流程。
+    字段下标实测校准（2026-08-30，与同花顺估值端点交叉验证：PE 18.02/PB 1.25 一致）：
+    [38]=换手率% [39]=PE(TTM) [45]=总市值(亿) [46]=PB
+    """
+    code = str(stock_code).strip().split(".")[0]
+    if not (len(code) == 6 and code.isdigit()):
+        return {}
+    suffix = "sh" if code.startswith("6") else ("bj" if code.startswith(("4", "8")) else "sz")
+    try:
+        import httpx
+        resp = httpx.get(f"https://qt.gtimg.cn/q={suffix}{code}", timeout=3)
+        resp.raise_for_status()
+        fields = resp.content.decode("gbk", errors="ignore").split('"')[1].split("~")
+        if len(fields) <= 46:
+            return {}
+        out: Dict = {}
+        if fields[38] and fields[38] not in ("", "0"):
+            out["换手率"] = f"{fields[38]}%"
+        if fields[39]:
+            out["市盈率"] = fields[39]
+        if fields[46]:
+            out["市净率"] = fields[46]
+        if fields[45]:
+            try:
+                out["总市值"] = str(float(fields[45]) * 1e8)  # 亿 → 元，对齐前端 formatBigInt
+            except ValueError:
+                pass
+        return out
+    except Exception:
+        return {}
+
+
 @tool
 def query_stock_quote(stock_code: str) -> str:
     """
@@ -386,6 +422,12 @@ def query_stock_quote(stock_code: str) -> str:
             from app.tools.hithink_tools import fetch_quote as _ht_quote
 
             quote = _ht_quote(stock_code)
+            # 行情快照缺换手率/PE/PB/总市值，用腾讯行情补齐（同花顺估值端点无这几项）
+            supplement = _tencent_quote_supplement(stock_code)
+            if supplement:
+                for k, v in supplement.items():
+                    quote.setdefault(k, v)
+                quote["data_source"] = "同花顺官方API·腾讯行情补充"
             quote.setdefault("data_source", "同花顺官方API")
             logger.info("[Tool] 同花顺官方API行情成功: price=%s", quote.get("最新价"))
             return json.dumps({"error": False, "degraded": False, "quote": quote},
