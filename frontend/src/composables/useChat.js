@@ -145,7 +145,19 @@ export function useChat() {
             if (e.status === "running") e.status = "done";
           });
         }
-        if (loadingMsg.type === "loading") loadingMsg.type = "chat";
+        if (loadingMsg.type === "loading") {
+          // 流式结束仍无内容 = LLM 调用失败（如 key 失效/额度耗尽），明确报错而非永远"思考中"
+          if (!loadingMsg.report && (!loadingMsg.content || loadingMsg.content === "思考中…")) {
+            loadingMsg.type = "error";
+            loadingMsg.content = "回复生成失败（LLM 调用异常），请稍后重试";
+          } else {
+            loadingMsg.type = "chat";
+          }
+        } else if ((loadingMsg.type === "research" || loadingMsg.type === "refine") && !loadingMsg.report) {
+          // 研报流式中断且未产出任何内容
+          loadingMsg.type = "error";
+          loadingMsg.content = "研报生成中断，请重新发起研究";
+        }
         // 持久化研究/修订报告，供侧栏历史与 HistoryView 展示（chat 对话不入库）
         if (loadingMsg.report) {
           saveSession({

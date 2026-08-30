@@ -51,6 +51,9 @@
         </div>
       </header>
 
+      <!-- 财经资讯横滚条（顶栏下方通栏，加载失败静默降级） -->
+      <NewsTicker class="shrink-0" />
+
       <!-- 消息列表 -->
       <main ref="scrollEl" class="flex-1 overflow-y-auto">
         <!-- ============ 空状态：功能引导中心 ============ -->
@@ -161,6 +164,12 @@
                   :done="!msg.streaming"
                   :data-source="msg.quote?.data_source || ''"
                 />
+                <!-- 研报正文（流式渲染） -->
+                <ReportViewer
+                  v-if="msg.report"
+                  :content="msg.report"
+                  :streaming="!!msg.streaming"
+                />
                 <ActionBar
                   v-if="msg.report && !msg.streaming && msg.type !== 'loading'"
                   :report="msg.report"
@@ -206,8 +215,6 @@
       <!-- 底部输入 -->
       <footer class="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 shrink-0">
         <div class="max-w-3xl mx-auto">
-          <!-- 热点新闻横滚条（非核心功能，加载失败静默降级） -->
-          <NewsTicker class="mb-2" />
           <div class="flex items-end gap-2 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10 transition-colors duration-200 px-4 py-2">
             <textarea
               ref="inputBox"

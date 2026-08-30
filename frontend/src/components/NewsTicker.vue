@@ -3,7 +3,7 @@
     <div class="flex items-center h-8">
       <span class="shrink-0 px-2.5 text-label text-amber-500 dark:text-amber-400 border-r border-slate-200 dark:border-slate-700 flex items-center gap-1">
         <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
-        热点
+        资讯
       </span>
       <div class="flex-1 overflow-hidden relative">
         <div class="ticker-track flex items-center gap-6 px-3 whitespace-nowrap">
@@ -35,12 +35,13 @@
 
 <script setup>
 /**
- * NewsTicker — 输入框上方的热点新闻横滚条。
- * 复用已有的 fetchAihotNews() 代理端点（api.js 已封装）。
+ * NewsTicker — 顶栏下方的财经快讯横滚条。
+ * 优先拉 /api/finnews（东财全球快讯，akshare + 5 分钟缓存），
+ * 失败回退 fetchAihotNews()（AI 资讯）。
  * 自动滚动 + 悬停暂停 + 点击跳转原文。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { fetchAihotNews } from "../services/api";
+import { fetchAihotNews, fetchFinNews } from "../services/api";
 
 const items = ref([]);
 const paused = ref(false);
@@ -49,6 +50,19 @@ let timer = null;
 const loopItems = computed(() => [...items.value, ...items.value]);
 
 async function load() {
+  try {
+    const data = await fetchFinNews(15);
+    const list = data?.items || [];
+    if (list.length) {
+      items.value = list.map((it) => ({
+        title: it.title || "",
+        url: it.url || null,
+      })).filter((it) => it.title);
+      return;
+    }
+  } catch {
+    // 财经快讯失败，回退 AI 资讯
+  }
   try {
     const data = await fetchAihotNews(12);
     const list = data?.items || data?.data || [];

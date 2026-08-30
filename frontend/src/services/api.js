@@ -181,6 +181,15 @@ export async function fetchAihotNews(take = 20, query = null) {
 }
 
 /**
+ * 获取东财全球财经快讯（后端 akshare，5 分钟缓存）
+ */
+export async function fetchFinNews(take = 15) {
+  const response = await fetch(`${API_BASE}/api/finnews?take=${take}`);
+  if (!response.ok) throw new Error('Failed to fetch finance news');
+  return await response.json();
+}
+
+/**
  * 保存报告到创作目录
  */
 export async function saveReport(query, report, watermark = true) {

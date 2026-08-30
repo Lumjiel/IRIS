@@ -521,6 +521,36 @@ async def delete_memory_item(memory_key: str, user_id: str):
         raise HTTPException(status_code=500, detail="删除失败")
     return {"status": "success", "message": "记忆已删除"}
 
+# --- 财经快讯（东财全球快讯，akshare + 5 分钟缓存） ---
+_finnews_cache: dict = {"ts": 0.0, "items": []}
+FINNEWS_TTL_S = 300
+
+@router.get("/finnews")
+async def finnews(take: int = 15):
+    """东财全球财经快讯，供前端资讯横滚条；失败返回 502，前端回退 AI HOT"""
+    now = time.time()
+    if _finnews_cache["items"] and now - _finnews_cache["ts"] < FINNEWS_TTL_S:
+        return {"items": _finnews_cache["items"][:take]}
+    try:
+        import akshare as ak
+        df = await asyncio.to_thread(ak.stock_info_global_em)
+        items = []
+        for _, row in df.head(30).iterrows():
+            title = str(row.get("标题") or "").strip()
+            if not title:
+                title = str(row.get("摘要") or "").strip()[:50]
+            if not title:
+                continue
+            url = str(row.get("链接") or "").strip()
+            items.append({"title": title[:60], "url": url or None})
+        if not items:
+            raise RuntimeError("empty feed")
+        _finnews_cache.update(ts=now, items=items)
+        return {"items": items[:take]}
+    except Exception as e:
+        log.warning(f"财经快讯获取失败: {e}")
+        raise HTTPException(status_code=502, detail="财经快讯暂时不可用")
+
 # --- AI HOT 新闻代理 ---
 import httpx
 

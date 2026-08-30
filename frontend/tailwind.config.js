@@ -35,10 +35,11 @@ export default {
       },
       // === 设计 token：严格执行 UI_DESIGN_GUIDE.md ===
       fontSize: {
-        // 三档封顶：24 大数字 / 14 正文 / 12 标签（禁止 10/11px）
+        // 三档封顶：24 大数字 / 15 正文 / 12 标签（禁止 10/11px）
         "data-xl": ["24px", { lineHeight: "1.2", fontWeight: "600" }],
-        body: ["14px", { lineHeight: "1.6" }],
+        body: ["15px", { lineHeight: "1.65" }],
         label: ["12px", { lineHeight: "1.5", fontWeight: "500" }],
+        caption: ["12px", { lineHeight: "1.45" }],
       },
       colors: {
         // 涨跌色：仅用于涨跌
