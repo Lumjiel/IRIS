@@ -34,7 +34,6 @@ router (conditional entry, NOT a node)
 **Key insight**: `router` is registered via `set_conditional_entry_point()` — it's a dispatch function, not a graph node.
 
 **Function Calling loop**: `search_agent` and `search_tools` form a loop — LLM decides when to call tools, executes them, and loops back until satisfied.
-**Key insight**: `router` is registered via `set_conditional_entry_point()` — it's a dispatch function, not a graph node.
 
 ### AgentState (20+ fields)
 
@@ -98,7 +97,10 @@ Defined in `backend/app/graph/state.py` as a `TypedDict`:
 `backend/app/tools/akshare_tools.py`:
 
 - **4 tools**: `query_stock_info`, `query_financial_indicators`, `query_stock_quote`, `query_stock_news`
-- **3-tier fallback**: East Money → Snowball/Sina → Mock data
+- **4-tier fallback (2026-08 起)**: 同花顺官方API（L0，`hithink_tools.py`）→ East Money → Snowball/Sina → Mock data。
+  腾讯云服务器直连东财被封（Connection aborted），实际只剩 L0 可达——**服务器部署的降级链事实 = 同花顺单链**
+- **行情字段增强**: 同花顺行情端点不含换手率/PE/PB/总市值（估值端点也只有 PE/PB），
+  `_tencent_quote_supplement_batch()` 用 qt.gtimg.cn 补齐（字段下标经交叉验证），fail-open，data_source 标注"同花顺官方API·腾讯行情补充"
 - **Module-level proxy cleanup**: clears `HTTP_PROXY/HTTPS_PROXY` on import
 - **Never throws exceptions**: returns structured JSON error on failure
 - **LangChain `@tool` decorator**: Function Calling ready
@@ -163,7 +165,7 @@ IRIS/
 │   │   │       ├── planner.py       # 搜索规划（async）
 │   │   │       ├── researcher.py    # RAG 检索 + Grader 审计
 │   │   │       ├── search_agent.py  # Function Calling agent（LLM 驱动工具调用）
-│   │   │       ├── data_collector.py # AKShare 数据拉取（扇出并行 + 三层降级）
+│   │   │       ├── data_collector.py # AKShare 数据拉取（扇出并行 + 四层降级）
 │   │   │       ├── writer.py        # 中文研报撰写（async）
 │   │   │       ├── reviewer.py      # 质量审查 + cosine 相似度早停
 │   │   │       └── refiner.py       # 双模式修订（async）
@@ -171,7 +173,8 @@ IRIS/
 │   │   │   └── engine.py            # ChromaDB + DashScope embedding + 可选 CrossEncoder
 │   │   │   └── report_ingest.py     # 研报 PDF 入库 + 实体抽取
 │   │   ├── tools/
-│   │   │   ├── akshare_tools.py     # AKShare 4 工具（含新闻）+ 三层降级 + @tool 装饰器
+│   │   │   ├── akshare_tools.py     # AKShare 4 工具（含新闻）+ 四层降级 + 腾讯行情补充 + @tool
+│   │   │   ├── hithink_tools.py     # 同花顺官方 Financial-API 客户端（L0，fail-open）
 │   │   │   ├── search_tools.py      # Function Calling @tool 声明
 │   │   │   └── search.py            # Tavily 搜索封装
 │   │       ├── llm.py               # LLM 工厂 + 自动降级
@@ -211,13 +214,16 @@ IRIS/
 
 | Variable | Description | Default |
 | ---------- | ------------- | --------- |
-| `OPENAI_API_KEY` | DeepSeek API key | - |
-| `OPENAI_API_BASE` | API base URL | `https://api.deepseek.com/v1` |
-| `LLM_MODEL_PRIMARY` | Primary model | `qwen3.7-plus` |
-| `LLM_MODEL_FALLBACK` | Fallback model | `deepseek-v4-flash` |
+| `OPENAI_API_KEY` | LLM API key（DashScope compatible-mode） | - |
+| `OPENAI_API_BASE` | API base URL | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `LLM_MODEL_PRIMARY` | Primary model | `qwen3.8-27b` |
+| `LLM_MODEL_FALLBACK` | Fallback model | `deepseek-v4-flash-0731` |
+| `LLM_MODEL_{ROUTER|PLANNER|RESEARCHER|WRITER|REVIEWER|REFINER}` | 逐节点模型路由（可选） | - |
+| `DASHSCOPE_API_KEY` | Embedding/重排（text-embedding-v4, gte-rerank-v2） | - |
 | `TAVILY_API_KEY` | Tavily search API key | - |
+| `HITHINK_FINANCE_API_KEY` | 同花顺官方 Financial-API key（L0 数据源） | - |
+| `ENABLE_HITHINK` / `HITHINK_BASE_URL` / `HITHINK_TIMEOUT_S` | 同花顺层开关/地址/超时 | `true` / fuyao.aicubes.cn / 5s |
 | `LANGSMITH_API_KEY` | LangSmith observability (optional) | - |
-| `DEEPSEEK_API_KEY` | DeepSeek key (legacy compat) | - |
 
 ---
 
@@ -251,7 +257,7 @@ IRIS/
 - **Why LangGraph?** Explicit state + conditional routing + Checkpoint, ideal for auditable deterministic workflows
 - **How to prevent infinite loops?** MAX_REVISIONS(5) + cosine similarity early-stop(0.95)
 - **How to prevent hallucination?** Data-opinion separation + source attribution + honest reporting
-- **How to handle degradation?** 3-tier data sources + LLM primary/fallback + tool-level never-throw
+- **How to handle degradation?** 4-tier data sources (同花顺 L0 → 东财 → 雪球/新浪 → Mock) + LLM primary/fallback + tool-level never-throw
 - **Multi-agent architecture?** 8-node collaboration with Function Calling loop (search_agent ⇄ search_tools)
 - **Function Calling?** `@tool` declaration + `bind_tools` + custom `ToolNode` + LLM autonomous decision (not hardcoded)
 - **Memory system?** conversation_summary incremental + checkpoint cross-session persistence
