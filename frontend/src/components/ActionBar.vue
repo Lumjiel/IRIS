@@ -1,5 +1,5 @@
 <template>
-  <div class="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-6 py-3 flex items-center gap-3">
+  <div class="border-t border-slate-200/70 dark:border-slate-700/60 bg-white/40 dark:bg-slate-800/40 backdrop-blur-xl px-6 py-3 flex items-center gap-3">
     <div class="text-label text-slate-500 flex-1 truncate">
       数据来源：<span v-if="sources.length" class="dark:text-slate-300">{{ sources.join('、') }}</span>
       <span v-else>—</span>

@@ -10,8 +10,8 @@
       <span :class="changeBadge">{{ change }}</span>
     </div>
 
-    <!-- Sparkline：30 日走势 -->
-    <div class="my-3">
+    <!-- Sparkline：30 日走势（无 K 线数据时隐藏，fail-open） -->
+    <div v-if="klineData.length" class="my-3">
       <Sparkline :data="klineData" :width="240" :height="32" :color="sparkColor" />
     </div>
 

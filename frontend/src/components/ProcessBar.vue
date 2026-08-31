@@ -73,7 +73,7 @@
               <svg class="w-3 h-3 transition-transform" :class="artOpen[node.key] ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
               查看中间产物
             </button>
-            <div v-if="artOpen[node.key] && node.artifact" class="mt-1.5 p-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-md text-label text-slate-700 dark:text-slate-300 space-y-1">
+            <div v-if="artOpen[node.key] && node.artifact" class="mt-1.5 p-2.5 bg-white/50 dark:bg-slate-900/50 backdrop-blur rounded-md text-label text-slate-700 dark:text-slate-300 space-y-1">
               <div v-for="(line, i) in node.artifactLines" :key="i">→ {{ line }}</div>
             </div>
           </div>

@@ -35,3 +35,9 @@ Thumbs.db
 .claude/
 .understand-anything/
 .playwright-mcp/
+
+# WorkBuddy runtime / build backups
+.workbuddy/
+backend/.piptmp/
+backend/venv.bak/
+frontend/dist.bak/

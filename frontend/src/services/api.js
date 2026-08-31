@@ -1,8 +1,8 @@
 // frontend/src/services/api.js
 
 // 默认相对路径：开发走 vite proxy，Docker 生产走 nginx 反代（见 deploy/nginx.conf）。
-// 仅特殊部署（前后端不同域）才需要设置 VITE_API_BASE。
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+// 优先级：VITE_API_BASE > 设置页 iris_api_base > ""（同源）。见 services/config.js。
+import { getApiBase } from "./config";
 
 export function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -67,7 +67,7 @@ export async function uploadFiles(files) {
         formData.append('files', file);
     });
 
-    const response = await fetch(`${API_BASE}/api/upload`, {
+    const response = await fetch(`${getApiBase()}/api/upload`, {
         method: 'POST',
         body: formData,
     });
@@ -76,7 +76,7 @@ export async function uploadFiles(files) {
 }
 
 export async function clearContext() {
-  const response = await fetch(`${API_BASE}/api/clear`, {
+  const response = await fetch(`${getApiBase()}/api/clear`, {
       method: "POST"
   });
   if (!response.ok) throw new Error('Clear failed');
@@ -101,7 +101,7 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
   }
   
   try {
-    const response = await fetch(`${API_BASE}/api/chat`, {
+    const response = await fetch(`${getApiBase()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...memoryHeaders() },
       body: JSON.stringify({
@@ -175,7 +175,7 @@ export async function streamChat(query, search_mode, onData, onDone, onError, si
 export async function fetchAihotNews(take = 20, query = null) {
   const params = new URLSearchParams({ mode: 'selected', take });
   if (query) params.set('q', query);
-  const response = await fetch(`${API_BASE}/api/aihot/news?${params}`);
+  const response = await fetch(`${getApiBase()}/api/aihot/news?${params}`);
   if (!response.ok) throw new Error('Failed to fetch news');
   return await response.json();
 }
@@ -184,7 +184,7 @@ export async function fetchAihotNews(take = 20, query = null) {
  * 获取东财全球财经快讯（后端 akshare，5 分钟缓存）
  */
 export async function fetchFinNews(take = 15) {
-  const response = await fetch(`${API_BASE}/api/finnews?take=${take}`);
+  const response = await fetch(`${getApiBase()}/api/finnews?take=${take}`);
   if (!response.ok) throw new Error('Failed to fetch finance news');
   return await response.json();
 }
@@ -193,7 +193,7 @@ export async function fetchFinNews(take = 15) {
  * 保存报告到创作目录
  */
 export async function saveReport(query, report, watermark = true) {
-  const response = await fetch(`${API_BASE}/api/save-report`, {
+  const response = await fetch(`${getApiBase()}/api/save-report`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, report, watermark }),
@@ -203,19 +203,19 @@ export async function saveReport(query, report, watermark = true) {
 }
 
 export async function listMaterials() {
-  const response = await fetch(`${API_BASE}/api/materials`);
+  const response = await fetch(`${getApiBase()}/api/materials`);
   if (!response.ok) throw new Error('Failed to list materials');
   return await response.json();
 }
 
 export async function deleteMaterial(filename) {
-  const response = await fetch(`${API_BASE}/api/materials/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  const response = await fetch(`${getApiBase()}/api/materials/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   if (!response.ok) throw new Error('Failed to delete material');
   return await response.json();
 }
 
 export async function getMaterial(filename) {
-  const response = await fetch(`${API_BASE}/api/materials/${encodeURIComponent(filename)}`);
+  const response = await fetch(`${getApiBase()}/api/materials/${encodeURIComponent(filename)}`);
   if (!response.ok) throw new Error('Failed to get material');
   return await response.json();
 }
@@ -224,7 +224,7 @@ export async function getMaterial(filename) {
  * 获取会话记忆摘要
  */
 export async function getMemory(threadId) {
-  const response = await fetch(`${API_BASE}/api/memory/${encodeURIComponent(threadId)}`);
+  const response = await fetch(`${getApiBase()}/api/memory/${encodeURIComponent(threadId)}`);
   if (!response.ok) return { summary: '', turns: 0 };
   return await response.json();
 }
@@ -233,7 +233,7 @@ export async function getMemory(threadId) {
  * 清空会话记忆摘要（保留报告）
  */
 export async function resetMemory(threadId) {
-  const response = await fetch(`${API_BASE}/api/memory/${encodeURIComponent(threadId)}/reset`, {
+  const response = await fetch(`${getApiBase()}/api/memory/${encodeURIComponent(threadId)}/reset`, {
     method: 'POST'
   });
   if (!response.ok) throw new Error('Failed to reset memory');
@@ -244,7 +244,7 @@ export async function resetMemory(threadId) {
  * TTS 语音合成
  */
 export async function ttsSynthesize(text, voice = 'longtian_v3') {
-  const response = await fetch(`${API_BASE}/api/tts`, {
+  const response = await fetch(`${getApiBase()}/api/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, voice }),
@@ -261,7 +261,7 @@ export async function ttsSynthesize(text, voice = 'longtian_v3') {
  * 列出当前用户的长期记忆
  */
 export async function listMemories() {
-  const response = await fetch(`${API_BASE}/api/memory-items?user_id=${encodeURIComponent(_userId)}`, {
+  const response = await fetch(`${getApiBase()}/api/memory-items?user_id=${encodeURIComponent(_userId)}`, {
     headers: memoryHeaders(),
   });
   if (!response.ok) throw new Error('Failed to list memories');
@@ -272,10 +272,41 @@ export async function listMemories() {
  * 删除单条长期记忆（调用方负责二次确认）
  */
 export async function deleteMemory(key) {
-  const response = await fetch(`${API_BASE}/api/memory-items/${encodeURIComponent(key)}?user_id=${encodeURIComponent(_userId)}`, {
+  const response = await fetch(`${getApiBase()}/api/memory-items/${encodeURIComponent(key)}?user_id=${encodeURIComponent(_userId)}`, {
     method: 'DELETE',
     headers: memoryHeaders(),
   });
   if (!response.ok) throw new Error('Failed to delete memory');
+  return await response.json();
+}
+
+/**
+ * 手动新增一条长期记忆
+ * @param {string} kind fact / preference / watch_stock
+ * @param {string} content 记忆内容
+ */
+export async function createMemory(kind, content) {
+  const response = await fetch(`${getApiBase()}/api/memory-items?user_id=${encodeURIComponent(_userId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...memoryHeaders() },
+    body: JSON.stringify({ kind, content }),
+  });
+  if (!response.ok) throw new Error('Failed to create memory');
+  return await response.json();
+}
+
+/**
+ * 编辑一条长期记忆
+ * @param {string} key 记忆 key
+ * @param {string} kind fact / preference / watch_stock
+ * @param {string} content 新内容
+ */
+export async function updateMemory(key, kind, content) {
+  const response = await fetch(`${getApiBase()}/api/memory-items/${encodeURIComponent(key)}?user_id=${encodeURIComponent(_userId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...memoryHeaders() },
+    body: JSON.stringify({ kind, content }),
+  });
+  if (!response.ok) throw new Error('Failed to update memory');
   return await response.json();
 }

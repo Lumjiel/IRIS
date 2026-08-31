@@ -1,6 +1,6 @@
 <template>
   <div class="card overflow-hidden">
-    <div v-if="title" class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 border-l-4 border-l-accent">
+    <div v-if="title" class="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 bg-white/40 dark:bg-slate-800/40 backdrop-blur-lg border-l-4 border-l-accent">
       <h1 class="text-data-xl font-semibold text-slate-900">{{ title }}</h1>
       <p class="text-label text-slate-500 mt-1">{{ subtitle }}</p>
     </div>

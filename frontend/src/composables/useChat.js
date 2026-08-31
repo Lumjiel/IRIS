@@ -1,6 +1,7 @@
 import { ref, reactive, nextTick } from "vue";
 import { streamChat, newThreadId, getThreadId } from "../services/api";
 import { saveSession } from "../services/history";
+import { getStockKline } from "../services/finance";
 
 let msgId = 0;
 
@@ -136,6 +137,20 @@ export function useChat() {
           loadingMsg.financial = {
             ...fin.indicators,
           };
+        // K 线（30 日走势）：异步拉取，失败静默（Sparkline 自动隐藏），不阻塞主流程
+        if (fin?.quote && !loadingMsg._klineFetched) {
+          loadingMsg._klineFetched = true;
+          const kCode = fin.stock_code || fin.quote.stock_code || "";
+          if (kCode) {
+            getStockKline(kCode)
+              .then((d) => {
+                if (d?.kline?.length) loadingMsg.kline = d.kline;
+              })
+              .catch(() => {
+                /* fail-open：K 线不可用时隐藏走势图 */
+              });
+          }
+        }
       },
       () => {
         isLoading.value = false;
@@ -195,6 +210,17 @@ export function useChat() {
     newThreadId();
   };
 
+  /**
+   * 恢复历史会话（HistoryView 加载用）
+   * @param {Array} list 历史消息数组（含 report/events/quote 等字段）
+   */
+  const restoreMessages = (list) => {
+    if (!Array.isArray(list) || !list.length) return;
+    messages.value = list.map((m) => reactive({ ...m }));
+    msgId = messages.value.reduce((mx, m) => Math.max(mx, m.id || 0), 0);
+    nextTick(scrollToBottom);
+  };
+
   return {
     messages,
     isLoading,
@@ -204,5 +230,6 @@ export function useChat() {
     clearMessages,
     scrollToBottom,
     newThread,
+    restoreMessages,
   };
 }

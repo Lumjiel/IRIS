@@ -7,6 +7,7 @@
         @analyze="startPreset"
         @new-thread="handleNewThread"
         @replay="handleReplay"
+        @delete-history="handleDeleteHistory"
         @watch-added="toast.success(`已添加自选股 ${$event.name}`)"
         @watch-removed="toast.success('已移出自选股')"
       />
@@ -25,6 +26,7 @@
             @analyze="sidebarOpen = false; startPreset($event)"
             @new-thread="sidebarOpen = false; handleNewThread()"
             @replay="sidebarOpen = false; handleReplay($event)"
+            @delete-history="sidebarOpen = false; handleDeleteHistory($event)"
             @watch-added="toast.success(`已添加自选股 ${$event.name}`)"
             @watch-removed="toast.success('已移出自选股')"
           />
@@ -35,207 +37,50 @@
     <!-- ============ 主区 ============ -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- 顶栏 -->
-      <header class="h-12 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 flex items-center justify-between gap-3 shrink-0">
-        <div class="flex items-center gap-3 min-w-0">
-          <!-- 移动端：打开抽屉侧栏 -->
-          <button
-            class="lg:hidden p-1.5 -ml-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-            aria-label="打开侧栏"
-            @click="sidebarOpen = true"
-          >
-            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-          </button>
-          <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-soft shrink-0">IR</div>
-          <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">IRIS 投研助手</span>
-          <span class="text-label text-slate-400 dark:text-slate-500 hidden lg:inline truncate">LangGraph 多智能体协同 · AKShare 真实数据</span>
-        </div>
-      </header>
+      <ChatHeader @open-drawer="sidebarOpen = true" />
 
       <!-- 财经资讯横滚条（顶栏下方通栏，加载失败静默降级） -->
       <NewsTicker class="shrink-0" />
 
       <!-- 消息列表 -->
       <main ref="scrollEl" class="flex-1 overflow-y-auto">
-        <!-- ============ 空状态：功能引导中心 ============ -->
-        <div v-if="messages.length === 0" class="min-h-full flex items-center justify-center py-10 px-4">
-          <div class="w-full max-w-2xl">
-            <!-- 品牌区 -->
-            <div class="text-center mb-8">
-              <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center shadow-soft">
-                <svg class="w-9 h-9 text-white" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3">
-                  <rect x="8" y="34" width="8" height="22" rx="2"/>
-                  <rect x="20" y="22" width="8" height="34" rx="2"/>
-                  <rect x="32" y="30" width="8" height="26" rx="2"/>
-                  <rect x="44" y="14" width="8" height="42" rx="2"/>
-                </svg>
-              </div>
-              <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">今天想研究点什么？</h1>
-              <p class="text-label text-slate-500 dark:text-slate-400 mt-2">输入股票代码或主题，IRIS 的多智能体团队将为你完成「检索 → 分析 → 撰写」全流程</p>
-            </div>
+        <!-- 空状态：功能引导中心 -->
+        <EmptyState
+          v-if="messages.length === 0"
+          :presets="PRESETS"
+          :hot-stocks="HOT_STOCKS"
+          :hot-source="hotSource"
+          :recent-history="recentHistory"
+          @preset-click="startPreset"
+          @hot-click="startPreset"
+          @replay="handleReplay"
+        />
 
-            <!-- 功能卡片 -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-              <button
-                v-for="p in PRESETS"
-                :key="p.title"
-                @click="startPreset(p.prompt)"
-                class="text-left p-4 rounded-card border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-accent/60 hover:shadow-soft hover:-translate-y-0.5 transition-all duration-200 group"
-              >
-                <div class="flex items-start gap-3">
-                  <div class="w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-accent shrink-0 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-500/20 transition-colors" v-html="p.icon"></div>
-                  <div class="min-w-0">
-                    <div class="text-body font-semibold text-slate-900 dark:text-slate-100 group-hover:text-accent transition-colors">{{ p.title }}</div>
-                    <div class="text-label text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{{ p.desc }}</div>
-                  </div>
-                </div>
-              </button>
-            </div>
-
-            <!-- 热门标的 -->
-            <div class="text-center">
-              <div class="text-label text-slate-400 dark:text-slate-500 mb-2.5">热门标的</div>
-              <div class="flex flex-wrap justify-center gap-2">
-                <button
-                  v-for="s in HOT_STOCKS"
-                  :key="s.code"
-                  @click="startPreset(`分析${s.name}（${s.code}）的投资价值`)"
-                  class="px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-label text-slate-600 dark:text-slate-300 hover:border-accent/60 hover:text-accent transition-colors"
-                >
-                  {{ s.name }} · {{ s.code }}
-                </button>
-              </div>
-            </div>
-
-            <!-- 最近研究（有历史时） -->
-            <div v-if="recentHistory.length" class="mt-8">
-              <div class="text-label text-slate-400 dark:text-slate-500 mb-2.5 text-center">最近研究</div>
-              <div class="space-y-1.5">
-                <button
-                  v-for="h in recentHistory"
-                  :key="h.id"
-                  @click="handleReplay(h)"
-                  class="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
-                >
-                  <span class="text-body text-slate-700 dark:text-slate-300 truncate">{{ h.query || '未命名会话' }}</span>
-                  <span class="text-label text-slate-400 shrink-0 ml-3">{{ formatTime(h.timestamp) }}</span>
-                </button>
-              </div>
-            </div>
-
-            <p class="text-center text-label text-slate-400 dark:text-slate-500 mt-8">
-              IRIS 由多个 AI 智能体协同工作 · 报告仅供参考，不构成投资建议
-            </p>
-          </div>
-        </div>
-
-        <!-- ============ 消息流 ============ -->
+        <!-- 消息流 -->
         <div v-else class="max-w-3xl mx-auto py-6 px-4 space-y-4">
-          <div v-for="msg in messages" :key="msg.id" class="flex gap-3" :class="msg.role === 'user' ? 'justify-end' : ''">
-            <!-- AI 头像 -->
-            <div v-if="msg.role !== 'user'" class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center shrink-0 text-white text-xs font-bold mt-1 shadow-soft ai-avatar">IR</div>
-
-            <div class="max-w-[85%] min-w-0 md:max-w-[75%]" :class="msg.role === 'user' ? 'order-1' : ''">
-              <!-- 用户消息 -->
-              <div v-if="msg.role === 'user'">
-                <div class="bg-accent text-white px-4 py-2.5 rounded-2xl rounded-br-md text-body user-bubble relative dark:bg-indigo-600">{{ msg.content }}</div>
-              </div>
-
-              <!-- AI 消息：CHAT -->
-              <div v-else-if="msg.type === 'chat'" class="space-y-2">
-                <div class="bg-white border border-slate-200 dark:bg-slate-800 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-soft">
-                  <div class="text-body text-slate-700 dark:text-slate-300 leading-relaxed">{{ msg.content }}</div>
-                </div>
-                <!-- 闲聊路径也展示过程（记忆注入 + 对话节点） -->
-                <ProcessBar
-                  v-if="msg.events && msg.events.length"
-                  :events="msg.events"
-                  :intent="msg.intent"
-                  :done="true"
-                />
-              </div>
-
-              <!-- AI 消息：RESEARCH / REFINE -->
-              <div v-else-if="msg.type === 'research' || msg.type === 'refine'" class="space-y-3">
-                <MarketDataCard v-if="msg.quote" :quote="msg.quote" :kline="msg.kline || []" />
-                <FinancialCard v-if="msg.financial" :financial="msg.financial" />
-                <ProcessBar
-                  :events="msg.events || []"
-                  :intent="msg.intent"
-                  :done="!msg.streaming"
-                  :data-source="msg.quote?.data_source || ''"
-                />
-                <!-- 研报正文（流式渲染） -->
-                <ReportViewer
-                  v-if="msg.report"
-                  :content="msg.report"
-                  :streaming="!!msg.streaming"
-                />
-                <ActionBar
-                  v-if="msg.report && !msg.streaming && msg.type !== 'loading'"
-                  :report="msg.report"
-                  :sources="msg.quote?.data_source ? [msg.quote.data_source] : []"
-                  @copy="handleCopy(msg)"
-                  @download="handleDownload(msg)"
-                  @save="handleSave(msg)"
-                />
-              </div>
-
-              <!-- AI 消息：加载中 -->
-              <div v-else-if="msg.type === 'loading'" class="bg-white border border-slate-200 dark:bg-slate-800 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-soft">
-                <div class="flex items-center gap-2 text-body text-slate-500 dark:text-slate-400">
-                  <span class="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
-                  {{ msg.content || '思考中…' }}
-                </div>
-                <!-- 骨架屏：研究流程耗时数分钟，shimmer 块降低等待焦虑 -->
-                <!-- 研究流程节点时间线：intent 为 research/refine 时 type 仍是 loading，
-                     必须在 loading 分支内渲染，否则整个流程期间看不到任何 agent 进度 -->
-                <ProcessBar
-                  :events="msg.events || []"
-                  :intent="msg.intent"
-                  :done="false"
-                  class="mt-3"
-                />
-                <!-- 骨架屏：研究流程耗时数分钟，shimmer 块降低等待焦虑（有时间线时隐藏） -->
-                <div v-if="!(msg.events && msg.events.length)" class="mt-3 space-y-2.5" aria-hidden="true">
-                  <div class="skeleton-line h-3 rounded bg-slate-100 dark:bg-slate-700/60 w-full"></div>
-                  <div class="skeleton-line h-3 rounded bg-slate-100 dark:bg-slate-700/60 w-5/6"></div>
-                  <div class="skeleton-line h-14 rounded-lg bg-slate-100 dark:bg-slate-700/60 w-full"></div>
-                </div>
-              </div>
-
-              <!-- AI 消息：错误 -->
-              <div v-else-if="msg.type === 'error'" class="bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 rounded-2xl rounded-bl-md px-4 py-3">
-                <div class="text-body text-red-600 dark:text-red-400">{{ msg.content }}</div>
-              </div>
-            </div>
-          </div>
+          <MessageBubble
+            v-for="msg in messages"
+            :key="msg.id"
+            :msg="msg"
+            :is-last-report="isLastReport(msg)"
+            :follow-up-value="followUp"
+            @copy="handleCopy"
+            @download="handleDownload"
+            @save="handleSave"
+            @update:follow-up-value="followUp = $event"
+            @follow-send="handleFollowUpSend"
+          />
         </div>
       </main>
 
       <!-- 底部输入 -->
-      <footer class="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 shrink-0">
-        <div class="max-w-3xl mx-auto">
-          <div class="flex items-end gap-2 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/10 transition-colors duration-200 px-4 py-2">
-            <textarea
-              ref="inputBox"
-              v-model="input"
-              @input="autoResize($event)"
-              @keydown.enter.exact.prevent="handleSend"
-              class="flex-1 bg-transparent resize-none text-body text-slate-700 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none leading-relaxed"
-              :rows="1"
-              placeholder="输入股票代码或研究主题，回车发送..."
-            />
-            <button
-              @click="handleSend"
-              :disabled="!input.trim() || isLoading"
-              class="shrink-0 w-10 h-10 rounded-md bg-accent hover:bg-accent/90 text-white flex items-center justify-center transition-colors shadow-sm disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </button>
-          </div>
-          <p class="text-label text-slate-400 dark:text-slate-500 text-center mt-1.5">IRIS 可能会犯错，请核实重要信息</p>
-        </div>
-      </footer>
+      <ChatInput
+        ref="chatInputRef"
+        v-model="input"
+        :disabled="isLoading"
+        :uploading="uploading"
+        @send="handleSend"
+      />
     </div>
   </div>
 
@@ -244,20 +89,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted } from "vue";
 import ChatSidebar from "../components/ChatSidebar.vue";
-import MarketDataCard from "../components/MarketDataCard.vue";
-import FinancialCard from "../components/FinancialCard.vue";
-import ProcessBar from "../components/ProcessBar.vue";
+import ChatHeader from "../components/chat/ChatHeader.vue";
+import EmptyState from "../components/chat/EmptyState.vue";
+import MessageBubble from "../components/chat/MessageBubble.vue";
+import ChatInput from "../components/chat/ChatInput.vue";
 import NewsTicker from "../components/NewsTicker.vue";
-import ReportViewer from "../components/ReportViewer.vue";
-import ActionBar from "../components/ActionBar.vue";
 import Toast from "../components/Toast.vue";
 import { useChat } from "../composables/useChat";
 import { useToast } from "../composables/useToast";
 import { useAppStore } from "../stores/app";
-import { getHistory } from "../services/history";
-import { saveReport } from "../services/api";
+import { getHistory, deleteSession } from "../services/history";
+import { saveReport, setThreadId, uploadFiles } from "../services/api";
+import { getMarketHot } from "../services/finance";
 
 // --- Store ---
 const appStore = useAppStore();
@@ -266,8 +111,28 @@ const appStore = useAppStore();
 const sidebarOpen = ref(false);
 
 // --- 聊天 & Toast composables ---
-const { messages, isLoading, scrollEl, sendMessage, newThread } = useChat();
+const { messages, isLoading, scrollEl, sendMessage, newThread, restoreMessages } = useChat();
 const toast = useToast();
+
+// --- 报告追问（FollowUpInput 单例输入） ---
+const followUp = ref("");
+const isLastReport = (msg) => {
+  if (msg.type !== "research" && msg.type !== "refine") return false;
+  if (!msg.report || msg.streaming) return false;
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i];
+    if (m.role === "assistant" && (m.type === "research" || m.type === "refine") && m.report) {
+      return m.id === msg.id;
+    }
+  }
+  return false;
+};
+const handleFollowUpSend = () => {
+  const q = followUp.value.trim();
+  if (!q || isLoading.value) return;
+  followUp.value = "";
+  sendMessage(q, "hybrid");
+};
 
 // --- 空状态引导数据 ---
 const PRESETS = [
@@ -297,13 +162,28 @@ const PRESETS = [
   },
 ];
 
-const HOT_STOCKS = [
+// 热门标的：优先后端实时榜单（东财人气榜/涨幅回退），失败用静态兜底
+const HOT_FALLBACK = [
   { name: "贵州茅台", code: "600519" },
   { name: "复星医药", code: "600196" },
   { name: "宁德时代", code: "300750" },
   { name: "中国平安", code: "601318" },
   { name: "平安银行", code: "000001" },
 ];
+const HOT_STOCKS = ref(HOT_FALLBACK);
+const hotSource = ref("");
+
+const loadHotStocks = async () => {
+  try {
+    const data = await getMarketHot(6);
+    if (data?.items?.length) {
+      HOT_STOCKS.value = data.items.map((s) => ({ name: s.name, code: s.code }));
+      hotSource.value = data.source || "";
+    }
+  } catch {
+    // 榜单接口不可用时保留静态兜底
+  }
+};
 
 // --- 近期历史（供侧边栏 + 空状态） ---
 const recentHistory = ref([]);
@@ -313,19 +193,30 @@ const loadHistory = () => {
 
 // --- 输入 ---
 const input = ref("");
-const inputBox = ref(null);
-const autoResize = (e) => {
-  const el = e?.target || inputBox.value;
-  if (!el) return;
-  el.style.height = "auto";
-  el.style.height = Math.min(el.scrollHeight, 120) + "px";
-};
+const chatInputRef = ref(null);
+const uploading = ref(false);
 
-// --- 发送 ---
-const handleSend = () => {
-  const q = input.value.trim();
-  if (!q || isLoading.value) return;
+// --- 发送（支持携带 PDF 附件：先上传入库知识库，再拼接分析提示） ---
+const handleSend = async (files) => {
+  if (isLoading.value || uploading.value) return;
+  let q = input.value.trim();
+  if (files && files.length) {
+    uploading.value = true;
+    try {
+      await uploadFiles(files);
+      const names = files.map((f) => f.name).join("、");
+      const hint = q ? `${q}\n\n` : "";
+      q = `${hint}请分析我刚上传的文档：${names}（已入库知识库，请结合文档内容进行研究）`;
+    } catch {
+      toast.error("上传失败，请确认文件是有效的 PDF");
+      uploading.value = false;
+      return;
+    }
+    uploading.value = false;
+  }
+  if (!q) return;
   input.value = "";
+  chatInputRef.value?.clearFiles();
   sendMessage(q, "hybrid");
 };
 
@@ -341,28 +232,44 @@ const handleReplay = (h) => {
   startPreset(h.query);
 };
 
+/** 删除历史会话（tombstone 防复活，见 services/history.js） */
+const handleDeleteHistory = (h) => {
+  if (!h?.id) return;
+  if (!confirm(`确定删除会话「${h.query || '未命名会话'}」吗？`)) return;
+  deleteSession(h.id);
+  loadHistory();
+  toast.success('会话已删除');
+};
+
 /** 新会话 */
 const handleNewThread = () => {
   newThread();
   toast.success("已开启新会话");
 };
 
+/** 恢复 HistoryView 跳转过来的会话（threadId + 消息） */
+const restoreSession = () => {
+  try {
+    const raw = sessionStorage.getItem("iris_restore_session");
+    if (!raw) return;
+    sessionStorage.removeItem("iris_restore_session");
+    const s = JSON.parse(raw);
+    if (s?.threadId) setThreadId(s.threadId);
+    if (s?.messages?.length) {
+      restoreMessages(s.messages);
+      toast.success(`已恢复会话：${s.query || ""}`);
+    }
+  } catch {
+    // 恢复失败静默，不影响正常使用
+  }
+};
+
 // --- 生命周期 ---
 onMounted(() => {
   loadHistory();
+  loadHotStocks();
+  restoreSession();
 });
-
-// --- 时间格式化 ---
-const formatTime = (ts) => {
-  if (!ts) return "";
-  const d = new Date(ts);
-  const now = new Date();
-  const diff = now - d;
-  if (diff < 60000) return "刚刚";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
-  return d.toLocaleDateString();
-};
 
 // --- ActionBar 操作 ---
 const handleCopy = (msg) => {
@@ -398,24 +305,6 @@ const handleSave = async (msg) => {
 </script>
 
 <style scoped>
-.user-bubble::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  right: -5px;
-  width: 10px;
-  height: 10px;
-  background: #4F46E5;
-  clip-path: polygon(0 0, 100% 100%, 0 100%);
-}
-.ai-avatar {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.ai-avatar:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
-}
-
 /* 移动端抽屉：滑入滑出 */
 .drawer-enter-active,
 .drawer-leave-active {

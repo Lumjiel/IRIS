@@ -1,7 +1,7 @@
 <template>
-  <div class="h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
+  <div class="h-screen flex flex-col bg-transparent">
     <!-- 顶栏 -->
-    <header class="sticky top-0 z-20 border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 backdrop-blur">
+    <header class="sticky top-0 z-20 border-b border-slate-200/70 dark:border-slate-700/60 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl">
       <div class="max-w-2xl mx-auto px-3 h-12 flex items-center gap-2">
         <router-link
           to="/"
@@ -34,6 +34,15 @@
             <div class="num text-label" :class="changeInfo(idx).colorClass">
               {{ changeInfo(idx).display }}
             </div>
+            <!-- 30 日走势（涨红跌绿） -->
+            <Sparkline
+              v-if="idxKlines[idx.code]"
+              :data="idxKlines[idx.code]"
+              :width="144"
+              :height="32"
+              :color="lineColor(idx)"
+              class="mt-1"
+            />
           </div>
         </div>
 
@@ -99,6 +108,11 @@
 
               <!-- 展开明细 -->
               <div v-if="expanded === s.stock_code" class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+                <!-- 30 日走势（懒加载） -->
+                <div v-if="stockKlines[s.stock_code]" class="mb-3">
+                  <div class="text-label text-slate-400 mb-1">近 30 日走势</div>
+                  <Sparkline :data="stockKlines[s.stock_code]" :width="220" :height="44" :color="lineColor(s)" />
+                </div>
                 <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-caption">
                   <div v-for="field in DETAIL_FIELDS" :key="field.key">
                     <TermTip :term="field.key" />
@@ -116,7 +130,7 @@
             <input
               v-model="inputText"
               placeholder="输入代码添加，如 600519 或 600519 贵州茅台"
-              class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-body text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
+              class="flex-1 min-w-0 px-3 py-2 rounded-lg border border-slate-200/70 dark:border-slate-600/60 bg-white/60 dark:bg-slate-800/60 backdrop-blur-lg text-body text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400"
             />
             <button
               type="submit"
@@ -158,11 +172,12 @@
  * - 交易时段感知：收盘后停止轮询，仅加载时取一次最后快照
  * - fail-open：部分股票失败只显示错误条，不影响其余数据渲染
  */
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { getMarketSnapshot } from "../services/finance";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { getMarketSnapshot, getIndexKline, getStockKline, getStockName } from "../services/finance";
 import { useWatchlist } from "../composables/useWatchlist";
 import { parseChange, formatPrice, formatBigInt } from "../utils/format";
 import TermTip from "../components/TermTip.vue";
+import Sparkline from "../components/Sparkline.vue";
 
 const POLL_MS = 15_000;
 
@@ -192,6 +207,9 @@ const loading = ref(false);
 const expanded = ref("");
 const inputText = ref("");
 const inputError = ref("");
+// 走势图缓存：指数 / 个股 30 日收盘价（fail-open，无数据时不渲染）
+const idxKlines = reactive({});
+const stockKlines = reactive({});
 let timer = null;
 
 /** A 股交易时段（周一至周五 9:15-11:35 / 12:55-15:05，含缓冲） */
@@ -232,6 +250,37 @@ function badgeClass(q) {
   return `${base} bg-slate-100 text-slate-500 dark:bg-slate-700/50`;
 }
 
+/** A 股惯例：涨红跌绿（与全局 text-up/text-down 一致） */
+function lineColor(q) {
+  const d = changeInfo(q).direction;
+  if (d > 0) return "#dc2626";
+  if (d < 0) return "#059669";
+  return "#94a3b8";
+}
+
+/** 指数 30 日走势（fail-open：失败静默，卡片不显示走势图） */
+async function loadIndexKlines(list) {
+  await Promise.all((list || []).map(async (idx) => {
+    try {
+      const d = await getIndexKline(idx.code);
+      if (d?.kline?.length) idxKlines[idx.code] = d.kline;
+    } catch {
+      // 指数 K 线不可用 → 该卡不渲染走势
+    }
+  }));
+}
+
+/** 个股 30 日走势（展开时懒加载 + 缓存） */
+async function loadStockKline(code) {
+  if (stockKlines[code]) return;
+  try {
+    const d = await getStockKline(code);
+    if (d?.kline?.length) stockKlines[code] = d.kline;
+  } catch {
+    // 个股 K 线不可用 → 展开区不渲染走势
+  }
+}
+
 async function refresh(manual = false) {
   if (loading.value) return;
   loading.value = true;
@@ -239,6 +288,7 @@ async function refresh(manual = false) {
     const codes = watchlist.list.value.map((w) => w.code);
     const data = await getMarketSnapshot(codes);
     indexes.value = data.indexes || [];
+    loadIndexKlines(indexes.value);
     // 用自选列表里用户存的名称补齐（行情接口不返回名称）
     const nameMap = Object.fromEntries(
       watchlist.list.value.map((w) => [w.code, w.name]),
@@ -261,6 +311,7 @@ async function refresh(manual = false) {
 
 function toggleExpand(code) {
   expanded.value = expanded.value === code ? "" : code;
+  if (expanded.value === code) loadStockKline(code);
 }
 
 function removeStock(code) {
@@ -281,8 +332,14 @@ function addByInput() {
     return;
   }
   const rest = raw.replace(code, "").trim();
-  const name = rest || code;
-  if (watchlist.add({ code, name })) {
+  let name = rest || code;
+  // 只输代码时自动补全名称（失败保留代码显示）
+  if (name === code) {
+    getStockName(code).then((n) => {
+      const updated = { code, name: n };
+      if (watchlist.add(updated)) refresh();
+    });
+  } else if (watchlist.add({ code, name })) {
     refresh();
   }
   inputText.value = "";

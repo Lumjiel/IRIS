@@ -1,10 +1,11 @@
 <template>
-  <div v-if="items.length" class="overflow-hidden bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg">
+  <div v-if="items.length" class="overflow-hidden bg-white/50 dark:bg-slate-900/40 backdrop-blur-xl border border-slate-200/60 dark:border-slate-700/50 rounded-lg">
     <div class="flex items-center h-8">
       <span class="shrink-0 px-2.5 text-label text-amber-500 dark:text-amber-400 border-r border-slate-200 dark:border-slate-700 flex items-center gap-1">
         <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
         资讯
       </span>
+      <span v-if="sourceLabel" class="shrink-0 px-2 text-caption text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-700">{{ sourceLabel }}</span>
       <div class="flex-1 overflow-hidden relative">
         <div class="ticker-track flex items-center gap-6 px-3 whitespace-nowrap">
           <a
@@ -45,6 +46,7 @@ import { fetchAihotNews, fetchFinNews } from "../services/api";
 
 const items = ref([]);
 const paused = ref(false);
+const sourceLabel = ref('');
 let timer = null;
 
 const loopItems = computed(() => [...items.value, ...items.value]);
@@ -58,6 +60,7 @@ async function load() {
         title: it.title || "",
         url: it.url || null,
       })).filter((it) => it.title);
+      sourceLabel.value = '东财快讯';
       return;
     }
   } catch {
@@ -70,6 +73,7 @@ async function load() {
       title: it.title || it.name || it.headline || "",
       url: it.url || it.link || null,
     })).filter((it) => it.title);
+    sourceLabel.value = items.value.length ? 'AI 资讯' : '';
   } catch {
     // 新闻非核心功能，静默降级
   }

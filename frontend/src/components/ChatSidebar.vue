@@ -1,5 +1,5 @@
 <template>
-  <aside class="w-64 shrink-0 h-full flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+  <aside class="w-64 shrink-0 h-full flex flex-col border-r border-slate-200/70 dark:border-slate-700/60 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl">
     <!-- 新建会话 -->
     <div class="p-3">
       <button
@@ -29,7 +29,7 @@
             v-model="watchInput"
             @keydown.enter="addWatch"
             placeholder="代码或 名称+代码"
-            class="flex-1 min-w-0 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-label text-slate-700 dark:text-slate-300 focus:outline-none focus:border-accent"
+            class="flex-1 min-w-0 px-2 py-1 rounded border border-slate-200/70 dark:border-slate-600/60 bg-white/60 dark:bg-slate-900/60 text-label text-slate-700 dark:text-slate-300 focus:outline-none focus:border-accent"
           />
           <button
             @click="addWatch"
@@ -75,6 +75,11 @@
           >
             <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <span class="flex-1 min-w-0 text-body text-slate-600 dark:text-slate-400 truncate group-hover:text-slate-900 dark:group-hover:text-slate-200 transition-colors">{{ h.query || '未命名会话' }}</span>
+            <svg
+              class="w-3.5 h-3.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              @click.stop="$emit('delete-history', h)"
+            ><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
       </div>
@@ -129,11 +134,12 @@
 import { ref, computed, onMounted } from "vue";
 import { useWatchlist } from "../composables/useWatchlist";
 import { useAppStore } from "../stores/app";
+import { getStockName } from "../services/finance";
 
 const props = defineProps({
   history: { type: Array, default: () => [] },
 });
-const emit = defineEmits(["analyze", "new-thread", "replay", "watch-added", "watch-removed"]);
+const emit = defineEmits(["analyze", "new-thread", "replay", "watch-added", "watch-removed", "delete-history"]);
 
 const appStore = useAppStore();
 const watchlist = useWatchlist();
@@ -154,9 +160,13 @@ function parseWatchInput(raw) {
   return { code, name };
 }
 
-function addWatch() {
+async function addWatch() {
   const parsed = parseWatchInput(watchInput.value.trim());
   if (!parsed) return;
+  // 只输代码时自动补全名称（失败保留代码显示）
+  if (parsed.name === parsed.code) {
+    parsed.name = await getStockName(parsed.code);
+  }
   if (watchlist.add(parsed)) {
     emit("watch-added", parsed);
   }

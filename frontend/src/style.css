@@ -11,21 +11,32 @@
   body {
     @apply bg-slate-50 text-slate-900;
     font-feature-settings: "tnum" 1;
+    /* 毛玻璃基底：柔和渐变光斑，卡片虚化透出 */
+    background-image:
+      radial-gradient(1100px 520px at 8% -8%, rgb(99 102 241 / 0.14), transparent 62%),
+      radial-gradient(900px 460px at 108% 4%, rgb(56 189 248 / 0.12), transparent 58%),
+      radial-gradient(1000px 640px at 50% 116%, rgb(168 85 247 / 0.10), transparent 62%);
+    background-attachment: fixed;
   }
 
   .dark body {
     @apply bg-slate-900 text-slate-100;
+    background-image:
+      radial-gradient(1100px 520px at 8% -8%, rgb(99 102 241 / 0.16), transparent 62%),
+      radial-gradient(900px 460px at 108% 4%, rgb(14 116 144 / 0.14), transparent 58%),
+      radial-gradient(1000px 640px at 50% 116%, rgb(126 34 206 / 0.14), transparent 62%);
+    background-attachment: fixed;
   }
 }
 
-/* 卡片基底：纸张感，全站统一（参照 Perplexity / Stripe） */
+/* 毛玻璃卡片基底：全站统一（替代原"纸张感"白卡片） */
 @layer components {
   .card {
-    @apply bg-white border border-slate-200 rounded-card shadow-soft;
+    @apply bg-white/70 backdrop-blur-xl border border-white/60 rounded-card shadow-soft;
   }
 
   .dark .card {
-    @apply bg-slate-800 border-slate-700;
+    @apply bg-slate-800/60 border-white/10;
   }
 
   /* 数字等宽：金融数据必须对齐 */
