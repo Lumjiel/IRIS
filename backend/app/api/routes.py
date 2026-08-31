@@ -502,6 +502,12 @@ async def reset_memory(thread_id: str):
 
 
 # --- 长期记忆管理（方案 B） ---
+class MemoryItemRequest(BaseModel):
+    """手动新增/编辑长期记忆的请求体。"""
+    kind: str = "fact"  # fact / preference / watch_stock
+    content: str
+
+
 @router.get("/memory-items")
 async def list_memory_items(user_id: str):
     """列出该用户全部长期记忆（管理页/调试用）。"""
@@ -509,6 +515,36 @@ async def list_memory_items(user_id: str):
 
     items = await list_all_memories(user_id)
     return {"status": "ok", "items": items, "count": len(items)}
+
+
+@router.post("/memory-items")
+async def create_memory_item(payload: MemoryItemRequest, user_id: str):
+    """手动新增一条长期记忆（管理页「添加记忆」）。"""
+    from app.utils.memory_store import save_memories
+
+    kind = payload.kind if payload.kind in ("fact", "preference", "watch_stock") else "fact"
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="记忆内容不能为空")
+    n = await save_memories(user_id, [{"kind": kind, "content": content}])
+    if not n:
+        raise HTTPException(status_code=500, detail="记忆写入失败")
+    return {"status": "success", "message": "记忆已添加"}
+
+
+@router.put("/memory-items/{memory_key}")
+async def update_memory_item(memory_key: str, payload: MemoryItemRequest, user_id: str):
+    """编辑单条长期记忆（管理页「编辑」）。"""
+    from app.utils.memory_store import update_memory
+
+    kind = payload.kind if payload.kind in ("fact", "preference", "watch_stock") else "fact"
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="记忆内容不能为空")
+    ok = await update_memory(user_id, memory_key, kind, content)
+    if not ok:
+        raise HTTPException(status_code=404, detail="记忆不存在或更新失败")
+    return {"status": "success", "message": "记忆已更新"}
 
 
 @router.delete("/memory-items/{memory_key}")
@@ -752,6 +788,158 @@ async def get_stock_news(stock_code: str):
     return json.loads(result)
 
 
+@router.get("/stock/{stock_code}/kline")
+async def get_stock_kline(stock_code: str, days: int = 30):
+    """日 K 收盘价序列（前端 Sparkline 30 日走势用）。
+
+    多源降级：AKShare 东财日 K（重试）→ 腾讯 K 线接口。
+    东财常被掐连接时自动回退，保证本地/服务器都能出图。
+    """
+    days = max(5, min(int(days), 120))
+    code = stock_code.split(".")[0]
+
+    # 主源：AKShare 东财日 K（带重试）
+    for attempt in range(2):
+        try:
+            import akshare as ak
+            df = await asyncio.to_thread(
+                ak.stock_zh_a_hist, symbol=code, period="daily", adjust="qfq"
+            )
+            if df is not None and not df.empty:
+                tail = df.tail(days)
+                return {
+                    "code": stock_code,
+                    "kline": [round(float(x), 2) for x in tail["收盘"].tolist()],
+                    "dates": [str(x)[5:] for x in tail["日期"].astype(str).tolist()],
+                    "data_source": "AKShare 东方财富",
+                }
+        except Exception as e:
+            log.warning(f"K线[东财]第{attempt + 1}次失败: {e}")
+            await asyncio.sleep(0.5)
+
+    # 回退①：新浪 K 线（返回标准 dict list，本地稳定，结构干净）
+    try:
+        import requests
+        prefix = "sh" if code.startswith("6") else "sz"
+        url = (
+            f"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+            f"CN_MarketData.getKLineData?symbol={prefix}{code}&scale=240&ma=no&datalen={days}"
+        )
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        series = r.json()
+        if isinstance(series, list) and series:
+            tail = series[-days:]
+            return {
+                "code": stock_code,
+                "kline": [round(float(x["close"]), 2) for x in tail],
+                "dates": [x["day"][5:] for x in tail],
+                "data_source": "新浪财经",
+            }
+    except Exception as e:
+        log.warning(f"K线[新浪]回退失败: {e}")
+
+    # 回退②：腾讯 K 线（返回 list-of-list：[日期,开,收,高,低,量]，收盘在索引 2）
+    try:
+        import requests
+        prefix = "sh" if code.startswith("6") else "sz"
+        url = (
+            f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+            f"?param={prefix}{code},day,,,{days},qfq"
+        )
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        node = r.json().get("data", {}).get(f"{prefix}{code}", {})
+        rows = node.get("qfqday") or node.get("day") or []
+        if rows:
+            tail = rows[-days:]
+            return {
+                "code": stock_code,
+                "kline": [round(float(x[2]), 2) for x in tail],
+                "dates": [x[0][5:] for x in tail],
+                "data_source": "腾讯证券",
+            }
+    except Exception as e:
+        log.warning(f"K线[腾讯]回退失败: {e}")
+
+    raise HTTPException(status_code=502, detail="K线数据暂时不可用")
+
+
+# 指数代码 → 新浪/腾讯 symbol 映射（000001 与平安银行冲突，必须显式区分）
+_INDEX_SYMBOL_MAP = {
+    "000001": ("sh000001", "上证指数"),
+    "399001": ("sz399001", "深证成指"),
+    "399006": ("sz399006", "创业板指"),
+    "000300": ("sh000300", "沪深300"),
+    "000905": ("sh000905", "中证500"),
+    "399005": ("sz399005", "中小板指"),
+}
+
+
+@router.get("/index/{index_code}/kline")
+async def get_index_kline(index_code: str, days: int = 30):
+    """指数日 K 收盘价序列（前端指数卡 Sparkline 用）。
+
+    指数代码与个股重叠（如 000001 上证指数 vs 平安银行），单独端点显式区分。
+    多源降级：新浪 getKLineData（主）→ 腾讯 fqkline（辅），与股票 K 线同策略。
+    """
+    days = max(5, min(int(days), 120))
+    code = index_code.split(".")[0]
+
+    mapped = _INDEX_SYMBOL_MAP.get(code)
+    if mapped:
+        symbol, display = mapped
+    elif code.startswith(("000", "399")):
+        # 其它指数：000 系沪市、399 系深市
+        symbol = ("sh" if code.startswith("000") else "sz") + code
+        display = code
+    else:
+        raise HTTPException(status_code=400, detail="不支持的指数代码")
+
+    # 主源：新浪（指数与个股同一接口，symbol 带 sh/sz 前缀）
+    try:
+        import requests
+        url = (
+            f"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+            f"CN_MarketData.getKLineData?symbol={symbol}&scale=240&ma=no&datalen={days}"
+        )
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        series = r.json()
+        if isinstance(series, list) and series:
+            tail = series[-days:]
+            return {
+                "code": index_code,
+                "name": display,
+                "kline": [round(float(x["close"]), 2) for x in tail],
+                "dates": [x["day"][5:] for x in tail],
+                "data_source": "新浪财经",
+            }
+    except Exception as e:
+        log.warning(f"指数K线[新浪]失败({symbol}): {e}")
+
+    # 回退：腾讯（list-of-list，收盘在索引 2）
+    try:
+        import requests
+        url = (
+            f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+            f"?param={symbol},day,,,{days},qfq"
+        )
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        node = r.json().get("data", {}).get(symbol, {})
+        rows = node.get("qfqday") or node.get("day") or []
+        if rows:
+            tail = rows[-days:]
+            return {
+                "code": index_code,
+                "name": display,
+                "kline": [round(float(x[2]), 2) for x in tail],
+                "dates": [x[0][5:] for x in tail],
+                "data_source": "腾讯证券",
+            }
+    except Exception as e:
+        log.warning(f"指数K线[腾讯]回退失败({symbol}): {e}")
+
+    raise HTTPException(status_code=502, detail="指数K线数据暂时不可用")
+
+
 # ============================================================
 # 行情页批量快照（移动端行情 Tab 轮询用）
 # ============================================================
@@ -824,6 +1012,65 @@ async def market_snapshot(codes: str = ""):
         log.warning(f"行情补充字段获取失败（fail-open 跳过）: {e}")
 
     return {"indexes": indexes, "stocks": stocks, "errors": errors, "updated_at": updated_at}
+
+
+# ============================================================
+# 热门标的（东财人气榜，服务器回退实时涨幅）
+# ============================================================
+
+# 回退池：覆盖各板块的常见标的（按实时涨幅排序兜底）
+HOT_FALLBACK_CODES = [
+    ("贵州茅台", "600519"), ("复星医药", "600196"), ("宁德时代", "300750"),
+    ("中国平安", "601318"), ("平安银行", "000001"), ("招商银行", "600036"),
+    ("比亚迪", "002594"), ("中芯国际", "688981"), ("五粮液", "000858"),
+    ("紫金矿业", "601899"),
+]
+
+
+@router.get("/market/hot")
+async def market_hot(take: int = 6):
+    """热门标的：优先东财人气榜（akshare，本地开发可用），
+    失败回退预设池实时涨幅排序（同花顺 L0 链，服务器可用）。"""
+    take = max(1, min(int(take), 20))
+    # 1) 东财人气榜
+    try:
+        import akshare as ak
+        df = await asyncio.to_thread(ak.stock_hot_rank_em)
+        items = []
+        for _, row in df.head(take).iterrows():
+            name = str(row.get("股票名称") or "").strip()
+            code = str(row.get("股票代码") or "").strip()
+            if code and name:
+                items.append({"name": name, "code": code})
+        if items:
+            return {"items": items, "source": "东财人气榜", "updated_at": int(time.time() * 1000)}
+    except Exception as e:
+        log.warning(f"东财人气榜获取失败，回退实时涨幅排序: {e}")
+    # 2) 回退：预设池按实时涨跌幅排序（同花顺链）
+    try:
+        ranked = []
+        for name, code in HOT_FALLBACK_CODES:
+            result = json.loads(await asyncio.to_thread(query_stock_quote.invoke, code))
+            if result.get("error"):
+                continue
+            q = result.get("quote") or {}
+            pct = q.get("涨跌幅")
+            if pct is None:
+                pct = q.get("change_pct")
+            try:
+                pct_f = round(float(str(pct).replace("%", "")), 2)
+            except (TypeError, ValueError):
+                pct_f = 0.0
+            ranked.append({"name": name, "code": code, "change_pct": pct_f})
+        ranked.sort(key=lambda x: x["change_pct"], reverse=True)
+        return {
+            "items": ranked[:take],
+            "source": "实时涨幅排序",
+            "updated_at": int(time.time() * 1000),
+        }
+    except Exception as e:
+        log.warning(f"热门标的回退失败: {e}")
+        return {"items": [], "source": "", "updated_at": int(time.time() * 1000)}
 
 # ============================================================
 # 研报 RAG 入库与检索（阶段 5 新增）

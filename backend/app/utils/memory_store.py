@@ -238,6 +238,23 @@ async def delete_memory(user_id: str, key: str) -> bool:
         return False
 
 
+async def update_memory(user_id: str, key: str, kind: str, content: str) -> bool:
+    """管理 API：编辑单条记忆（保留原 key/thread_id/source，仅更新 kind/content）。"""
+    try:
+        async with open_store() as store:
+            it = await store.aget((MEMORY_NAMESPACE_PREFIX, user_id), key)
+            if it is None:
+                return False
+            v = dict(it.value or {})
+            v["kind"] = kind
+            v["content"] = content
+            await store.aput((MEMORY_NAMESPACE_PREFIX, user_id), key, v)
+            return True
+    except Exception as e:
+        log.warning(f"[Memory] 编辑失败: {e}")
+        return False
+
+
 # ============================================================
 # 会话级入口（routes.py 后台任务调用）
 # ============================================================
