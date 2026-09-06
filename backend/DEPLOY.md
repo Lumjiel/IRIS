@@ -33,7 +33,10 @@
 
 ---
 
-## Docker Compose 部署（推荐）
+## Docker Compose 部署（备选方案）
+
+> ⚠️ 当前生产环境**未使用**此方式，而是采用下方「无 Docker 部署」裸机方案（后端 8081 端口 + 已有 Nginx 容器反代）。
+> 此方式仅作为本地/隔离环境的一体化备选。
 
 一键部署前端 + 后端 + Nginx 反向代理。
 
@@ -116,12 +119,15 @@ environment:
 
 ---
 
-## 无 Docker 部署
+## 无 Docker 部署（当前生产环境采用）
+
+> 当前 `49.234.178.53`（OpenCloudOS 9）生产环境即采用此裸机方案：后端 venv 裸跑 **8081** 端口，Nginx 由**已有容器**托管并反代 `/api` → `172.17.0.1:8081`、静态文件 → `frontend/dist`。公网域名 `https://iris-jie.duckdns.org`。
 
 ### 后端
 
 ```bash
-cd /opt/iris/backend
+# 代码位置（服务器）
+cd /var/www/IRIS/backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -129,52 +135,46 @@ pip install -r requirements.txt
 cp .env.example .env
 vim .env
 
-# 启动（systemd 管理）
-sudo cp iris.service /etc/systemd/system/
-sudo systemctl enable iris
-sudo systemctl start iris
+# 启动（uvicorn，端口 8081，与 Nginx 反代对应）
+uvicorn main:app --host 0.0.0.0 --port 8081 --workers 1
+# 生产建议用 nohup / tmux / systemd 保活
 ```
 
 ### 前端
 
 ```bash
-cd /opt/iris/frontend
+cd /var/www/IRIS/frontend
 npm install
 npm run build  # 产物在 dist/
-
-# 将 dist/ 拷贝到 Nginx 目录
-sudo cp -r dist/* /var/www/iris/
+# dist/ 即被 Nginx 容器直接托管，无需手动拷贝
 ```
 
-### systemd 服务文件
-
-```ini
-[Unit]
-Description=IRIS Backend API
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/opt/iris/backend
-Environment="PATH=/opt/iris/backend/venv/bin"
-ExecStart=/opt/iris/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### Nginx 配置
-
-参考 `deploy/nginx.conf`，修改 `server_name` 和路径后：
+### 拉取最新代码（升级时）
 
 ```bash
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/iris
-sudo ln -s /etc/nginx/sites-available/iris /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
+cd /var/www/IRIS
+git fetch origin && git reset --hard origin/main
+# 重新执行后端依赖安装 + 前端 npm run build，再重启 uvicorn / Nginx
 ```
+
+### Nginx 反代（已有容器）
+
+已有 Nginx 容器监听 80/443，反代规则：
+
+```nginx
+location /api/ {
+    proxy_pass http://172.17.0.1:8081;   # 宿主机网桥地址 + 后端 8081
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;        # SSE 流式必需
+    proxy_read_timeout 300s;
+}
+```
+
+> `deploy/nginx.conf` 是 **Docker Compose 内部** 的 Nginx 模板（反代 `backend:8000`），与本裸机方案不同，仅作参考。
 
 ---
 

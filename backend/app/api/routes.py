@@ -997,11 +997,13 @@ async def market_snapshot(codes: str = ""):
         except Exception as e:
             errors.append({"code": code, "error": str(e)[:120]})
 
-    # 批量行情缺换手率/PE/PB/总市值，腾讯行情一次性补齐（fail-open）
+    # 批量行情缺换手率/PE/PB/总市值，腾讯行情一次性补齐（fail-open）。
+    # 只补同花顺层数据：Mock/降级数据不贴「同花顺·腾讯」标签，保持来源诚实。
     try:
         from app.tools.akshare_tools import _tencent_quote_supplement_batch
-        supplements = await asyncio.to_thread(
-            _tencent_quote_supplement_batch, [s.get("stock_code") for s in stocks if s.get("stock_code")])
+        target = [s.get("stock_code") for s in stocks
+                  if s.get("stock_code") and "同花顺" in str(s.get("data_source", ""))]
+        supplements = await asyncio.to_thread(_tencent_quote_supplement_batch, target) if target else {}
         for s in stocks:
             supp = supplements.get(str(s.get("stock_code", "")).split(".")[0])
             if supp:
@@ -1145,7 +1147,8 @@ async def system_status():
     if _status_cache["data"] and (now - _status_cache["ts"] < _STATUS_TTL):
         return _status_cache["data"]
 
-    # 轻量探测：行情工具自带三层降级，返回的 data_source 即当前实际数据层
+    # 轻量探测：行情工具自带降级链，返回的 data_source 即当前实际数据层。
+    # 探到真实数据源（同花顺/腾讯/AKShare/雪球）即在线；只有落到 Mock/异常才算离线。
     data_source = "未知"
     try:
         # invoke 返回 JSON 字符串（工具约定）；AKShare 为同步阻塞调用，
@@ -1157,9 +1160,10 @@ async def system_status():
     except Exception as e:
         data_source = f"异常（{str(e)[:40]}）"
 
+    offline = any(k in data_source for k in ("内置", "模拟", "异常", "未知"))
     payload = {
         "data_source": data_source,
-        "data_online": "AKShare" in data_source or "雪球" in data_source,
+        "data_online": bool(data_source) and not offline,
         "llm_degraded": _is_exhausted(),
         "primary_model": os.getenv("LLM_MODEL_PRIMARY", "qwen3.7-plus"),
         "fallback_model": os.getenv("LLM_MODEL_FALLBACK", "deepseek-v4-flash"),

@@ -21,6 +21,9 @@
             {{ item.title || item.name || '热点资讯' }}
           </a>
         </div>
+        <!-- 两缘渐隐：滚动文字淡出而非生硬截断（遮罩色近似玻璃底色） -->
+        <div class="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-white dark:from-slate-900 to-transparent" />
+        <div class="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-white dark:from-slate-900 to-transparent" />
       </div>
       <button
         @click="paused = !paused"

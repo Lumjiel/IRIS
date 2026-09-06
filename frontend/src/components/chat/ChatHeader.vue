@@ -11,7 +11,7 @@
       </button>
       <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-soft shrink-0">IR</div>
       <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">IRIS 投研助手</span>
-      <span class="text-label text-slate-400 dark:text-slate-500 hidden lg:inline truncate">LangGraph 多智能体协同 · AKShare 真实数据</span>
+      <span class="text-label text-slate-400 dark:text-slate-500 hidden lg:inline truncate">LangGraph 多智能体协同 · 同花顺/腾讯实时行情</span>
     </div>
   </header>
 </template>

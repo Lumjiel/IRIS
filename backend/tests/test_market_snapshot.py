@@ -82,8 +82,15 @@ class TestFetchQuotesBatch:
 # ============================================================
 
 class TestMarketSnapshot:
+    @pytest.fixture(autouse=True)
+    def _no_tencent(self, monkeypatch):
+        """路由层测试不打真网络：腾讯补充默认空，需要时在用例内覆盖。"""
+        import app.tools.akshare_tools as at
+        monkeypatch.setattr(at, "_tencent_quote_supplement_batch", lambda codes: {})
+
     async def test_batch_hit_no_errors(self, monkeypatch):
-        """批量全命中：stocks 来自同花顺层，errors 为空。"""
+        """批量全命中：stocks 来自同花顺层 + 腾讯补充估值字段，errors 为空。"""
+        import app.tools.akshare_tools as at
         from app.api.routes import market_snapshot
 
         def fake_batch(codes):
@@ -92,11 +99,17 @@ class TestMarketSnapshot:
             return {c: _hithink_quote(c) for c in codes}
 
         monkeypatch.setattr(ht, "fetch_quotes_batch", fake_batch)
+        monkeypatch.setattr(at, "_tencent_quote_supplement_batch",
+                            lambda codes: {c: {"换手率": "0.36%", "市盈率": "20.42",
+                                               "市净率": "6.62", "总市值": "1.66e+12"}
+                                           for c in codes})
         resp = await market_snapshot(codes="600519,600196")
         assert len(resp["indexes"]) == 3
         assert len(resp["stocks"]) == 2
         assert resp["errors"] == []
-        assert all(s["data_source"] == "同花顺官方API" for s in resp["stocks"])
+        assert all(s["data_source"] == "同花顺官方API·腾讯行情补充" for s in resp["stocks"])
+        assert resp["stocks"][0]["换手率"] == "0.36%"
+        assert resp["stocks"][0]["市盈率"] == "20.42"
 
     async def test_per_stock_fallback_when_hithink_down(self, monkeypatch):
         """同花顺整层失败 → 逐股落完整降级链（此处 mock 到模拟快照）。"""

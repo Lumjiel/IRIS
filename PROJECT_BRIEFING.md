@@ -45,7 +45,7 @@ IRIS/
 │   │       ├── memory.py            # 会话摘要：增量更新 + 压缩 + 搜索方向避让
 │   │       └── logger.py            # 结构化日志
 │   ├── eval/                        # 评测框架
-│   ├── tests/                       # 106 个测试（全量通过）
+│   ├── tests/                       # 127 个测试（全量通过）
 │   ├── conftest.py                  # Mock 外部依赖 + sample_state fixture
 │   ├── pytest.ini                   # asyncio_mode = auto
 │   ├── requirements.txt             # 依赖清单（含 akshare）
@@ -53,18 +53,24 @@ IRIS/
 ├── frontend/
 │   ├── src/
 │   │   ├── views/
-│   │   │   ├── ChatView.vue          # 聊天页（功能引导 + 消息流 + 侧边栏布局）
-│   │   │   ├── SettingsView.vue      # 设置页
-│   │   │   └── HistoryView.vue       # 历史记录页
+│   │   │   ├── ChatView.vue          # 聊天页（功能引导 + 消息流 + 侧边栏 + 附件上传）
+│   │   │   ├── MarketView.vue        # 行情页（指数卡 + 自选股 + Sparkline 走势）
+│   │   │   ├── SettingsView.vue      # 设置页（API/搜索模式/短期记忆/长期记忆增删改/系统状态）
+│   │   │   └── HistoryView.vue       # 历史记录页（真实会话加载）
 │   │   ├── components/
-│   │   │   ├── ChatSidebar.vue        # 侧边栏（自选股/会话历史/系统状态）
+│   │   │   ├── chat/                 # ChatHeader / EmptyState / MessageBubble / ChatInput（附件）
+│   │   │   ├── ChatSidebar.vue        # 侧边栏（自选股名称补全/会话历史/系统状态）
 │   │   │   ├── ReportViewer.vue       # 报告渲染（TOC + ScrollSpy + 节流）
-│   │   │   ├── ResearchTimeline.vue   # 研究进程时间线（10 节点真实进度）
+│   │   │   ├── ResearchTimeline.vue   # 研究进程时间线（节点进度置顶）
 │   │   │   ├── MarketDataCard.vue     # 实时行情卡
 │   │   │   ├── FinancialCard.vue      # 财务指标卡
+│   │   │   ├── Sparkline.vue          # K 线/走势迷你图
+│   │   │   ├── ProcessBar.vue         # 研究进度条（消息顶部）
+│   │   │   ├── NewsTicker.vue         # 滚动资讯条
+│   │   │   ├── FollowUpInput.vue       # 多轮追问输入
+│   │   │   ├── TermTip.vue            # 术语提示
 │   │   │   ├── ActionBar.vue          # 操作栏（复制/下载/保存）
-│   │   │   ├── Toast.vue              # 全局提示
-│   │   │   └── Sparkline.vue          # K 线走势
+│   │   │   └── Toast.vue              # 全局提示
 │   │   ├── composables/
 │   │   │   ├── useChat.js             # 聊天状态 + SSE 解析
 │   │   │   ├── useToast.js            # Toast 全局提示
@@ -76,9 +82,11 @@ IRIS/
 │   │   │   └── app.js                 # pinia 全局 store（深色/偏好/会话）
 │   │   ├── services/
 │   │   │   ├── api.js                 # API 客户端
-│   │   │   ├── finance.js             # 投研分析 API 服务
-│   │   │   └── history.js             # 历史记录管理
+│   │   │   ├── finance.js             # 投研分析 API 服务（含 K线/指数/热门/行情）
+│   │   │   ├── history.js             # 历史记录管理（tombstone 删除）
+│   │   │   └── config.js             # 统一 API base 解析（env > 设置 > 同源）
 │   │   ├── App.vue                    # 路由壳
+│   │   ├── style.css                  # 毛玻璃全局样式
 │   │   └── main.js                    # 入口（router + pinia 初始化）
 │   └── package.json
 ├── docs/research/                   # 调研报告（6 份）
@@ -92,15 +100,15 @@ IRIS/
 
 ## 核心架构
 
-### 八节点状态机 + Function Calling
+### 九节点状态机 + Function Calling（含长期记忆注入）
 
-### 十节点状态机 + Function Calling
+> `router` 为条件入口（`set_conditional_entry_point`，非图节点）；`load_memories` 为长期记忆注入节点（仅注入 prompt 上下文，不参与路由决策）。
 
 ```
 router (conditional entry)
-  ├── NEW_TOPIC → planner → researcher → search_agent ⇄ search_tools → route_after_tools → data_collector → writer → reviewer
-  │                                                              └── FAIL → planner (循环)
-  └── REFINE → refiner → END
+  └── NEW_TOPIC → load_memories → planner → researcher → search_agent ⇄ search_tools → route_after_tools → data_collector → writer → reviewer
+                                                                                                        │ FAIL → planner (循环，≤5 次)
+                                                                                                        └ REFINE → refiner → END
 ```
 
 | 节点 | 职责 | 关键技术 |
@@ -124,7 +132,7 @@ router (conditional entry)
 ### AKShare 数据层
 
 - **4 个工具**：`query_stock_info`, `query_financial_indicators`, `query_stock_quote`, `query_stock_news`
-- **三层降级**：东方财富 → 雪球/新浪 → 内置模拟数据
+- **四层降级**：同花顺官方 API（L0）→ 东方财富 → 雪球/新浪 → 内置模拟数据（服务器东财被封，实际走同花顺 L0 单链）
 - **60s 缓存**：`stock_zh_a_spot_em` 全市场数据 TTL 缓存（消灭 30s 全量拉取）
 - **永不抛异常**：工具级故障隔离
 - **来源标注**：所有数值标注 `[来源: AKShare 东方财富]`
@@ -193,38 +201,38 @@ router (conditional entry)
 
 ## 开发路线图
 
-### ✅ 已完成（v1.0）
+### ✅ 已完成（v1.0 — 核心引擎）
 
-- [x] 基于 LangGraph StateGraph 的八节点多智能体协同架构
-- [x] AKShare 真实 A 股数据接入（三层降级）
-- [x] 中文六章节投研报告格式（数据与观点分离）
+- [x] 基于 LangGraph StateGraph 的九节点多智能体协同架构（含 load_memories 长期记忆注入）
+- [x] AKShare 真实 A 股数据接入（四层降级：同花顺 L0 → 东财 → 雪球/新浪 → Mock）
+- [x] 中文六章节投研报告格式（数据与观点分离 + 来源标注）
+- [x] Function Calling 改造（LLM 驱动工具调用 + ≤5 轮循环终止）
 - [x] 多模型 LLM 降级 + SSE 流式输出
-- [x] ChromaDB RAG + 文档相关性审计
-- [x] 会话记忆系统（增量摘要 + checkpoint）
-- [x] LangSmith 全链路可观测性
-- [x] 限流器 + 生产级 FastAPI 后端
-- [x] Vue 3 前端（智能问答 + 投研分析 Tab）
+- [x] ChromaDB RAG + 文档相关性审计 + 研报 PDF 入库
+- [x] 会话记忆系统（增量摘要 + checkpoint）+ 长期记忆 Store
+- [x] LangSmith 全链路可观测性 + 限流器 + 生产级 FastAPI 后端
+- [x] Vue 3 前端（智能问答 + 投研分析 + 行情 + 设置 + 历史）
 - [x] 127 个测试，零回归
 
-### ✅ 已完成（v1.1）
+### ✅ 已完成（v1.1 — 稳定性与工程化）
 
 - [x] 图拓扑修复（researcher→search_agent 断链）
 - [x] search_iteration 循环终止（≤5 轮自动停止）
 - [x] 节点状态事件（start/done + elapsed 真实进度）
 - [x] AKShare 全市场数据 60s 缓存
 - [x] Router REFINE 误判收紧
-- [x] 前端工程化（composables + vue-router + pinia）
-- [x] 侧边栏（自选股/会话历史/系统状态）
-- [x] 功能引导页 + 真实进度时间线
+- [x] 前端工程化（composables + vue-router + pinia）+ 侧边栏 + 功能引导页 + 真实进度时间线
+
+### ✅ 已完成（v1.3 — 前端体验 + 生产部署）
+
+- [x] 前端毛玻璃 UI 重构（backdrop-blur 半透明卡片 + 渐变光斑背景）
+- [x] 聊天附件上传（PDF 自动分析）+ 多轮追问输入
+- [x] 行情走势 Sparkline + 自选股名称补全 + 研究节点进度置顶
+- [x] 设置页扩展：短期记忆摘要 + 长期记忆增删改 + 系统状态
+- [x] 后端新增端点：K 线 / 指数 K 线 / 市场热门 / 记忆 CRUD
+- [x] 生产部署：裸机 venv + uvicorn 8081 + Nginx 反代，公网 https://iris-jie.duckdns.org
 
 ### 🚧 规划中（v1.2）
-
-- [ ] 多股票对比分析
-- [ ] 行业数据聚合
-- [ ] 定时研报生成任务
-- [ ] 报告导出（PDF / Word）
-- [ ] 前端 Gradio 演示入口
-### 🚧 规划中（v1.1）
 
 - [ ] 多股票对比分析
 - [ ] 行业数据聚合
@@ -234,9 +242,7 @@ router (conditional entry)
 
 ### 🔮 远期规划（v2.0）
 
-- [ ] MCP 协议集成（eastmoney MCP）
-- [ ] 研报 PDF 入库 RAG
-- [ ] 新闻/公告实时聚合
+- [ ] MCP 协议集成（eastmoney MCP 数据接入层）
 - [ ] 人工审核节点（HITL）
 - [ ] 多用户权限管理
 
@@ -254,3 +260,17 @@ router (conditional entry)
 | Function Calling？ | `@tool` 声明 + `bind_tools` + `ToolNode` + search_iteration 循环终止 |
 | 节点状态事件？ | `emit_node_event()` ContextVar 队列 → SSE 流 → 前端时间线真实进度 |
 | 记忆系统？ | conversation_summary 增量摘要 + checkpoint 跨会话持久化 |
+
+---
+
+## 部署
+
+生产环境已在 `49.234.178.53`（OpenCloudOS 9）以**裸机**方式部署（非 Docker Compose）：
+
+- 代码目录：`/var/www/IRIS`，升级时 `git fetch origin && git reset --hard origin/main`
+- 后端：`backend/venv` 虚拟环境，`uvicorn main:app --host 0.0.0.0 --port 8081 --workers 1`
+- 前端：`frontend/dist` 由已有 Nginx 容器托管，构建命令 `npm install && npm run build`
+- 反代：Nginx 容器将 `/api` 反代到宿主机网桥 `172.17.0.1:8081`
+- 公网域名：`https://iris-jie.duckdns.org`
+- 已知常态：服务器东财接口被封，AKShare 走同花顺 L0 单链，`/api/status` 的 `data_online` 为 false，属正常非故障
+- 详细步骤见 `backend/DEPLOY.md`

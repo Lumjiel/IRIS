@@ -100,11 +100,13 @@ Defined in `backend/app/graph/state.py` as a `TypedDict`:
 - **4-tier fallback (2026-08 起)**: 同花顺官方API（L0，`hithink_tools.py`）→ East Money → Snowball/Sina → Mock data。
   腾讯云服务器直连东财被封（Connection aborted），实际只剩 L0 可达——**服务器部署的降级链事实 = 同花顺单链**
 - **行情字段增强**: 同花顺行情端点不含换手率/PE/PB/总市值（估值端点也只有 PE/PB），
-  `_tencent_quote_supplement_batch()` 用 qt.gtimg.cn 补齐（字段下标经交叉验证），fail-open，data_source 标注"同花顺官方API·腾讯行情补充"
+  `_tencent_quote_supplement_batch()` 用 qt.gtimg.cn 补齐（字段下标经交叉验证），fail-open，data_source 标注"同花顺官方API·腾讯行情补充"。
+  `/api/market/snapshot` 的补充只作用于同花顺层数据（Mock/降级数据不贴该标签，保持来源诚实）
 - **Module-level proxy cleanup**: clears `HTTP_PROXY/HTTPS_PROXY` on import
 - **Never throws exceptions**: returns structured JSON error on failure
 - **LangChain `@tool` decorator**: Function Calling ready
 - **Source attribution**: every value tagged with `[来源: AKShare 东方财富]`
+- **K 线 API**: `/api/stock/{code}/kline`（个股日 K，多源降级：东财 → 新浪 → 腾讯）+ `/api/index/{code}/kline`（指数 K 线，路由见 `backend/app/api/routes.py`）
 
 ### Function Calling Architecture
 
@@ -156,7 +158,7 @@ IRIS/
 │   │   ├── agents/
 │   │   │   └── prompts.py           # 中文研报提示词模板 + 数据表格生成器
 │   │   ├── api/
-│   │   │   └── routes.py            # 全部 API 端点（SSE 流式聊天、上传、素材、记忆、TTS、股票查询）
+│   │   │   └── routes.py            # 全部 API 端点（SSE 聊天/上传/素材/记忆/记忆CRUD/TTS/股票查询/K线/指数K线/市场热门/资讯）
 │   │   ├── graph/
 │   │   │   ├── state.py             # AgentState TypedDict（20+ 字段，含 messages）
 │   │   │   ├── graph.py             # StateGraph 拓扑（8 节点 + Function Calling 循环）
@@ -197,6 +199,14 @@ IRIS/
 │   ├── conftest.py                  # Mock 外部依赖 + sample_state fixture
 │   ├── pytest.ini                   # asyncio_mode = auto
 │   ├── requirements.txt             # 依赖清单（含 akshare + pymupdf）
+├── frontend/                         # Vue 3 + Vite + Tailwind（毛玻璃 UI）
+│   ├── src/
+│   │   ├── views/                   # ChatView / MarketView(桌面表格+移动卡片双形态) / SettingsView / HistoryView
+│   │   ├── components/              # chat/ 子组件 + ChatSidebar / ReportViewer / Sparkline / ProcessBar / NewsTicker / FollowUpInput / TermTip
+│   │   ├── composables/             # useChat / useToast / useWatchlist(reactive 包装，模板直接 .list.length) / useThrottledRender
+│   │   ├── services/                # api / finance / history / config（统一 API base）
+│   │   ├── App.vue / style.css / main.js
+│   └── package.json
 ---
 
 ## Key Design Decisions
@@ -204,7 +214,7 @@ IRIS/
 1. **Module-level graph singleton**: `_workflow` is built once at import. Adding nodes requires restart.
 2. **AKShare proxy cleanup**: Module-level `os.environ.pop()` clears proxy vars to prevent `Connection aborted`.
 3. **Data-opinion separation**: Financial tables generated from JSON (not LLM) to prevent hallucination.
-4. **3-tier data fallback**: East Money → Snowball/Sina → Mock data ensures system never crashes.
+4. **4-tier data fallback**: 同花顺 L0 → East Money → Snowball/Sina → Mock data ensures system never crashes (server env: 同花顺 L0 only).
 5. **Function Calling**: LLM autonomously decides when/what to search via `@tool` + `bind_tools` + custom `ToolNode`.
 6. **Custom ToolNode**: Instead of `langgraph.prebuilt.ToolNode` (which has version compatibility issues), we implement our own.
 7. **Report RAG**: PyMuPDF + regex entity extraction + ChromaDB metadata filtering.
@@ -240,7 +250,7 @@ IRIS/
 ### Adding a new AKShare tool
 
 1. Add `@tool` function in `backend/app/tools/akshare_tools.py`
-2. Implement 3-tier fallback: East Money → Snowball/Sina → Mock
+2. Implement 4-tier fallback: 同花顺 L0 → East Money → Snowball/Sina → Mock
 3. Add to `AKSHARE_TOOLS` list
 4. Add mock tests in `tests/test_akshare_tools.py`
 
@@ -249,6 +259,21 @@ IRIS/
 1. Add route in `backend/app/api/routes.py`
 2. For SSE: use `StreamingResponse` with async generator
 3. For stock data: use `query_stock_info.invoke(code)` etc.
+
+---
+
+## Deployment
+
+Production runs **bare-metal** (not Docker Compose) on `49.234.178.53` (OpenCloudOS 9):
+
+- Code: `/var/www/IRIS` — upgrade via `git fetch origin && git reset --hard origin/main`
+- Backend: `backend/venv` venv, `uvicorn main:app --host 0.0.0.0 --port 8081 --workers 1`
+- Frontend: `frontend/dist` served by the existing Nginx container (`npm install && npm run build`)
+- Proxy: Nginx container reverse-proxies `/api` → `172.17.0.1:8081`
+- Public URL: `https://iris-jie.duckdns.org`
+- Known state: server's East Money access is blocked, so the chain is 同花顺 L0 + 腾讯补充 only
+- `/api/status` `data_online` 语义（2026-09-06 起）：探测 600519 拿到 data_source，非 Mock/异常/未知即在线——同花顺 L0 正常时侧栏应显示绿点 + "同花顺官方API·腾讯行情补充"，显示"内置模拟数据"才是故障
+- See `backend/DEPLOY.md` for details
 
 ---
 

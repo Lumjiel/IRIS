@@ -1,8 +1,8 @@
 <template>
   <div class="h-screen flex flex-col bg-transparent">
-    <!-- 顶栏 -->
+    <!-- 顶栏（品牌样式与首页一致） -->
     <header class="sticky top-0 z-20 border-b border-slate-200/70 dark:border-slate-700/60 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl">
-      <div class="max-w-2xl mx-auto px-3 h-12 flex items-center gap-2">
+      <div class="max-w-5xl mx-auto px-4 h-12 flex items-center gap-2.5">
         <router-link
           to="/"
           class="p-1.5 -ml-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
@@ -10,29 +10,35 @@
         >
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         </router-link>
-        <h1 class="text-body font-medium text-slate-900 dark:text-slate-100">行情</h1>
-        <span v-if="tradingNow" class="flex items-center gap-1 text-label text-slate-500 dark:text-slate-400 ml-auto">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"/>实时
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-soft shrink-0">IR</div>
+        <h1 class="text-body font-semibold text-slate-900 dark:text-slate-100">行情</h1>
+        <span
+          class="ml-auto inline-flex items-center gap-1 text-label px-2 py-0.5 rounded-full shrink-0"
+          :class="tradingNow ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700/50 dark:text-slate-400'"
+        >
+          <template v-if="tradingNow"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"/>实时</template>
+          <template v-else><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>已收盘</template>
         </span>
-        <span v-else class="text-label text-slate-400 ml-auto">已收盘</span>
       </div>
     </header>
 
     <main ref="scrollEl" class="flex-1 overflow-y-auto">
-      <div class="max-w-2xl mx-auto px-3 py-3 space-y-4 pb-8">
-        <!-- 指数横滑条 -->
-        <div v-if="indexes.length" class="flex gap-2 overflow-x-auto scrollbar-none -mx-3 px-3 pb-1">
+      <div class="max-w-5xl mx-auto px-4 py-4 space-y-5 pb-8">
+        <!-- 指数网格：移动 2 列 / 桌面 3 列 -->
+        <div v-if="indexes.length" class="grid grid-cols-2 md:grid-cols-3 gap-2">
           <div
             v-for="idx in indexes"
             :key="idx.code"
-            class="card shrink-0 px-3.5 py-2 min-w-[9rem]"
+            class="card px-4 py-3"
           >
             <div class="text-label text-slate-500 dark:text-slate-400">{{ idx.name }}</div>
-            <div class="num text-data-lg mt-0.5" :class="changeInfo(idx).colorClass">
-              {{ formatPrice(idx['最新价']) }}
-            </div>
-            <div class="num text-label" :class="changeInfo(idx).colorClass">
-              {{ changeInfo(idx).display }}
+            <div class="flex items-baseline justify-between mt-0.5">
+              <div class="num text-data-xl" :class="changeInfo(idx).colorClass">
+                {{ formatPrice(idx['最新价']) }}
+              </div>
+              <div class="num text-label" :class="changeInfo(idx).colorClass">
+                {{ changeInfo(idx).display }}
+              </div>
             </div>
             <!-- 30 日走势（涨红跌绿） -->
             <Sparkline
@@ -41,7 +47,7 @@
               :width="144"
               :height="32"
               :color="lineColor(idx)"
-              class="mt-1"
+              class="mt-1.5"
             />
           </div>
         </div>
@@ -49,7 +55,7 @@
         <!-- 自选股 -->
         <section>
           <div class="flex items-center justify-between mb-2">
-            <h2 class="text-label text-slate-500 dark:text-slate-400">自选股</h2>
+            <h2 class="text-label text-slate-500 dark:text-slate-400">自选股<span v-if="stocks.length" class="num ml-1">{{ stocks.length }}</span></h2>
             <button
               @click="refresh(true)"
               class="text-label text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors flex items-center gap-1"
@@ -75,8 +81,79 @@
             </div>
           </div>
 
-          <!-- 个股卡片列表：移动单列 / 桌面双列 -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <!-- 桌面：表格视图（投研工具主形态） -->
+          <div v-if="watchlist.list.length > 0" class="hidden md:block card overflow-hidden">
+            <table class="w-full text-body">
+              <thead>
+                <tr class="text-label text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                  <th class="text-left font-normal px-4 py-2.5">名称</th>
+                  <th class="text-right font-normal px-3 py-2.5">最新价</th>
+                  <th class="text-right font-normal px-3 py-2.5">涨跌幅</th>
+                  <th class="text-right font-normal px-3 py-2.5">换手率</th>
+                  <th class="text-right font-normal px-3 py-2.5">市盈率PE</th>
+                  <th class="text-right font-normal px-3 py-2.5">市净率PB</th>
+                  <th class="text-right font-normal px-3 py-2.5">总市值</th>
+                  <th class="w-16 px-3 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="s in stocks" :key="s.stock_code">
+                  <tr
+                    class="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/70 dark:hover:bg-slate-700/30 cursor-pointer transition-colors"
+                    @click="toggleExpand(s.stock_code)"
+                  >
+                    <td class="px-4 py-3">
+                      <div class="font-medium text-slate-900 dark:text-slate-100 truncate max-w-[10rem]">{{ displayName(s) }}</div>
+                      <div class="text-label text-slate-400 num">{{ subLabel(s) }}</div>
+                    </td>
+                    <td class="text-right px-3 py-3 num text-slate-900 dark:text-slate-100">{{ formatPrice(s['最新价']) }}</td>
+                    <td class="text-right px-3 py-3">
+                      <span class="num text-label font-medium px-2 py-0.5 rounded-md" :class="badgeClass(s)">{{ changeInfo(s).display }}</span>
+                    </td>
+                    <td class="text-right px-3 py-3 num text-slate-600 dark:text-slate-300">{{ s['换手率'] || '-' }}</td>
+                    <td class="text-right px-3 py-3 num text-slate-600 dark:text-slate-300">{{ fixedOrDash(s['市盈率']) }}</td>
+                    <td class="text-right px-3 py-3 num text-slate-600 dark:text-slate-300">{{ fixedOrDash(s['市净率']) }}</td>
+                    <td class="text-right px-3 py-3 num text-slate-600 dark:text-slate-300">{{ formatBigInt(s['总市值']) }}</td>
+                    <td class="px-3 py-3">
+                      <div class="flex items-center justify-end gap-1">
+                        <span
+                          class="p-1 rounded-md text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                          role="button"
+                          aria-label="移除自选"
+                          @click.stop="removeStock(s.stock_code)"
+                        >
+                          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        </span>
+                        <svg class="w-3.5 h-3.5 text-slate-400 transition-transform" :class="expanded === s.stock_code ? 'rotate-90' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                      </div>
+                    </td>
+                  </tr>
+                  <!-- 展开明细行：30 日走势 + 日内四价 -->
+                  <tr v-if="expanded === s.stock_code">
+                    <td colspan="8" class="px-4 py-3 bg-slate-50/60 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-700">
+                      <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
+                        <div v-if="stockKlines[s.stock_code]" class="shrink-0">
+                          <div class="text-label text-slate-400 mb-1">近 30 日走势</div>
+                          <Sparkline :data="stockKlines[s.stock_code]" :width="220" :height="44" :color="lineColor(s)" />
+                        </div>
+                        <div class="grid grid-cols-5 gap-x-5 gap-y-1.5 text-caption flex-1 min-w-[20rem]">
+                          <div v-for="f in INTRADAY_FIELDS" :key="f.key">
+                            <TermTip :term="f.key" />
+                            <div class="num text-body text-slate-900 dark:text-slate-100 mt-0.5">
+                              {{ f.format === 'big' ? formatBigInt(s[f.label]) : formatPrice(s[f.label]) }}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 移动：卡片视图 -->
+          <div v-if="watchlist.list.length > 0" class="grid grid-cols-1 gap-2 md:hidden">
             <button
               v-for="s in stocks"
               :key="s.stock_code"
@@ -86,9 +163,9 @@
               <div class="flex items-start justify-between gap-2">
                 <div class="min-w-0">
                   <div class="text-body font-medium text-slate-900 dark:text-slate-100 truncate">
-                    {{ s.name || s.stock_code }}
+                    {{ displayName(s) }}
                   </div>
-                  <div class="text-label text-slate-400 num">{{ s.stock_code }}</div>
+                  <div class="text-label text-slate-400 num">{{ subLabel(s) }}</div>
                 </div>
                 <span
                   class="shrink-0 p-1 rounded-md text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
@@ -113,11 +190,11 @@
                   <div class="text-label text-slate-400 mb-1">近 30 日走势</div>
                   <Sparkline :data="stockKlines[s.stock_code]" :width="220" :height="44" :color="lineColor(s)" />
                 </div>
-                <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-caption">
+                <div class="grid grid-cols-3 gap-x-3 gap-y-2 text-caption">
                   <div v-for="field in DETAIL_FIELDS" :key="field.key">
                     <TermTip :term="field.key" />
                     <div class="num text-body text-slate-900 dark:text-slate-100 mt-0.5">
-                      {{ field.format === 'big' ? formatBigInt(s[field.label]) : formatPrice(s[field.label]) }}
+                      {{ renderDetail(s, field) }}
                     </div>
                   </div>
                 </div>
@@ -150,13 +227,13 @@
           </div>
         </div>
 
-        <!-- 免责声明 -->
-        <footer class="pt-2 pb-4 text-center space-y-1">
-          <p class="text-caption text-slate-400">
+        <!-- 免责声明（与内容流左对齐） -->
+        <footer class="pt-1 pb-4 border-t border-slate-100 dark:border-slate-700/60">
+          <p class="text-caption text-slate-400 mt-3">
             数据来源：<template v-for="(src, i) in dataSources" :key="src">{{ src }}<span v-if="i < dataSources.length - 1"> / </span></template>
             <template v-if="updatedAt"> · 更新于 {{ updatedTimeText }}</template>
           </p>
-          <p class="text-caption text-slate-400">仅供学习参考，不构成投资建议</p>
+          <p class="text-caption text-slate-400 mt-0.5">仅供学习参考，不构成投资建议</p>
         </footer>
       </div>
     </main>
@@ -165,12 +242,13 @@
 
 <script setup>
 /**
- * 移动端优先行情页（桌面端 max-w-2xl 居中双列）。
+ * 行情页：桌面表格 + 移动卡片双形态。
  *
  * 工程决策（面试可讲）：
  * - 批量快照轮询而非逐股请求：一次 /api/market/snapshot 拉全部，省 API 配额
  * - 交易时段感知：收盘后停止轮询，仅加载时取一次最后快照
  * - fail-open：部分股票失败只显示错误条，不影响其余数据渲染
+ * - 桌面表格化：换手率/PE/PB/总市值由腾讯行情接口补充（后端合并），一行看全估值
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { getMarketSnapshot, getIndexKline, getStockKline, getStockName } from "../services/finance";
@@ -189,13 +267,26 @@ const PRESETS = [
   { code: "600196", name: "复星医药" },
 ];
 
+/** 移动端卡片展开字段（含估值四件套，数据来自腾讯行情补充） */
 const DETAIL_FIELDS = [
+  { key: "换手率", label: "换手率" },
+  { key: "市盈率PE", label: "市盈率" },
+  { key: "市净率PB", label: "市净率" },
+  { key: "总市值", label: "总市值", format: "big" },
   { key: "今开", label: "今开", format: "price" },
   { key: "最高", label: "最高", format: "price" },
   { key: "最低", label: "最低", format: "price" },
   { key: "昨收", label: "昨收", format: "price" },
   { key: "成交额", label: "成交额", format: "big" },
-  { key: "涨跌幅", label: "涨跌幅", format: "price" },
+];
+
+/** 桌面表格展开行：日内四价 + 成交额（估值已在表格列里） */
+const INTRADAY_FIELDS = [
+  { key: "今开", label: "今开", format: "price" },
+  { key: "最高", label: "最高", format: "price" },
+  { key: "最低", label: "最低", format: "price" },
+  { key: "昨收", label: "昨收", format: "price" },
+  { key: "成交额", label: "成交额", format: "big" },
 ];
 
 const watchlist = useWatchlist();
@@ -237,6 +328,38 @@ const dataSources = computed(() => {
   for (const i of indexes.value) if (i.data_source) set.add(i.data_source);
   return [...set];
 });
+
+/** 名称解析失败时（name===code）避免标题副行重复显示同一串代码 */
+function displayName(s) {
+  return s.name || s.stock_code;
+}
+
+function subLabel(s) {
+  const tag = exchangeTag(s.stock_code);
+  if (s.name && s.name !== s.stock_code) return `${s.stock_code}${tag ? "." + tag : ""}`;
+  return tag || s.stock_code;
+}
+
+function exchangeTag(code) {
+  const c = String(code || "");
+  if (c.startsWith("6")) return "SH";
+  if (c.startsWith("0") || c.startsWith("3")) return "SZ";
+  if (c.startsWith("4") || c.startsWith("8")) return "BJ";
+  return "";
+}
+
+/** PE/PB 数值格式化：缺失/异常统一显示 "-" */
+function fixedOrDash(v) {
+  const n = Number(v);
+  return v == null || v === "" || v === "-" || !Number.isFinite(n) ? "-" : n.toFixed(2);
+}
+
+/** 明细字段渲染：big → 亿级缩写 / price → 价格 / 其余原样（换手率自带 %） */
+function renderDetail(s, field) {
+  if (field.format === "big") return formatBigInt(s[field.label]);
+  if (field.format === "price") return formatPrice(s[field.label]);
+  return s[field.label] ?? "-";
+}
 
 function changeInfo(q) {
   return parseChange(q?.["涨跌幅"]);
@@ -285,13 +408,13 @@ async function refresh(manual = false) {
   if (loading.value) return;
   loading.value = true;
   try {
-    const codes = watchlist.list.value.map((w) => w.code);
+    const codes = watchlist.list.map((w) => w.code);
     const data = await getMarketSnapshot(codes);
     indexes.value = data.indexes || [];
     loadIndexKlines(indexes.value);
     // 用自选列表里用户存的名称补齐（行情接口不返回名称）
     const nameMap = Object.fromEntries(
-      watchlist.list.value.map((w) => [w.code, w.name]),
+      watchlist.list.map((w) => [w.code, w.name]),
     );
     stocks.value = (data.stocks || []).map((s) => ({
       ...s,

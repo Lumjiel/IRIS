@@ -36,7 +36,7 @@
       <!-- 热门标的 -->
       <div class="text-center">
         <div class="text-label text-slate-400 dark:text-slate-500 mb-2.5">
-          热门标的<template v-if="hotSource"><span class="text-slate-300 dark:text-slate-600"> · {{ hotSource }}</span></template>
+          热门标的<template v-if="hotSource"><span class="text-slate-500 dark:text-slate-400"> · {{ hotSource }}</span></template>
         </div>
         <div class="flex flex-wrap justify-center gap-2">
           <button

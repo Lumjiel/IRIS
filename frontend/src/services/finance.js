@@ -137,7 +137,9 @@ export async function getIndexKline(indexCode) {
 export async function getStockName(stockCode) {
  try {
   const info = await getStockInfo(stockCode);
+  // 后端 /stock/{code}/info 实际返回 { info: { "证券简称": "贵州茅台", ... } }
   const name =
+   info?.info?.["证券简称"] ||
    info?.stock_info?.name ||
    info?.name ||
    info?.stock_name ||

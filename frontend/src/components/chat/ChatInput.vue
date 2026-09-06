@@ -26,7 +26,7 @@
           @keydown.enter.exact.prevent="$emit('send', pendingFiles)"
           class="flex-1 bg-transparent resize-none text-body text-slate-700 dark:text-slate-300 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none leading-relaxed"
           :rows="1"
-          placeholder="输入股票代码或研究主题，回车发送；📎 可附带 PDF 文档…"
+          placeholder="输入股票代码或研究主题…"
         />
         <button
           @click="$emit('send', pendingFiles)"
@@ -59,7 +59,7 @@
       </div>
 
       <p class="text-label text-slate-400 dark:text-slate-500 text-center mt-1.5">
-        IRIS 可能会犯错，请核实重要信息 · 上传 PDF 将重建知识库
+        回车发送 · 可附带 PDF（入库知识库） · IRIS 可能会犯错，请核实重要信息
       </p>
     </div>
   </footer>

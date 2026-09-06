@@ -87,12 +87,13 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **九节点多智能体协同架构*
 - LLM 返回 `tool_calls` → `ToolNode` 执行 → 结果自动累加到 `state["messages"]`
 - 支持多轮迭代：agent → tools → agent → tools → ... → 结束（≤5 轮自动终止）
 
-### 2. AKShare 真实 A 股数据接入
+### 2. AKShare 真实 A 股数据接入 + 行情 K 线
 
-- **三层降级**：东方财富 → 雪球/新浪 → 内置模拟数据
+- **四层降级**：同花顺官方 API（L0）→ 东方财富 → 雪球/新浪 → 内置 Mock 数据（服务器环境东财被封，实际走同花顺 L0 单链，fail-open）
 - **4 个数据工具**：`query_stock_info` / `query_financial_indicators` / `query_stock_quote` / `query_stock_news`
 - **60s 缓存**：全市场数据 TTL 缓存，消灭 30s 全量拉取
-- **来源标注**：所有数值标注 `[来源: AKShare 东方财富]`
+- **行情 K 线 API**：`/api/stock/{code}/kline`（个股日 K，多源降级：东财 → 新浪 → 腾讯）+ `/api/index/{code}/kline`（指数 K 线）
+- **来源标注**：所有数值标注 `[来源: AKShare 东方财富]` 或 `[来源: 同花顺官方API·腾讯行情补充]`
 ### 3. 中文六章节投研报告
 
 ```markdown
@@ -167,6 +168,32 @@ docker compose up -d
 # 后端: 容器内 8000，仅经前端 /api 反代访问
 ```
 
+### 生产部署（裸机 · 推荐用于云服务器）
+
+已在 `49.234.178.53`（OpenCloudOS 9）验证，非 Docker 方式：
+
+```bash
+# 1. 拉取最新代码（服务器 /var/www/IRIS）
+cd /var/www/IRIS && git fetch origin && git reset --hard origin/main
+
+# 2. 后端：venv 重建依赖 + uvicorn 8081
+cd backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8081 --workers 1
+
+# 3. 前端：构建并上传 dist
+cd ../frontend && npm install && npm run build
+# 将 dist/ 上传至服务器 /var/www/IRIS/frontend/dist
+
+# 4. Nginx（已有容器）反代：/api → 172.17.0.1:8081，静态 → dist
+```
+
+- 公网地址：`https://iris-jie.duckdns.org`
+- 后端实际端口：`8081`（非 Docker 文档里的 8000）
+- 服务器东财接口被封，AKShare 走同花顺 L0 单链（fail-open），`/api/status` 的 `data_online` 为 false 属正常
+- 详细步骤见 `backend/DEPLOY.md`
+
 ### 两种使用方式
 
 ```bash
@@ -184,6 +211,16 @@ curl http://localhost:8000/api/stock/600196/info
 curl http://localhost:8000/api/stock/600196/financial
 curl http://localhost:8000/api/stock/600196/quote
 curl http://localhost:8000/api/stock/600196/news
+curl "http://localhost:8000/api/stock/600196/kline?period=daily&start=2026-01-01"
+curl "http://localhost:8000/api/index/sh000001/kline"
+curl http://localhost:8000/api/market/hot
+curl http://localhost:8000/api/market/snapshot
+# 长期记忆管理（按 X-User-Id 隔离）
+curl "http://localhost:8000/api/memory-items" -H "X-User-Id: default"
+curl -X POST http://localhost:8000/api/memory-items -H "X-User-Id: default" \
+  -H "Content-Type: application/json" -d '{"kind":"preference","content":"偏好简洁结论先行"}'
+curl -X PUT "http://localhost:8000/api/memory-items/{key}" -H "X-User-Id: default" \
+  -H "Content-Type: application/json" -d '{"kind":"preference","content":"已更新"}'
 
 # 方式四：研报 RAG
 curl -X POST http://localhost:8000/api/reports/upload \
@@ -231,25 +268,32 @@ IRIS/
 │   ├── tests/                        # 127 个测试（全量通过）
 │   ├── main.py                       # FastAPI 入口
 │   └── requirements.txt              # 依赖清单
-├── frontend/                         # Vue 3 + Vite + Tailwind
+├── frontend/                         # Vue 3 + Vite + Tailwind（毛玻璃 UI）
 │   ├── src/
 │   │   ├── views/
-│   │   │   ├── ChatView.vue          # 聊天页（功能引导 + 消息流 + 侧边栏布局）
-│   │   │   ├── SettingsView.vue      # 设置页
-│   │   │   └── HistoryView.vue       # 历史记录页
+│   │   │   ├── ChatView.vue          # 聊天页（功能引导 + 消息流 + 侧边栏布局 + 附件上传）
+│   │   │   ├── MarketView.vue        # 行情页（指数卡 + 自选股 + Sparkline 走势）
+│   │   │   ├── SettingsView.vue      # 设置页（API/搜索模式/短期记忆/长期记忆增删改/系统状态）
+│   │   │   └── HistoryView.vue       # 历史记录页（真实会话加载）
 │   │   ├── components/
-│   │   │   ├── ChatSidebar.vue        # 侧边栏（自选股/会话历史/系统状态）
+│   │   │   ├── chat/                 # ChatHeader / EmptyState / MessageBubble / ChatInput
+│   │   │   ├── ChatSidebar.vue        # 侧边栏（自选股名称补全/会话历史/系统状态）
 │   │   │   ├── ReportViewer.vue       # 报告渲染（TOC + ScrollSpy）
-│   │   │   ├── ResearchTimeline.vue   # 研究进程时间线（10 节点真实进度）
+│   │   │   ├── ResearchTimeline.vue   # 研究进程时间线（节点进度置顶）
 │   │   │   ├── MarketDataCard.vue     # 实时行情卡
-│   │   │   ├── FinancialCard.vue      # 财务指标卡
+│   │   │   ├── Sparkline.vue          # K 线/走势迷你图
+│   │   │   ├── ProcessBar.vue         # 研究进度条（消息顶部）
+│   │   │   ├── NewsTicker.vue         # 滚动资讯条
+│   │   │   ├── FollowUpInput.vue       # 多轮追问输入
+│   │   │   ├── TermTip.vue            # 术语提示
 │   │   │   ├── ActionBar.vue          # 操作栏（复制/下载/保存）
 │   │   │   └── Toast.vue              # 全局提示
 │   │   ├── composables/               # useChat / useToast / useWatchlist / useThrottledRender
 │   │   ├── router/                    # vue-router 配置（懒加载）
 │   │   ├── stores/                    # pinia 全局 store
-│   │   ├── services/                  # api / finance / history
+│   │   ├── services/                  # api / finance / history / config（统一 API base）
 │   │   ├── App.vue                    # 路由壳
+│   │   ├── style.css                  # 毛玻璃全局样式
 │   │   └── main.js
 │   └── package.json
 ├── deploy/                           # Nginx 配置
@@ -338,6 +382,16 @@ IRIS/
 - [x] Router REFINE 误判收紧
 - [x] 前端工程化（composables + vue-router + pinia + 侧边栏）
 - [x] 功能引导页 + 真实进度时间线
+
+### ✅ 已完成（v1.3 · 前端体验 + 生产部署）
+
+- [x] 前端毛玻璃 UI 重构（backdrop-blur 半透明卡片 + 渐变光斑背景）
+- [x] 聊天附件上传（PDF 自动分析）+ 多轮追问输入（FollowUpInput）
+- [x] 行情走势 Sparkline + 自选股名称补全
+- [x] 研究节点进度置顶（ProcessBar）
+- [x] 设置页扩展：短期记忆摘要 + 长期记忆增删改 + 系统状态
+- [x] 后端新增端点：`/api/stock/{code}/kline`、`/api/index/{code}/kline`、`/api/market/hot`、`/api/memory-items` 增删改查
+- [x] 生产部署：裸机 venv + uvicorn 8081 + Nginx 反代，公网 https://iris-jie.duckdns.org
 
 ### 🚧 规划中（v1.2）
 
