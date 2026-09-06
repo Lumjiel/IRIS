@@ -41,3 +41,6 @@ Thumbs.db
 backend/.piptmp/
 backend/venv.bak/
 frontend/dist.bak/
+
+# 个人工作文件（简历等，防误推公开仓库）
+.resume_work/
