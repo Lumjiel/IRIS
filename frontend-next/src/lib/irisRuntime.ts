@@ -142,6 +142,10 @@ export const IrisModelAdapter: ChatModelAdapter = {
           store.setIntent(evt.data?.intent ?? "chat");
           return;
         }
+        if (evt.status === "progress") {
+          store.setNodeStatus(step, "running", undefined, evt.data as Record<string, unknown>);
+          return;
+        }
         if (evt.status === "start" || evt.status === "done" || evt.status === "failed") {
           store.setNodeStatus(
             step,

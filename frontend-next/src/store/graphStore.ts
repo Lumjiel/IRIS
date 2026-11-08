@@ -37,6 +37,8 @@ interface GraphState {
   searchLog: string[];
   /** 数据源轨迹（来自 data_collector 节点事件） */
   dataSources: string[];
+  /** 分章撰写进度（writer progress 事件的 chapter_done） */
+  chapterLog: string[];
   /** 本轮研究起止时间（小结/计时用） */
   startedAt: number | null;
   endedAt: number | null;
@@ -65,13 +67,14 @@ export const useGraphStore = create<GraphState>((set) => ({
   quote: null,
   searchLog: [],
   dataSources: [],
+  chapterLog: [],
   startedAt: null,
   endedAt: null,
 
   reset: () =>
     set({
       intent: null, nodes: {}, order: [], error: null, running: true,
-      lastReport: null, quote: null, searchLog: [], dataSources: [],
+      lastReport: null, quote: null, searchLog: [], dataSources: [], chapterLog: [],
       startedAt: Date.now(), endedAt: null,
     }),
   setIntent: (intent) => set({ intent }),
@@ -90,6 +93,7 @@ export const useGraphStore = create<GraphState>((set) => ({
       // 轨迹事件：搜索词 / 数据源（done 事件可能带 data，wrapper 的空 done 不覆盖）
       let searchLog = s.searchLog;
       let dataSources = s.dataSources;
+      let chapterLog = s.chapterLog;
       if (data) {
         if (typeof data.search_query === "string" && data.search_query) {
           searchLog = [...s.searchLog, data.search_query];
@@ -97,14 +101,19 @@ export const useGraphStore = create<GraphState>((set) => ({
         if (Array.isArray(data.data_sources)) {
           dataSources = data.data_sources.map(String);
         }
+      if (typeof data.chapter_done === "string" && data.chapter_done) {
+        chapterLog = s.chapterLog.includes(data.chapter_done)
+          ? s.chapterLog
+          : [...s.chapterLog, data.chapter_done];
       }
-      return { nodes, order, searchLog, dataSources };
+      }
+      return { nodes, order, searchLog, dataSources, chapterLog };
     }),
   setError: (msg) => set({ error: msg, running: false }),
   setRunning: (v) => set({ running: v }),
   markRunEnd: () => set((s) => ({ endedAt: s.endedAt ?? Date.now() })),
   clearSession: () =>
-    set({ intent: null, nodes: {}, order: [], error: null, lastReport: null, quote: null }),
+    set({ intent: null, nodes: {}, order: [], error: null, lastReport: null, quote: null, chapterLog: [] }),
   setLastReport: (text) => set({ lastReport: text }),
   setQuote: (q) => set({ quote: q }),
 }));

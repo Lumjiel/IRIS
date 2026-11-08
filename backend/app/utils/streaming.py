@@ -44,6 +44,25 @@ def get_token_queue() -> asyncio.Queue | None:
     return _token_queue.get()
 
 
+# === 按 thread_id 的队列注册表 ===
+# ContextVar 只能沿 asyncio 任务继承链传播；langgraph 的 Send 并行实例 /
+# Command 分支不保证继承请求任务的 context（E2E 实测：章节进度与汇编 token 全部丢失）。
+# 改为显式注册表：routes 按 thread_id 注册，任意节点凭 thread_id 取回。
+_active_queues: dict[str, dict] = {}
+
+
+def register_queues(thread_id: str, token_q: asyncio.Queue, node_q: asyncio.Queue):
+    _active_queues[thread_id] = {"token": token_q, "node": node_q}
+
+
+def unregister_queues(thread_id: str):
+    _active_queues.pop(thread_id, None)
+
+
+def get_queues_by_thread(thread_id: str) -> dict | None:
+    return _active_queues.get(thread_id)
+
+
 async def llm_stream_tokens(
     messages: list[BaseMessage],
     model_type: str = "fast",

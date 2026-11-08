@@ -19,6 +19,7 @@ export function ResearchTimeline() {
   const running = useGraphStore((s) => s.running);
   const startedAt = useGraphStore((s) => s.startedAt);
   const searchLog = useGraphStore((s) => s.searchLog);
+  const chapterLog = useGraphStore((s) => s.chapterLog);
 
   // 总耗时计时器：运行中每秒走针
   const [, setTick] = useState(0);
@@ -77,6 +78,21 @@ export function ResearchTimeline() {
             </span>
           );
         })}
+        {chapterLog.length > 0 && (
+          <div className="w-full border-t pt-2 text-muted-foreground">
+            <div className="mb-1 font-medium">分章撰写进度</div>
+            <div className="flex flex-wrap gap-1.5">
+              {chapterLog.map((c) => (
+                <span
+                  key={c}
+                  className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-600 dark:text-emerald-400"
+                >
+                  ✓ {c}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         {searchLog.length > 0 && (
           <div className="w-full border-t pt-2 text-muted-foreground">
             <div className="mb-1 font-medium">搜索轨迹（LLM 自主决策）</div>

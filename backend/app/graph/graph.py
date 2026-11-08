@@ -15,7 +15,7 @@ from app.graph.nodes.router import route_query
 from app.graph.nodes.planner import plan_node
 from app.graph.nodes.researcher import research_node
 from app.graph.nodes.search_agent import search_agent_node, search_tool_node, route_after_tools
-from app.graph.nodes.writer import write_node
+from app.graph.nodes.writer import write_node, write_chapter_node, assemble_writer_node
 from app.graph.nodes.reviewer import review_node
 from app.graph.nodes.refiner import refine_node
 from app.graph.nodes.chat_node import chat_node
@@ -72,14 +72,6 @@ def traced_researcher(state: AgentState):
     finally:
         emit_node_event("researcher", "done", elapsed=_time.time() - t0)
 
-@traceable(run_type="chain", name="writer")
-async def traced_writer(state: AgentState):
-    emit_node_event("writer", "start")
-    t0 = _time.time()
-    try:
-        return await write_node(state)
-    finally:
-        emit_node_event("writer", "done", elapsed=_time.time() - t0)
 @traceable(run_type="chain", name="reviewer")
 def traced_reviewer(state: AgentState):
     emit_node_event("reviewer", "start")
@@ -251,7 +243,9 @@ _workflow.add_node("researcher", traced_researcher)
 _workflow.add_node("search_agent", traced_search_agent)
 _workflow.add_node("search_tools", traced_search_tools)
 _workflow.add_node("route_after_tools", route_after_tools)
-_workflow.add_node("writer", traced_writer)
+_workflow.add_node("writer", write_node)
+_workflow.add_node("write_chapter", write_chapter_node)
+_workflow.add_node("assemble_writer", assemble_writer_node)
 _workflow.add_node("reviewer", traced_reviewer)
 _workflow.add_node("refiner", traced_refiner)
 _workflow.add_node("data_collector", traced_data_collector)
@@ -293,7 +287,8 @@ _workflow.add_conditional_edges(
 _workflow.add_edge("search_tools", "search_agent")
 _workflow.add_edge("route_after_tools", "data_collector")
 _workflow.add_edge("data_collector", "writer")
-_workflow.add_edge("writer", "reviewer")
+_workflow.add_edge("write_chapter", "assemble_writer")
+_workflow.add_edge("assemble_writer", "reviewer")
 _workflow.add_conditional_edges(
     "reviewer",
     should_continue,

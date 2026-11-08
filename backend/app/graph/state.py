@@ -1,3 +1,4 @@
+import operator
 from typing import TypedDict, List, Annotated
 from langgraph.graph.message import add_messages
 
@@ -12,6 +13,8 @@ class AgentState(TypedDict):
     search_results: List[str] # 搜索到的具体内容
     plan: List[str]            # 搜索子问题列表（planner 生成，researcher 消费）
     final_report: str         # 最终生成的报告
+    # 分章并行撰写（Send 多实例）结果：{"一、...": "md文本"}，operator.or_ 按键合并
+    report_sections: Annotated[dict, operator.or_]
     critique: str             # 审查意见
     revision_number: int      # 当前修改到了第几版 (防止死循环)
     review_status: str        # "PASS" 或 "FAIL"

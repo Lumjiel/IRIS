@@ -383,11 +383,13 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                 log.info(f"意图判定: {intent} (route={route_result}, has_report={has_report})")
                 # 预设路由结果：图入口的 route_query 直接复用，避免同一请求二次 LLM 意图分类
                 initial_state["preset_route"] = route_result
-                from app.utils.streaming import set_token_queue, set_node_event_queue
+                from app.utils.streaming import set_token_queue, set_node_event_queue, register_queues
                 token_queue: asyncio.Queue = asyncio.Queue()
                 set_token_queue(token_queue)
                 node_event_queue: asyncio.Queue = asyncio.Queue()
                 set_node_event_queue(node_event_queue)
+                # langgraph 并行实例不继承请求 context，节点侧改按 thread_id 取队列
+                register_queues(request.thread_id, token_queue, node_event_queue)
 
                 graph_queue: asyncio.Queue = asyncio.Queue()
 
