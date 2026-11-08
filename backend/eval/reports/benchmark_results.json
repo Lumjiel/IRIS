@@ -2,19 +2,101 @@
  {
   "code": "600196",
   "name": "复星医药",
-  "latency_s": 94.1,
-  "first_token_s": 5.2,
-  "chapter_rate_pct": 100,
-  "chapters_hit": "6/6",
-  "source_rate_pct": 100,
-  "source_tags": 49,
-  "report_chars": 5891,
-  "review_pass_first_try": true,
-  "node_elapsed_s": {},
-  "tokens_real_prompt": 3622,
-  "tokens_real_completion": 91,
-  "tokens_est_prompt": 11683,
-  "tokens_est_completion": 3749,
-  "tokens_total": 19145
+  "latency_s": 15.0,
+  "first_token_s": 12.5,
+  "chapter_rate_pct": 0,
+  "chapters_hit": "0/6",
+  "source_rate_pct": 0,
+  "source_tags": 0,
+  "report_chars": 166,
+  "review_pass_first_try": false,
+  "node_elapsed_s": {
+   "intent": 0.0
+  },
+  "tokens_real_prompt": 0,
+  "tokens_real_completion": 0,
+  "tokens_est_prompt": 1238,
+  "tokens_est_completion": 78,
+  "tokens_total": 1316
+ },
+ {
+  "code": "000001",
+  "name": "平安银行",
+  "latency_s": 1.5,
+  "first_token_s": null,
+  "chapter_rate_pct": 0,
+  "chapters_hit": "0/6",
+  "source_rate_pct": 0,
+  "source_tags": 0,
+  "report_chars": 166,
+  "review_pass_first_try": false,
+  "node_elapsed_s": {
+   "intent": 0.0
+  },
+  "tokens_real_prompt": 0,
+  "tokens_real_completion": 0,
+  "tokens_est_prompt": 1214,
+  "tokens_est_completion": 0,
+  "tokens_total": 1214
+ },
+ {
+  "code": "600519",
+  "name": "贵州茅台",
+  "latency_s": 1.6,
+  "first_token_s": null,
+  "chapter_rate_pct": 0,
+  "chapters_hit": "0/6",
+  "source_rate_pct": 0,
+  "source_tags": 0,
+  "report_chars": 166,
+  "review_pass_first_try": false,
+  "node_elapsed_s": {
+   "intent": 0.0
+  },
+  "tokens_real_prompt": 0,
+  "tokens_real_completion": 0,
+  "tokens_est_prompt": 1238,
+  "tokens_est_completion": 0,
+  "tokens_total": 1238
+ },
+ {
+  "code": "000333",
+  "name": "美的集团",
+  "latency_s": 1.3,
+  "first_token_s": null,
+  "chapter_rate_pct": 0,
+  "chapters_hit": "0/6",
+  "source_rate_pct": 0,
+  "source_tags": 0,
+  "report_chars": 166,
+  "review_pass_first_try": false,
+  "node_elapsed_s": {
+   "intent": 0.0
+  },
+  "tokens_real_prompt": 0,
+  "tokens_real_completion": 0,
+  "tokens_est_prompt": 1232,
+  "tokens_est_completion": 0,
+  "tokens_total": 1232
+ },
+ {
+  "code": "601318",
+  "name": "中国平安",
+  "latency_s": 1.9,
+  "first_token_s": null,
+  "chapter_rate_pct": 0,
+  "chapters_hit": "0/6",
+  "source_rate_pct": 0,
+  "source_tags": 0,
+  "report_chars": 166,
+  "review_pass_first_try": false,
+  "node_elapsed_s": {
+   "intent": 0.0
+  },
+  "tokens_real_prompt": 0,
+  "tokens_real_completion": 0,
+  "tokens_est_prompt": 1212,
+  "tokens_est_completion": 0,
+  "tokens_total": 1212
  }
 ]
