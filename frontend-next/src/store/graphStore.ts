@@ -90,6 +90,7 @@ export const NODE_LABELS: Record<string, string> = {
   search_agent: "搜索决策",
   search_tools: "网络搜索",
   data_collector: "数据拉取",
+  revision_search: "定向补搜",
   writer: "报告撰写",
   reviewer: "质量审查",
   refiner: "修订",

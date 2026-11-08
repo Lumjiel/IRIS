@@ -78,3 +78,30 @@ class TestShouldContinue:
     def test_missing_fields_defaults_to_end(self):
         result = should_continue(_partial_state())
         assert result == END
+
+
+class TestRouteAfterPlanner:
+    """修订快速通道路由测试：修订轮跳过完整研究管线。"""
+
+    def test_first_round_goes_researcher(self):
+        from app.graph.graph import route_after_planner
+        result = route_after_planner(_partial_state(revision_number=0))
+        assert result == "researcher"
+
+    def test_missing_revision_goes_researcher(self):
+        from app.graph.graph import route_after_planner
+        result = route_after_planner(_partial_state())
+        assert result == "researcher"
+
+    def test_revision_with_data_goes_fast_path(self):
+        from app.graph.graph import route_after_planner
+        result = route_after_planner(
+            _partial_state(revision_number=1, financial_data={"quote": {}})
+        )
+        assert result == "revision_search"
+
+    def test_revision_without_data_goes_researcher(self):
+        """修订轮但无数据（异常态）——回退完整管线，不做无米之炊。"""
+        from app.graph.graph import route_after_planner
+        result = route_after_planner(_partial_state(revision_number=2))
+        assert result == "researcher"

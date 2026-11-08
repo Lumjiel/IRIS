@@ -1,0 +1,14 @@
+{
+  "name": "IRIS backend venv",
+  "path": "E:\\workspace\\06-projects\\ai\\IRIS\\backend\\.venv",
+  "purpose": "IRIS 投研平台后端（FastAPI + LangGraph）本地运行与 benchmark 评测环境",
+  "required_by": ["E:\\workspace\\06-projects\\ai\\IRIS\\backend（本地开发/基线 benchmark/性能专项对照）"],
+  "packages": {
+    "web": ["fastapi", "uvicorn", "httpx"],
+    "agent": ["langgraph", "langchain-core", "langchain-openai"],
+    "rag": ["chromadb", "pymupdf", "dashscope"],
+    "data": ["akshare"]
+  },
+  "cleanup_policy": "IRIS 项目活跃期不可清；项目归档后按 required_by 确认",
+  "last_verified": "2026-11-08"
+}

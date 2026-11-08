@@ -20,6 +20,7 @@ from app.graph.nodes.reviewer import review_node
 from app.graph.nodes.refiner import refine_node
 from app.graph.nodes.chat_node import chat_node
 from app.graph.nodes.data_collector import data_collector_node
+from app.graph.nodes.revision_search import revision_search_node
 from app.error_types import ErrorCode
 from app.utils.logger import get_logger
 from app.utils.streaming import emit_node_event
@@ -140,6 +141,16 @@ def traced_search_tools(state: AgentState):
     finally:
         emit_node_event("search_tools", "done", elapsed=_time.time() - t0)
 
+@traceable(run_type="chain", name="revision_search")
+def traced_revision_search(state: AgentState):
+    emit_node_event("revision_search", "start")
+    t0 = _time.time()
+    try:
+        return revision_search_node(state)
+    finally:
+        emit_node_event("revision_search", "done", elapsed=_time.time() - t0)
+
+
 @traceable(run_type="chain", name="data_collector")
 def traced_data_collector(state: AgentState):
     emit_node_event("data_collector", "start")
@@ -148,6 +159,15 @@ def traced_data_collector(state: AgentState):
         return data_collector_node(state)
     finally:
         emit_node_event("data_collector", "done", elapsed=_time.time() - t0)
+
+def route_after_planner(state: AgentState) -> str:
+    """修订快速通道：审查未通过的修订轮不再重跑完整研究管线——
+    数据与搜索结果已在 state 中，仅按审查意见定向补搜一次后直接修订撰写。"""
+    if state.get("revision_number", 0) >= 1 and state.get("financial_data"):
+        log.info("[路由] 修订快速通道 -> 定向补搜 -> writer")
+        return "revision_search"
+    return "researcher"
+
 
 def _route_search_agent(state: AgentState) -> str:
     """Function Calling 路由：agent 决定调工具还是结束"""
@@ -235,6 +255,7 @@ _workflow.add_node("writer", traced_writer)
 _workflow.add_node("reviewer", traced_reviewer)
 _workflow.add_node("refiner", traced_refiner)
 _workflow.add_node("data_collector", traced_data_collector)
+_workflow.add_node("revision_search", traced_revision_search)
 _workflow.add_node("chat", traced_chat)
 
 # START -> load_memories（长期记忆注入首节点，只读不路由）-> 条件路由 -> ...
@@ -249,7 +270,12 @@ _workflow.add_conditional_edges(
         "chat": "chat",
     }
 )
-_workflow.add_edge("planner", "researcher")
+_workflow.add_conditional_edges(
+    "planner",
+    route_after_planner,
+    {"researcher": "researcher", "revision_search": "revision_search"}
+)
+_workflow.add_edge("revision_search", "writer")
 _workflow.add_conditional_edges(
     "researcher",
     route_after_research,
