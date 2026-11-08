@@ -98,7 +98,12 @@
 .aui-md th { @apply border-b bg-muted/60 px-3 py-2 text-left font-semibold whitespace-nowrap; }
 .aui-md td { @apply border-b px-3 py-2 align-top; }
 .aui-md tr:last-child td { @apply border-b-0; }
-.aui-md code { @apply rounded bg-muted px-1.5 py-0.5 font-mono text-xs; }
+.aui-md code { @apply rounded border bg-muted px-1.5 py-0.5 text-[11px]; }
+/* 来源标注小标签（adapter 已把 [来源: X] 转为行内 code） */
+.aui-md code {
+  @apply font-sans not-italic text-muted-foreground;
+  white-space: nowrap;
+}
 .aui-md pre { @apply my-3 overflow-x-auto rounded-lg bg-muted p-4; }
 .aui-md pre code { @apply bg-transparent p-0; }
 .aui-md hr { @apply my-6; }

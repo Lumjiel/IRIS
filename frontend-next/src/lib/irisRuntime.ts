@@ -12,6 +12,29 @@ import { useGraphStore } from "@/store/graphStore";
  * - {step:"error", data:{message}}                          错误
  * - "data: [DONE]"                                          结束
  */
+/** 显示层转换：[来源: X] → `来源: X`（.aui-md code 渲染成小标签） */
+function toDisplay(text: string): string {
+  return text.replace(/\s*\[来源[:：]\s*([^\]]+)\]/g, "`来源: $1`");
+}
+
+/** 从用户提问中提取 A 股 6 位代码 */
+function extractStockCode(query: string): string | null {
+  const m = query.match(/([36]0\d{4}|00\d{4})/);
+  return m ? m[1] : null;
+}
+
+async function fetchQuote(code: string) {
+  try {
+    const r = await fetch(`/api/stock/${code}/quote`);
+    const j = await r.json();
+    if (!j.error && j.quote) {
+      useGraphStore.getState().setQuote({ stock_code: code, ...j.quote });
+    }
+  } catch {
+    /* 行情卡 fail-open：拉不到就不显示 */
+  }
+}
+
 export const IrisModelAdapter: ChatModelAdapter = {
   async *run({ messages, abortSignal }) {
     const last = messages[messages.length - 1];
@@ -91,6 +114,11 @@ export const IrisModelAdapter: ChatModelAdapter = {
       }
       if (evt.status === "start" || evt.status === "done") {
         store.setNodeStatus(step, evt.status === "start" ? "running" : "done", evt.elapsed);
+        // data_collector 完成后拉实时行情卡（REST，fail-open）
+        if (evt.status === "done" && step === "data_collector") {
+          const code = extractStockCode(query);
+          if (code) void fetchQuote(code);
+        }
         return;
       }
       if (step === "error") {
@@ -115,14 +143,15 @@ export const IrisModelAdapter: ChatModelAdapter = {
           if (!payload) continue;
           if (handleEvent(payload) === "done") {
             store.setRunning(false);
-            if (textDirty) {
-              yield { content: [{ type: "text" as const, text }] };
+            if (text) {
+              if (text.length > 200) store.setLastReport(text);
+              yield { content: [{ type: "text" as const, text: toDisplay(text) }] };
             }
             return;
           }
         }
         if (textDirty) {
-          yield { content: [{ type: "text" as const, text }] };
+          yield { content: [{ type: "text" as const, text: toDisplay(text) }] };
           textDirty = false;
         }
       }
@@ -130,7 +159,8 @@ export const IrisModelAdapter: ChatModelAdapter = {
 
     store.setRunning(false);
     if (text) {
-      yield { content: [{ type: "text" as const, text }] };
+      if (text.length > 200) store.setLastReport(text);
+      yield { content: [{ type: "text" as const, text: toDisplay(text) }] };
     }
   },
 };

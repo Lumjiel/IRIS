@@ -7,6 +7,20 @@ export interface GraphNodeState {
   elapsed?: number;
 }
 
+export interface QuoteData {
+  stock_code: string;
+  最新价?: string;
+  涨跌幅?: string;
+  今开?: string;
+  最高?: string;
+  最低?: string;
+  昨收?: string;
+  市盈率?: string;
+  总市值?: string;
+  data_source?: string;
+  延时?: string;
+}
+
 interface GraphState {
   /** 意图：research / refine / chat */
   intent: string | null;
@@ -17,12 +31,18 @@ interface GraphState {
   error: string | null;
   /** 是否正在研究 */
   running: boolean;
+  /** 最近一次研究生成的完整报告原文（用于导出/复制） */
+  lastReport: string | null;
+  /** data_collector 完成后拉到的实时行情 */
+  quote: QuoteData | null;
 
   reset: () => void;
   setIntent: (intent: string) => void;
   setNodeStatus: (step: string, status: NodeStatus, elapsed?: number) => void;
   setError: (msg: string) => void;
   setRunning: (v: boolean) => void;
+  setLastReport: (text: string | null) => void;
+  setQuote: (q: QuoteData | null) => void;
 }
 
 export const useGraphStore = create<GraphState>((set) => ({
@@ -31,9 +51,11 @@ export const useGraphStore = create<GraphState>((set) => ({
   order: [],
   error: null,
   running: false,
+  lastReport: null,
+  quote: null,
 
   reset: () =>
-    set({ intent: null, nodes: {}, order: [], error: null, running: true }),
+    set({ intent: null, nodes: {}, order: [], error: null, running: true, lastReport: null, quote: null }),
   setIntent: (intent) => set({ intent }),
   setNodeStatus: (step, status, elapsed) =>
     set((s) => {
@@ -51,6 +73,8 @@ export const useGraphStore = create<GraphState>((set) => ({
     }),
   setError: (msg) => set({ error: msg, running: false }),
   setRunning: (v) => set({ running: v }),
+  setLastReport: (text) => set({ lastReport: text }),
+  setQuote: (q) => set({ quote: q }),
 }));
 
 /** 节点显示名（与后端 graph/nodes 对应） */
