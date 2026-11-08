@@ -37,6 +37,8 @@ interface GraphState {
   quote: QuoteData | null;
 
   reset: () => void;
+  /** 会话切换时清理（不动 running，避免误杀仍在后台跑的 run） */
+  clearSession: () => void;
   setIntent: (intent: string) => void;
   setNodeStatus: (step: string, status: NodeStatus, elapsed?: number) => void;
   setError: (msg: string) => void;
@@ -73,6 +75,8 @@ export const useGraphStore = create<GraphState>((set) => ({
     }),
   setError: (msg) => set({ error: msg, running: false }),
   setRunning: (v) => set({ running: v }),
+  clearSession: () =>
+    set({ intent: null, nodes: {}, order: [], error: null, lastReport: null, quote: null }),
   setLastReport: (text) => set({ lastReport: text }),
   setQuote: (q) => set({ quote: q }),
 }));

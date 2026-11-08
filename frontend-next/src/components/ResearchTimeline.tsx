@@ -5,7 +5,10 @@ import { cn } from "@/lib/utils";
  * 多 Agent 研究过程时间线：消费后端节点 start/done 事件，展示真实进度与耗时。
  */
 export function ResearchTimeline() {
-  const { nodes, order, error, running } = useGraphStore();
+  const nodes = useGraphStore((s) => s.nodes);
+  const order = useGraphStore((s) => s.order);
+  const error = useGraphStore((s) => s.error);
+  const running = useGraphStore((s) => s.running);
 
   const preparing = running && order.length === 0 && !error;
   if (preparing === false && order.length === 0 && !error) return null;
@@ -43,9 +46,9 @@ export function ResearchTimeline() {
                 )}
               />
               {label}
-              {n.status === "done" && n.elapsed != null && (
+              {n.status === "done" && Number.isFinite(n.elapsed) && (
                 <span className="tabular-nums opacity-70">
-                  {n.elapsed.toFixed(1)}s
+                  {Number(n.elapsed).toFixed(1)}s
                 </span>
               )}
             </span>

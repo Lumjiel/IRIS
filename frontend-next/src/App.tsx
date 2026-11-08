@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AssistantRuntimeProvider,
   useAuiState,
@@ -19,6 +19,7 @@ import { ReportFooterBar } from "@/components/ReportFooterBar";
 import { Welcome } from "@/components/Welcome";
 import { StatusCard } from "@/components/StatusCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useGraphStore } from "@/store/graphStore";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +28,14 @@ function AppInner() {
     () => typeof window === "undefined" || window.innerWidth >= 768,
   );
   const threadTitle = useAuiState((s) => s.threadListItem?.title);
+  const remoteId = useAuiState((s) => s.threadListItem?.remoteId ?? null);
+
+  // 会话切换：清展示层残留（行情卡/报告底条/时间线），移动端收起抽屉
+  useEffect(() => {
+    useGraphStore.getState().clearSession();
+    if (window.innerWidth < 768) setSidebarOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteId]);
 
   return (
     <div className="flex h-dvh bg-background">

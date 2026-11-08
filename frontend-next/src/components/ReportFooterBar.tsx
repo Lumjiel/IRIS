@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAui } from "@assistant-ui/react";
 import { CheckIcon, CopyIcon, DownloadIcon } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
@@ -16,8 +16,11 @@ const FOLLOW_UPS = [
  */
 export function ReportFooterBar() {
   const aui = useAui();
-  const { lastReport, running } = useGraphStore();
-  const [copied, setCopied] = useState(false);
+  const lastReport = useGraphStore((s) => s.lastReport);
+  const running = useGraphStore((s) => s.running);
+  const [copied, setCopied] = useState<null | "ok" | "fail">(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
   const visible = !running && lastReport != null && lastReport.length > 200;
   if (!visible) return null;
 
@@ -34,17 +37,18 @@ export function ReportFooterBar() {
     a.href = url;
     a.download = name;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000); // Firefox 需要延迟 revoke
   };
 
   const copyAll = async () => {
     try {
       await navigator.clipboard.writeText(report);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopied("ok");
     } catch {
-      /* 剪贴板权限失败时静默 */
+      setCopied("fail");
     }
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(null), 2000);
   };
 
   return (
@@ -69,12 +73,12 @@ export function ReportFooterBar() {
           className="h-7 gap-1.5 text-xs"
           onClick={copyAll}
         >
-          {copied ? (
+          {copied === "ok" ? (
             <CheckIcon className="size-3.5 text-emerald-500" />
           ) : (
             <CopyIcon className="size-3.5" />
           )}
-          {copied ? "已复制" : "复制全文"}
+          {copied === "ok" ? "已复制" : copied === "fail" ? "复制失败" : "复制全文"}
         </Button>
         <span className="ml-auto hidden text-muted-foreground sm:inline">
           继续追问：

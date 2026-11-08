@@ -7,10 +7,27 @@ import type { ThreadMessage } from "@assistant-ui/react";
  */
 
 const storage = {
-  getItem: (key: string) => Promise.resolve(localStorage.getItem(key)),
-  setItem: (key: string, value: string) =>
-    Promise.resolve(localStorage.setItem(key, value)),
-  removeItem: (key: string) => Promise.resolve(localStorage.removeItem(key)),
+  getItem: async (key: string) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: async (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // 配额满（QuotaExceededError）：降级为不持久化，会话仍可当次使用
+    }
+  },
+  removeItem: async (key: string) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  },
 };
 
 async function makeTitle(messages: readonly ThreadMessage[]): Promise<string> {
