@@ -70,6 +70,7 @@ class TestIngestReport:
     """研报入库测试。"""
 
     @patch("app.rag.engine.embeddings")
+    @patch("app.rag.report_ingest.os.listdir", return_value=["report.pdf"])
     @patch("app.rag.report_ingest.os.path.exists", return_value=True)
     @patch("langchain_community.vectorstores.Chroma")
     @patch("app.rag.report_ingest.extract_text_from_pdf")
