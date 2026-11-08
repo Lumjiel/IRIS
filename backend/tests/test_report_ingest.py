@@ -117,9 +117,10 @@ class TestIngestReport:
 class TestSearchReports:
     """研报检索测试。"""
 
+    @patch("app.rag.report_ingest.os.path.exists", return_value=True)
     @patch("app.rag.engine.embeddings")
     @patch("langchain_community.vectorstores.Chroma")
-    def test_search_with_stock_code_filter(self, mock_chroma, mock_embeddings):
+    def test_search_with_stock_code_filter(self, mock_chroma, mock_embeddings, mock_exists):
         """按股票代码过滤检索"""
         import asyncio
         from app.rag.report_ingest import search_reports
