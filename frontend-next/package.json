@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@assistant-ui/core": "^0.3.33",
     "@assistant-ui/react": "^0.15.33",
     "@assistant-ui/react-markdown": "^0.14.25",
     "@tailwindcss/vite": "^4.3.5",

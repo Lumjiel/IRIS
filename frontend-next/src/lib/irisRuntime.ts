@@ -24,6 +24,20 @@ export const IrisModelAdapter: ChatModelAdapter = {
     const store = useGraphStore.getState();
     store.reset();
 
+    // 后端会话连续性：同一会话（首条用户消息相同）复用同一 thread_id，
+    // 让后端 checkpoint / conversation_summary 跨轮次生效
+    const firstUser = messages.find((m) => m.role === "user");
+    const firstText =
+      firstUser?.content
+        .filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .map((p) => p.text)
+        .join(" ") ?? "";
+    let hash = 0;
+    for (let i = 0; i < firstText.length; i++) {
+      hash = (hash * 31 + firstText.charCodeAt(i)) | 0;
+    }
+    const backendThreadId = `web-${(hash >>> 0).toString(36)}`;
+
     let text = "";
     let textDirty = false;
 
@@ -33,7 +47,7 @@ export const IrisModelAdapter: ChatModelAdapter = {
       body: JSON.stringify({
         query,
         search_mode: "hybrid",
-        thread_id: `web-${Date.now().toString(36)}`,
+        thread_id: backendThreadId,
         style: "detailed",
         language: "zh",
       }),
