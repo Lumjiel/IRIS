@@ -18,5 +18,6 @@ langgraph-checkpoint-sqlite
 msgpack
 python-multipart
 pypdf
+mcp[cli]>=2.0
 scikit-learn>=1.4.0
 akshare>=1.16.0
