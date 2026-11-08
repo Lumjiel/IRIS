@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   AssistantRuntimeProvider,
+  useAuiState,
   useLocalRuntime,
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 
 function AppInner() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const threadTitle = useAuiState((s) => s.threadListItem?.title);
 
   return (
     <div className="flex h-dvh bg-background">
@@ -31,15 +33,10 @@ function AppInner() {
           sidebarOpen ? "w-72" : "w-0 overflow-hidden border-r-0",
         )}
       >
-        <div className="flex items-center gap-2.5 px-4 py-3.5">
-          <span className="text-lg">📊</span>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold tracking-tight">
-              IRIS 投研平台
-            </div>
-            <div className="truncate text-[11px] text-muted-foreground">
-              LangGraph 多智能体 · A 股
-            </div>
+        <div className="px-4 py-3.5">
+          <div className="text-sm font-semibold tracking-tight">IRIS 投研平台</div>
+          <div className="text-[11px] text-muted-foreground">
+            LangGraph 多智能体 · A 股
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3">
@@ -70,8 +67,8 @@ function AppInner() {
               <PanelLeftOpenIcon className="size-4" />
             )}
           </Button>
-          <span className="text-xs text-muted-foreground">
-            检索 → 数据拉取 → 撰写 → 审查 · 六章节中文研报
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {threadTitle ?? "六章节中文研报 · 数据与观点分离 · 来源可溯"}
           </span>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">

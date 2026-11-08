@@ -7,14 +7,15 @@ import { cn } from "@/lib/utils";
 export function ResearchTimeline() {
   const { nodes, order, error, running } = useGraphStore();
 
-  if (order.length === 0 && !error) return null;
+  const preparing = running && order.length === 0 && !error;
+  if (preparing === false && order.length === 0 && !error) return null;
 
   return (
     <div
       data-slot="iris_timeline"
-      className="mx-auto w-full max-w-3xl px-4 pb-2"
+      className="sticky top-0 z-10 mx-auto w-full max-w-3xl px-4 pb-2 pt-2"
     >
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/60 px-4 py-3 text-xs shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/80 px-4 py-3 text-xs shadow-sm backdrop-blur">
         <span className="mr-1 font-medium text-muted-foreground">
           研究进程
         </span>
@@ -50,8 +51,11 @@ export function ResearchTimeline() {
             </span>
           );
         })}
-        {running && order.length === 0 && (
-          <span className="text-muted-foreground">连接中…</span>
+        {preparing && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 font-medium text-primary">
+            <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+            研究准备中…
+          </span>
         )}
       </div>
       {error && (
