@@ -44,3 +44,7 @@ frontend/dist.bak/
 
 # 个人工作文件（简历等，防误推公开仓库）
 .resume_work/
+
+# frontend-next (assistant-ui 壳)
+frontend-next/node_modules
+frontend-next/dist
