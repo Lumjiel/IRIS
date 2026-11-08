@@ -100,7 +100,15 @@ export const IrisModelAdapter: ChatModelAdapter = {
       });
 
       if (!res.ok || !res.body) {
-        throw new Error(`后端请求失败: ${res.status}`);
+        // 429 等 HTTP 错误：透传后端 detail（日配额/频率提示），前端时间线直接可读
+        let detail = `后端请求失败: ${res.status}`;
+        try {
+          const j = await res.json();
+          if (j?.detail) detail = String(j.detail);
+        } catch {
+          /* 非 JSON 响应体，用默认文案 */
+        }
+        throw new Error(detail);
       }
 
       const reader = res.body.getReader();

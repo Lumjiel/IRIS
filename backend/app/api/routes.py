@@ -203,6 +203,10 @@ class RateLimiter:
 # 每个 IP 每分钟最多 5 次研究请求
 chat_limiter = RateLimiter(db_path=CHECKPOINT_DB, max_requests=5, window_seconds=60)
 
+# 公网成本防护：每 IP 每 24h 研究次数上限（单次研究 = 数万 LLM token，裸奔会被脚本刷爆额度）
+DAILY_RESEARCH_QUOTA = int(os.getenv("DAILY_RESEARCH_QUOTA", "5"))
+daily_limiter = RateLimiter(db_path=CHECKPOINT_DB, max_requests=DAILY_RESEARCH_QUOTA, window_seconds=86400)
+
 
 class ChatRequest(BaseModel):
     query: str
@@ -247,15 +251,27 @@ async def upload_files(files: List[UploadFile] = File(...)):
         file_contents.append((file.filename, content))
 
     try:
-        reset_knowledge_base()
-
+        # 增量入库：公网端点不能允许上传动作清空整个知识库（原实现 reset_knowledge_base 有数据抹除风险）
         saved_paths = []
+        skipped = []
         for filename, content in file_contents:
             safe_name = os.path.basename(filename)
             file_path = os.path.join(UPLOAD_DIR, safe_name)
+            if os.path.exists(file_path) and os.path.getsize(file_path) == len(content):
+                skipped.append(safe_name)
+                continue
             with open(file_path, "wb") as buffer:
                 buffer.write(content)
             saved_paths.append(file_path)
+
+        if not saved_paths:
+            return {
+                "status": "success",
+                "file_count": 0,
+                "chunks_stored": 0,
+                "skipped": skipped,
+                "message": "文件已存在，跳过重复入库"
+            }
 
 
         chunks_num = process_documents(saved_paths)
@@ -268,9 +284,10 @@ async def upload_files(files: List[UploadFile] = File(...)):
 
         return {
             "status": "success",
-            "file_count": len(files),
+            "file_count": len(saved_paths),
             "chunks_stored": chunks_num,
-            "message": "文档解析完成，知识库构建成功"
+            "skipped": skipped,
+            "message": "文档解析完成，知识库增量入库成功"
         }
     except HTTPException:
         raise  # 重新抛出 HTTP 异常
@@ -307,6 +324,8 @@ async def chat_endpoint(request: ChatRequest, req: Request):
     client_ip = req.client.host if req.client else "unknown"
     if not chat_limiter.is_allowed(client_ip):
         raise HTTPException(status_code=429, detail="请求太频繁，请稍后再试（每分钟最多 5 次）")
+    if not daily_limiter.is_allowed(f"daily:{client_ip}"):
+        raise HTTPException(status_code=429, detail=f"今日研究次数已达上限（每 24 小时 {DAILY_RESEARCH_QUOTA} 次），请明天再来")
 
     # 低概率触发检查点清理（避免每次请求都清理）
     if random.random() < 0.1:
