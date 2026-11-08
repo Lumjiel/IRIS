@@ -228,3 +228,21 @@ docker stats iris-backend
 ps aux | grep uvicorn
 free -h
 ```
+
+---
+
+## 部署二：南京服务器（119.45.122.221 · OpenCloudOS 9.6 · 2026-11-09）
+
+轻量化部署（与上海机的裸机部署并存，口径为本仓 main 分支 2753d38+）：
+
+- **代码**：tar-over-ssh 直传（排除 .git/.venv/node_modules/chroma_db），位于 `/var/www/IRIS`
+- **后端**：`python3.11 venv` + 清华源装依赖，systemd 常驻
+  `iris.service`（uvicorn 127.0.0.1:8082 --workers 1，RSS ~200MB），开机自启
+- **前端**：本地 `npm run build` 产物 dist/ 直传，nginx 托管
+- **对外**：`http://119.45.122.221/`（nginx 以 `server_name 119.45.122.221` 挂在已有 80 端口上，
+  **未开新端口、未动防火墙、无 HTTPS**——演示无登录系统，可接受）
+- **nginx**：`/etc/nginx/conf.d/iris-ip.conf`，静态 + `/api/` 反代（proxy_buffering off 保 SSE）
+- **模型口径**：LLM 走 magpie 网关 `group/cheap`（本机同款）；embedding/rerank 仍 DashScope
+- **成本防护**：日配额限流随代码生效（每 IP 每 24h 5 次研究）
+- 升级方式：本地 tar 直传覆盖 + `systemctl restart iris` + 前端 dist 重传
+- 内存水位：整机 3.5G，部署后可用 2.3G，不影响 magpie / 易班签到
