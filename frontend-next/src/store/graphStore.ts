@@ -33,6 +33,13 @@ interface GraphState {
   running: boolean;
   /** 最近一次研究生成的完整报告原文（用于导出/复制） */
   lastReport: string | null;
+  /** 搜索轨迹（LLM 自主决策的搜索词，来自 search_tools 节点事件） */
+  searchLog: string[];
+  /** 数据源轨迹（来自 data_collector 节点事件） */
+  dataSources: string[];
+  /** 本轮研究起止时间（小结/计时用） */
+  startedAt: number | null;
+  endedAt: number | null;
   /** data_collector 完成后拉到的实时行情 */
   quote: QuoteData | null;
 
@@ -40,9 +47,10 @@ interface GraphState {
   /** 会话切换时清理（不动 running，避免误杀仍在后台跑的 run） */
   clearSession: () => void;
   setIntent: (intent: string) => void;
-  setNodeStatus: (step: string, status: NodeStatus, elapsed?: number) => void;
+  setNodeStatus: (step: string, status: NodeStatus, elapsed?: number, data?: Record<string, unknown>) => void;
   setError: (msg: string) => void;
   setRunning: (v: boolean) => void;
+  markRunEnd: () => void;
   setLastReport: (text: string | null) => void;
   setQuote: (q: QuoteData | null) => void;
 }
@@ -55,11 +63,19 @@ export const useGraphStore = create<GraphState>((set) => ({
   running: false,
   lastReport: null,
   quote: null,
+  searchLog: [],
+  dataSources: [],
+  startedAt: null,
+  endedAt: null,
 
   reset: () =>
-    set({ intent: null, nodes: {}, order: [], error: null, running: true, lastReport: null, quote: null }),
+    set({
+      intent: null, nodes: {}, order: [], error: null, running: true,
+      lastReport: null, quote: null, searchLog: [], dataSources: [],
+      startedAt: Date.now(), endedAt: null,
+    }),
   setIntent: (intent) => set({ intent }),
-  setNodeStatus: (step, status, elapsed) =>
+  setNodeStatus: (step, status, elapsed, data) =>
     set((s) => {
       const known = s.nodes[step];
       const nodes = {
@@ -71,10 +87,22 @@ export const useGraphStore = create<GraphState>((set) => ({
         },
       };
       const order = known ? s.order : [...s.order, step];
-      return { nodes, order };
+      // 轨迹事件：搜索词 / 数据源（done 事件可能带 data，wrapper 的空 done 不覆盖）
+      let searchLog = s.searchLog;
+      let dataSources = s.dataSources;
+      if (data) {
+        if (typeof data.search_query === "string" && data.search_query) {
+          searchLog = [...s.searchLog, data.search_query];
+        }
+        if (Array.isArray(data.data_sources)) {
+          dataSources = data.data_sources.map(String);
+        }
+      }
+      return { nodes, order, searchLog, dataSources };
     }),
   setError: (msg) => set({ error: msg, running: false }),
   setRunning: (v) => set({ running: v }),
+  markRunEnd: () => set((s) => ({ endedAt: s.endedAt ?? Date.now() })),
   clearSession: () =>
     set({ intent: null, nodes: {}, order: [], error: null, lastReport: null, quote: null }),
   setLastReport: (text) => set({ lastReport: text }),

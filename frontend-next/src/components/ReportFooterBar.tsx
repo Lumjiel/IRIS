@@ -18,6 +18,10 @@ export function ReportFooterBar() {
   const aui = useAui();
   const lastReport = useGraphStore((s) => s.lastReport);
   const running = useGraphStore((s) => s.running);
+  const startedAt = useGraphStore((s) => s.startedAt);
+  const endedAt = useGraphStore((s) => s.endedAt);
+  const searchCount = useGraphStore((s) => s.searchLog.length);
+  const dataSourceCount = useGraphStore((s) => s.dataSources.length);
   const [copied, setCopied] = useState<null | "ok" | "fail">(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timerRef.current), []);
@@ -58,6 +62,19 @@ export function ReportFooterBar() {
     >
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-4 py-2.5 text-xs shadow-sm">
         <span className="font-medium">研报已生成</span>
+        {startedAt && endedAt && (
+          <span className="rounded bg-muted px-2 py-1 tabular-nums text-muted-foreground">
+            {Math.round((endedAt - startedAt) / 1000 / 60 * 10) / 10} 分钟
+          </span>
+        )}
+        <span className="rounded bg-muted px-2 py-1 tabular-nums text-muted-foreground">
+          搜索 {searchCount} 次
+        </span>
+        {dataSourceCount > 0 && (
+          <span className="rounded bg-muted px-2 py-1 tabular-nums text-muted-foreground">
+            数据源 {dataSourceCount} 个
+          </span>
+        )}
         <Button
           variant="outline"
           size="sm"

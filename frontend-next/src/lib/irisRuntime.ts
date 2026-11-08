@@ -68,7 +68,7 @@ export const IrisModelAdapter: ChatModelAdapter = {
 
     if (!query) {
       store.setError("请输入要研究的问题");
-      store.setRunning(false);
+      store.setRunning(false); store.markRunEnd();
       return;
     }
 
@@ -139,6 +139,7 @@ export const IrisModelAdapter: ChatModelAdapter = {
             step,
             evt.status === "start" ? "running" : evt.status,
             evt.elapsed,
+            evt.data as Record<string, unknown> | undefined,
           );
           // data_collector 完成后拉实时行情卡（REST，fail-open）
           if (evt.status === "done" && step === "data_collector") {
@@ -160,7 +161,7 @@ export const IrisModelAdapter: ChatModelAdapter = {
           const payload = line.slice(5).trim();
           if (!payload) continue;
           if (handleEvent(payload) === "done") {
-            store.setRunning(false);
+            store.setRunning(false); store.markRunEnd();
             if (text.length > 200) store.setLastReport(text);
             if (text) {
               yield { content: [{ type: "text" as const, text: toDisplay(text) }] };
@@ -196,17 +197,17 @@ export const IrisModelAdapter: ChatModelAdapter = {
         if (text.length > 200) store.setLastReport(text);
         yield { content: [{ type: "text" as const, text: toDisplay(text) }] };
       }
-      store.setRunning(false);
+      store.setRunning(false); store.markRunEnd();
     } catch (e) {
       // 用户主动停止（AbortError）不算错误，静默收场
       if (e instanceof DOMException && e.name === "AbortError") {
-        store.setRunning(false);
+        store.setRunning(false); store.markRunEnd();
         return;
       }
       store.setError(e instanceof Error ? e.message : "研究请求失败，请重试");
-      store.setRunning(false);
+      store.setRunning(false); store.markRunEnd();
     } finally {
-      if (useGraphStore.getState().running) store.setRunning(false);
+      if (useGraphStore.getState().running) store.setRunning(false); store.markRunEnd();
     }
   },
 };

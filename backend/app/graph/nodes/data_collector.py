@@ -19,6 +19,7 @@ from typing import Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 
 from app.graph.state import AgentState
+from app.utils.streaming import emit_node_event
 from app.tools.akshare_tools import (
     query_stock_info,
     query_financial_indicators,
@@ -163,6 +164,9 @@ def data_collector_node(state: AgentState) -> Dict[str, Any]:
         "[DataCollector] 数据收集完成: code=%s sources=%s errors=%d",
         stock_code, data_sources, len(error_log) - len(state.get("error_log", []))
     )
+    # 数据源轨迹透传前端（行情/财务来源可观测）
+    emit_node_event("data_collector", "done", elapsed=0.0,
+                    data={"data_sources": data_sources})
 
     return {
         "financial_data": financial_data,

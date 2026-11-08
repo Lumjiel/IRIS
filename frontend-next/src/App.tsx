@@ -19,6 +19,7 @@ import { ReportFooterBar } from "@/components/ReportFooterBar";
 import { Welcome } from "@/components/Welcome";
 import { StatusCard } from "@/components/StatusCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ReportToc } from "@/components/ReportToc";
 import { useGraphStore } from "@/store/graphStore";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,41 @@ function AppInner() {
     if (window.innerWidth < 768) setSidebarOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteId]);
+
+  const running = useGraphStore((s) => s.running);
+  const lastReport = useGraphStore((s) => s.lastReport);
+
+  // 长任务保护：运行中关闭/刷新前提醒（SSE 断开 = 后端 run 被取消）
+  useEffect(() => {
+    if (!running) return;
+    const guard = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [running]);
+
+  // 完成提醒：标题闪烁（用户切走 tab 也能注意到）
+  useEffect(() => {
+    const base = document.title;
+    if (!running) {
+      if (lastReport) {
+        document.title = "✓ 研报已生成 — IRIS";
+        const t = setTimeout(() => (document.title = base), 8000);
+        return () => clearTimeout(t);
+      }
+      document.title = base;
+      return;
+    }
+    let on = false;
+    const t = setInterval(() => {
+      document.title = (on = !on) ? "⏳ 研究中…" : base;
+    }, 1500);
+    return () => {
+      clearInterval(t);
+      document.title = base;
+    };
+  }, [running, lastReport]);
 
   return (
     <div className="flex h-dvh bg-background">
@@ -72,6 +108,11 @@ function AppInner() {
             <ThemeToggle />
           </div>
         </div>
+      </aside>
+
+      {/* 右栏：研报目录（大屏显示） */}
+      <aside className="hidden h-full w-56 shrink-0 overflow-y-auto border-l bg-card/40 px-3 py-4 xl:block">
+        <ReportToc />
       </aside>
 
       {/* 主区 */}

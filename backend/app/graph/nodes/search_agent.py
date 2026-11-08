@@ -6,6 +6,7 @@ Function Calling Agent 节点
 """
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from app.graph.state import AgentState
+from app.utils.streaming import emit_node_event
 from app.tools.search_tools import search_web
 from app.utils.llm import get_llm
 from app.utils.logger import get_logger
@@ -96,9 +97,12 @@ def search_tool_node(state: AgentState) -> dict:
         tool_id = tc.get("id", "")
         
         log.info(f"[ToolNode] 执行工具: {tool_name}({tool_args})")
-        
+
         if tool_name == "search_web":
             result = search_web.invoke(tool_args)
+            # 搜索轨迹透传前端时间线（LLM 自主决策的搜索词，可观测）
+            emit_node_event("search_tools", "done", elapsed=0.0,
+                            data={"search_query": str(tool_args.get("query", ""))})
         else:
             result = f"未知工具: {tool_name}"
         
