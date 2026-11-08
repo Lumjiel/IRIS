@@ -111,12 +111,18 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **九节点多智能体协同架构*
 
 ### 4. 研报 PDF 入库 RAG
 
-- **PyMuPDF 抽取**：全文提取 + 页级处理
+- **pypdf 抽取**：全文提取 + 页级处理
 - **实体抽取**：正则抽取公司名/代码/评级/目标价/日期
 - **元数据入库**：ChromaDB metadata 存 `{source, stock_code, rating, report_date}`
 - **按标的检索**：`search_reports(query, stock_code="600196")`
 
-### 5. 工程鲁棒性
+### 5. MCP 工具暴露
+
+- 5 个只读金融工具以 **stdio MCP server** 暴露（`mcp_server.py`）：公司概况 / 财务指标 / 实时行情 / 个股新闻 / 研报 RAG 检索
+- `readOnlyHint` 注解 + 口径字段透传（`data_source` / `degraded`，模拟数据明确标记）
+- 仓库根 `.mcp.json` 即插即用；工具层与 Web 前端解耦，任意 MCP 客户端可复用（**N×M → N+M**）
+
+### 6. 工程鲁棒性
 
 | 机制 | 实现 |
 | ------ | ------ |
@@ -222,6 +228,11 @@ curl -X POST http://localhost:8000/api/memory-items -H "X-User-Id: default" \
 curl -X PUT "http://localhost:8000/api/memory-items/{key}" -H "X-User-Id: default" \
   -H "Content-Type: application/json" -d '{"kind":"preference","content":"已更新"}'
 
+# 方式四：MCP 客户端复用数据工具（stdio，只读）
+# 仓库根已注册 .mcp.json（iris-findata），Claude Code 打开即用；或手动：
+#   claude mcp add iris-findata -- backend/.venv/Scripts/python.exe backend/mcp_server.py
+# 工具：query_stock_info / query_financial_indicators / query_stock_quote / query_stock_news / search_reports
+
 # 方式四：研报 RAG
 curl -X POST http://localhost:8000/api/reports/upload \
   -F "file=@report.pdf"
@@ -265,10 +276,12 @@ IRIS/
 │   │       ├── memory.py             # 会话记忆
 │   │       └── logger.py             # 结构化日志
 │   ├── eval/                         # 评测框架（12 个 Golden Case）
-│   ├── tests/                        # 127 个测试（全量通过）
+│   ├── tests/                        # 218 个测试（全量通过）
 │   ├── main.py                       # FastAPI 入口
 │   └── requirements.txt              # 依赖清单
-├── frontend/                         # Vue 3 + Vite + Tailwind（毛玻璃 UI）
+├── mcp_server.py                     # MCP stdio server（只读金融工具暴露，任意 MCP 客户端复用）
+├── frontend-next/                    # 新前端壳：React 19 + assistant-ui 0.15（SSE 适配器/时间线/行情卡/导出）
+├── frontend/                         # 旧前端（Vue 3 + Vite，已被 frontend-next 替代，待下线）
 │   ├── src/
 │   │   ├── views/
 │   │   │   ├── ChatView.vue          # 聊天页（功能引导 + 消息流 + 侧边栏布局 + 附件上传）
@@ -311,10 +324,14 @@ IRIS/
 
 | 环境变量 | 说明 | 默认值 |
 | --------- | ------ | -------- |
-| `OPENAI_API_KEY` | DeepSeek API 密钥 | - |
-| `OPENAI_API_BASE` | API 基础地址 | `https://api.deepseek.com/v1` |
-| `LLM_MODEL_PRIMARY` | 主模型 | `qwen3.7-plus` |
-| `LLM_MODEL_FALLBACK` | 备用模型 | `deepseek-v4-flash` |
+| `OPENAI_API_KEY` | DashScope API 密钥 | - |
+| `OPENAI_API_BASE` | API 基础地址（DashScope 兼容端点） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `LLM_MODEL_PRIMARY` | 默认主模型 | `qwen3.8-27b` |
+| `LLM_MODEL_FALLBACK` | 全局备用模型（额度/异常降级） | `qwen-plus` |
+| `LLM_MODEL_ROUTER` / `_RESEARCHER` | 轻任务模型（意图路由/文档审计） | `qwen-plus` |
+| `LLM_MODEL_PLANNER` / `_REFINER` | 规划/修订模型 | `qwen3.8-27b` |
+| `LLM_MODEL_WRITER` | 报告撰写模型 | `qwen3.8-27b` |
+| `LLM_MODEL_REVIEWER` | 质量审查模型 | `deepseek-v4-pro-0813` |
 | `TAVILY_API_KEY` | Tavily 搜索 API Key | - |
 | `LANGSMITH_API_KEY` | LangSmith 可观测性（可选） | - |
 | `DEEPSEEK_API_KEY` | DeepSeek 密钥（旧版兼容） | - |
@@ -375,7 +392,7 @@ IRIS/
 - [x] 限流器 + 生产级 FastAPI 后端
 - [x] Vue 3 前端（智能问答 + 投研分析 Tab）
 - [x] Docker Compose 部署
-- [x] 127 个测试，零回归
+- [x] 218 个测试，零回归
 - [x] 图拓扑修复（researcher→search_agent 断链）
 - [x] 节点状态事件（start/done + elapsed 真实进度）
 - [x] search_iteration 循环终止（≤5 轮自动停止）
@@ -423,7 +440,7 @@ IRIS/
 | 为什么 watch_stock 用规则抽取而不是每轮 LLM？ | 省成本、行为可预期：严格正则识别股票代码零成本零幻觉；LLM 只兜底"记住我喜欢…"这类无结构化信号的显式请求 |
 | 为什么 rerank 选 DashScope gte-rerank 而不是本地 CrossEncoder？ | 同供应商同 Key 零额外依赖；本地模型 +400MB 内存且 Windows/容器安装易翻车；API 失败 fail-open 降级纯向量序，可用性优先于精排收益 |
 | rerank 怎么证明有效？ | score 契约用 `reranked` 字段区分语义（relevance_score vs Chroma distance），可观测可回归；20 query 手工标注小评测待补（诚实边界） |
-| 研报 RAG？ | PyMuPDF 抽取 + 正则实体抽取 + ChromaDB 按标的检索 + gte-rerank 精排 |
+| 研报 RAG？ | pypdf 抽取 + 正则实体抽取 + ChromaDB 按标的检索 + gte-rerank 精排 |
 ---
 
 ## 开源协议
