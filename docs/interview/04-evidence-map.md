@@ -8,7 +8,7 @@
 
 | 声称 | 证据 | 级 |
 |------|------|----|
-| 299 tests 全绿，覆盖率 69.37%，门禁 ≥62% | `cd backend && .venv/bin/python -m pytest tests/ -q --timeout=120 --cov=app --cov-fail-under=62` → `299 passed, Required test coverage of 62% reached. Total coverage: 69.37%`（2026-11-10） | A |
+| 299 tests 全绿，覆盖率 69.22%，门禁 ≥62% | `cd backend && .venv/bin/python -m pytest -q --timeout=120 --cov=app --cov-fail-under=62` → `299 passed, Required test coverage of 62% reached. Total coverage: 69.22%`（2026-11-11，venv 重建后重跑；2026-11-10 首测 69.37%） | A |
 | 覆盖率提升不靠改实现 | 本次 56.46%→69.37% 仅新增测试文件：`tests/test_memory.py`（16 用例）、`tests/test_streaming.py`（11）、`tests/test_api_routes.py`（29）、`tests/test_fault_injection.py`（16）；`app/` 零改动（用例数来源：`pytest --collect-only -q`，2026-11-10） | A/B |
 | Lint 门禁零错 | `ruff check app/ --select E9,F63,F7,F82` → `All checks passed!` rc=0（2026-11-10） | A |
 | CI 三件套（ruff+cov+前端构建） | `.github/workflows/test.yml:21-33`（ruff 步骤 + `--cov-fail-under=62`）+ `:34-50`（frontend build） | B |
@@ -66,6 +66,8 @@
 | 声称 | 证据 | 级 |
 |------|------|----|
 | 轻量服务器部署（systemd + Nginx 反代，uvicorn RSS ~200MB） | commit `1c7538e`（2026-11）`backend/DEPLOY.md` | C |
+| 现场演示环境真实数据在线 | `curl http://127.0.0.1:8082/api/status` → `data_online:true, data_source=同花顺官方API·腾讯行情补充`；`curl /api/stock/600519/info` → 贵州茅台真实估值字段（2026-11-11 实测） | A |
+| 真实端到端一次跑通 | `POST /api/chat` 600519 全流程 SSE：router→planner→researcher→search_agent(多轮 web 搜索)→data_collector→writer→reviewer，产物见 `/root/tmp/iris-m1-e2e/sse_600519.txt`（2026-11-11） | A |
 
 ## 8. 边界（如实）
 
