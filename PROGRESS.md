@@ -327,3 +327,21 @@ STATUS: done
 BLOCKED.md 剩余项全部卡在「需真实 key/人拍板」，**本任务卡应停止下发**，再拉起只消耗额度。
 
 STATUS: done
+
+---
+
+# 本轮核对（2026-11-12 第八轮）
+
+任务卡上下文称「服务器上现在没有 pytest/venv，今晚第一步重建测试环境」——实测过期：
+`backend/.venv/bin/python` 在位，验收命令直接跑通。逐项复核：
+
+1. **验收** ✅ `check_regress.py --test "pytest -q --cov=app --cov-fail-under=62"` → ✓ 测试绿 / 21/21（基线 21/21）/ rc=0
+2. **features.json** ✅ 21/21 全 pass
+3. **工作区** ✅ `git status` clean
+4. **BLOCKED** ✅ B1（benchmark 20 只真跑）解锁条件不变：需真实 OPENAI_API_KEY + 数据源网络的机器；B2（研报库扩容/PDF 导出）需真实 DashScope key + 人拍板加依赖。均非本轮可解
+5. **GOAL 对账** ✅ 「真实数据跑通 / 现场能跑 / interview 文档一致」三条均已在前几轮兑现并有 evidence
+
+本轮零文件改动（仅本 PROGRESS 交接）。结论与前七轮一致：GOAL 已达成，
+剩余项全部卡在外部条件（真实 key / 人拍板），**本任务卡应停止下发**，再拉起只消耗额度。
+
+STATUS: done
