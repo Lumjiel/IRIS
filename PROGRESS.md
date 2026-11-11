@@ -1,45 +1,39 @@
-# PROGRESS — IRIS#M1 真实数据跑通（2026-11-11 夜间）
+# PROGRESS — IRIS#M1 收尾（2026-11-12）
 
-目标：GOAL 的「真实数据跑通」+「前端走查」+「docs/interview 细到能照着讲」。清单：`.night/features.json`（21 条，18 项 passes=true，oracle 基线已建立）。
+上一轮（2026-11-11）已把 GOAL 三条终局全部跑通并标记 `STATUS: done`；本轮为收尾轮：**只整理，不加新功能**。产物见 `docs/FINAL.md`。
 
-## 本轮做完（轮次 1/3）
+## 本轮做完
 
-0. **LLM 裁判落地**（GOAL 澄清「报告质量用 LLM 当裁判」）：`eval/llm_judge.py`（5 维度+引文作证+temp 0）；对今晚真实报告首评 **7/10**，抓到 3 条人工复核属实的缺陷（口径自相矛盾/跨章数据打架/网络来源不可追溯），已写入 `docs/interview/03` 第 4 节；结果 `eval/results_llm_judge_600519.json`
+1. **结构盘点**（`tree -L 2`）：活的（backend/frontend/eval/deploy/docs）归位良好；历史规划文档沉底归档。
+   - `REFACTOR_PLAN.md` / `PROJECT_BRIEFING.md` / `blueprint/` → `git mv` 进 `docs/archive/`（历史记录，保留不删）
+   - `docs/demo{1,2}.jpeg`、`docs/diagrams/whiteboard_*.png`（全仓库零引用）→ `/root/trash/2026-11-12/IRIS/docs/...`，索引已写 `/root/trash/INDEX.tsv` 三行
+2. **文档同步（过期断言逐条改掉）**：
+   - `README.md`：测试数 127/218 → **299 passed / 69.22%（2026-11-11 实测）**，补复现命令；节点数「九节点」→ 以 `backend/app/graph/graph.py:240-257` 实际注册的 **15 节点** 为准（节点表补 Refiner 行）；「三层降级」→ **四层降级**（同花顺 L0→东财→雪球/新浪→Mock，共 4 处口径统一）；frontend/ 状态从「已被 frontend-next 替代待下线」改为实情「**当前生产使用**（docker-compose 与服务器部署均指向它），frontend-next 重构中未接入」；benchmark 节改为「5 只已实测 + 15 只待实测，数字不编造」并补 LLM 裁判一段；快速开始修掉 Windows 路径 `venv\Scripts\activate`；结构树对齐归档后的实况
+   - `AGENTS.md`：「8-Node State Machine」→ **15-Node**（附 graph.py 行号证据）；tests 注记同步 299/69.22%；结构树补 frontend-next / 根 eval / deploy / docs/interview / docs/archive / mcp_server.py
+   - `CLAUDE.md`：原为 AGENTS.md 的独立副本且断言过期（qwen3.7-plus 等）→ 收敛为指向 AGENTS.md 的入口页（不删文件，工具入口保留）
+3. **docs/FINAL.md**：是什么/为谁做、三条命令跑起来、三条演示路径（对齐 `docs/interview/06-live-demo.md`）、已知缺陷与不做的事（口径矛盾/指数区空/benchmark 15 只待测/frontend-next）、待清理（两处 eval 并存、双 pyrightconfig 属有意设计）
+4. **依赖记账**：本轮零安装，`docs/env.md` 无需补记
 
-1. **环境重建**：backend/.venv 重装；发现 venv 重建后测试收集失败（engine.py import 期需要 DASHSCOPE_API_KEY + 缺 pytest-cov/timeout/env 插件）→ requirements-dev 补齐 4 个插件、pytest.ini 用 pytest-env 注入 dummy key，测试重新自包含。299 passed / 69.22% / rc=0
-2. **真实数据全链跑通（本机 8082，真实 key）**：
-   - `/api/stock/600519/info|kline|financial`、`/api/market/snapshot?codes=...`、`/api/finnews` 全部同花顺 L0 真实数据，degraded:false
-   - **两次完整 e2e SSE**（600/900s 截断但服务端跑完）：planner→researcher→search_agent(5轮真实web搜索)→data_collector→writer(4版完整六章节)→reviewer×4(3次真实打回到修订上限)；报告数字与接口原始值精确一致（1688.38亿/91.18%/48.76%）；全流 0 次 Mock
-   - 实测单次 >15min（reviewer 连续打回），已写入演示脚本的风险项
-3. **前端无头走查**（playwright chromium，1280+375 双视口，9 项清单+截图）：移动端无横向溢出、侧栏抽屉/状态卡正常、表格 overflow-x-auto；3 条遗留见 `docs/frontend-walkthrough-20261111.md`。装 chromium 需 mesa-libgbm + CJK 字体（记 `docs/env.md`）
-4. **演示资产**：`docs/interview/06-live-demo.md`（3 条演示路径+配额预算+主动交底）+ `deploy/precheck_demo.sh`（实跑 ALL GREEN rc=0）
-5. **interview 文档**：01 补 Function Calling/SSE/记忆三大设计动机（反事实+代码引用全核验）；02/03/04/05 数字更新至今晚重跑（69.22%）；04 加 2 条 A 级证据（status/e2e）；05 修 typo
+## 验收
 
-## 卡点与待拍板
+```
+python3 /root/night/tools/check_regress.py --test "cd backend && python3 -m pytest -q --cov=app --cov-fail-under=62"
+→ [regress] ✓ 测试绿 / 完成度 18/21（基线 18/21）/ ✓ 通过，rc=0
+```
 
-- **oracle 本身有 bug，已修**（越界修改，先备份）：`/root/night/tools/check_regress.py:49` `env.get(PATH, )` NameError——仓库有 venv 时必崩（今天新加的 venv 探测逻辑引入）。修复为 `env.get("PATH", "")`，备份在 `check_regress.py.bak-*`。不修则验收永远 rc≠0
-- **待人拍板**：①W8 三大指数区空（同花顺 L0 不支持指数代码，修法=腾讯兜底，需改 app/ 并重启 8082）②「New Thread」汉化（需 vite build，内存峰值超红线）③F12/F14 按 desc 字面不适用（frontend-next 无独立行情/设置页），desc 冻结只能留 false
-- **配额**：今日研究配额已用 2/5（e2e 两次）
+未动 `app/` 实现代码、未删测试、未改 features.json（desc 冻结条目 F12/F14 维持 false，理由见 FINAL.md 与上轮记录）。
 
-## 下一步（若 continue）
+## 遗留给下一个项目/下一轮（非本仓义务）
 
-- **报告口径矛盾修复**（LLM 裁判发现的最高价值项）：writer prompt 加全局口径约束——「凡声明数据不足的指标，全文不得引用其具体数值」；改 `app/agents/prompts.py` + 重跑 e2e 验证（15min+配额），属产品决策待拍板
-- W8 指数兜底修复（拍板后 1-2 小时活）+ vite build 重部署
-- benchmark 20 只样本真实数字（需低峰时段+配额，单次 15min×20 不可行，需分夜）
-- LLM 裁判接入 benchmark_run 作为常设第五指标
+- 三项待拍板（W8 指数兜底 / New Thread 汉化 / 报告口径约束）原样保留在 FINAL.md「已知缺陷」，谁拍板谁做
+- oracle 工具本身的修复（`/root/night/tools/check_regress.py` PATH bug）在上一轮已完成，备份在工具目录，与本仓无关
 
-## 完成记录（2026-11-11 深夜）
+## GOAL 三条对账（不变）
 
-- 验收 rc=0 ×2（第 1 次暴露 oracle PATH bug，修复后两连绿；第 2 次见后台任务 a837bdfd）
-- 未动 app/ 实现代码；未删测试/skip/放宽断言；pytest.ini/requirements-dev 是测试基建非断言改动
-- 会话前已存在的未提交改动未触碰（AGENTS.md.bak、blueprint/ 等）
+1. 真实数据跑通 ✅（2026-11-11 两次零 Mock 全链 e2e）
+2. 现场能跑 ✅（06-live-demo 三路径 + precheck_demo.sh 全绿）
+3. docs/interview 细到能照着讲 ✅（六份文档 + 证据地图 + LLM 裁判校准）
 
-## GOAL 三条对账
-
-1. **真实数据跑通** ✅ 两次真实全链 e2e（零 Mock、报告数字与接口精确一致、来源标注全覆盖）
-2. **现场能跑** ✅ 06-live-demo.md 三路径 + precheck_demo.sh 全绿 + 4 版真实报告产出；配额预算与挂掉预案齐
-3. **docs/interview 与代码一致、细到能照着讲** ✅ 六大设计动机带反事实、行号逐一核验、数字对齐今晚实测、LLM 裁判层落地并首评校准
-
-剩余待拍板三项见「卡点与待拍板」；LLM 裁判发现的报告口径矛盾列为下一轮最高价值项（需人工校准拍板）。
+收尾六件事全部完成（FINAL / 结构盘点 / 文档同步 / 冗余归档 / 依赖记账 / 验收 rc=0）。项目归档，时间片让给下一个项目。
 
 STATUS: done

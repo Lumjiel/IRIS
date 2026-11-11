@@ -15,9 +15,9 @@
 
 ## Architecture & Data Flow
 
-### 8-Node State Machine + Function Calling
+### 15-Node State Machine + Function Calling
 
-The core workflow is a LangGraph `StateGraph` defined in `backend/app/graph/graph.py`. The topology is built **once at module import** — adding/removing nodes requires a server restart.
+The core workflow is a LangGraph `StateGraph` defined in `backend/app/graph/graph.py`（实际注册 15 个节点：核心 Agent 链 + `load_memories` 长期记忆注入 + `write_chapter`/`assemble_writer` 分章写作 + `revision_search` + `chat` 等支撑节点，见 `graph.py:240-257`）. The topology is built **once at module import** — adding/removing nodes requires a server restart.
 
 ```
 router (conditional entry, NOT a node)
@@ -161,7 +161,7 @@ IRIS/
 │   │   │   └── routes.py            # 全部 API 端点（SSE 聊天/上传/素材/记忆/记忆CRUD/TTS/股票查询/K线/指数K线/市场热门/资讯）
 │   │   ├── graph/
 │   │   │   ├── state.py             # AgentState TypedDict（20+ 字段，含 messages）
-│   │   │   ├── graph.py             # StateGraph 拓扑（8 节点 + Function Calling 循环）
+│   │   │   ├── graph.py             # StateGraph 拓扑（15 节点 + Function Calling 循环）
 │   │   │   └── nodes/
 │   │   │       ├── router.py        # 意图路由（NEW_TOPIC / REFINE）
 │   │   │       ├── planner.py       # 搜索规划（async）
@@ -183,23 +183,12 @@ IRIS/
 │   │       ├── streaming.py         # ContextVar + asyncio.Queue 流式架构
 │   │       ├── memory.py            # 会话摘要
 │   │       └── logger.py            # 结构化日志
-│   ├── eval/                        # 评测框架（12 个 Golden Case）
-│   ├── tests/                       # 127 个测试（全量通过）
-│   │   ├── test_akshare_tools.py    # 13 个测试（AKShare 工具层 + mock）
-│   │   ├── test_data_collector.py   # 9 个测试（DataCollector 节点 + mock）
-│   │   ├── test_chinese_report.py   # 11 个测试（中文报告格式 + 表格生成）
-│   │   ├── test_router.py           # 18 个测试
-│   │   ├── test_reviewer.py         # 12 个测试
-│   │   ├── test_researcher.py       # 5 个测试
-│   │   ├── test_search_agent.py     # 8 个测试（Function Calling 节点）
-│   │   ├── test_report_ingest.py    # 13 个测试（研报入库 + 检索）
-│   │   ├── test_llm.py              # 9 个测试
-│   │   ├── test_graph.py            # 6 个测试
-│   │   └── integration/             # 23 个集成测试
+│   ├── eval/                        # 评测框架（Golden Case + benchmark_run 20 样本池）
+│   ├── tests/                       # 299 个测试（全量通过，覆盖率 69.22%，2026-11-11 实测）
 │   ├── conftest.py                  # Mock 外部依赖 + sample_state fixture
 │   ├── pytest.ini                   # asyncio_mode = auto
 │   ├── requirements.txt             # 依赖清单（含 akshare + pymupdf）
-├── frontend/                         # Vue 3 + Vite + Tailwind（毛玻璃 UI）
+├── frontend/                         # Vue 3 + Vite + Tailwind（毛玻璃 UI，当前生产使用）
 │   ├── src/
 │   │   ├── views/                   # ChatView / MarketView(桌面表格+移动卡片双形态) / SettingsView / HistoryView
 │   │   ├── components/              # chat/ 子组件 + ChatSidebar / ReportViewer / Sparkline / ProcessBar / NewsTicker / FollowUpInput / TermTip
@@ -207,6 +196,12 @@ IRIS/
 │   │   ├── services/                # api / finance / history / config（统一 API base）
 │   │   ├── App.vue / style.css / main.js
 │   └── package.json
+├── frontend-next/                    # React 19 + assistant-ui 新前端壳（重构中，未接入生产）
+├── eval/                             # 根目录：LLM 裁判 llm_judge.py + 真实报告首评结果
+├── deploy/                           # nginx.conf + precheck_demo.sh（演示前自检）
+├── docs/interview/                   # 面试文档 6 份（细到能照着讲）
+├── docs/archive/                     # 历史文档（REFACTOR_PLAN / PROJECT_BRIEFING / blueprint）
+├── mcp_server.py + .mcp.json         # MCP stdio server（只读金融工具暴露）
 ---
 
 ## Key Design Decisions

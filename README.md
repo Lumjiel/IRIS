@@ -4,7 +4,7 @@
 >
 > `Python 3.11+` `FastAPI` `LangGraph 1.0+` `Vue 3` `AKShare` `DeepSeek` `ChromaDB` `PyMuPDF`
 
-**九节点多智能体协同（含长期记忆）+ Function Calling + AKShare 真实 A 股数据 + 中文六章节投研报告 + 研报 RAG + Vue 前端**
+**LangGraph 多智能体协同（15 个注册节点）+ Function Calling + 同花顺/东财真实 A 股数据 + 中文六章节投研报告 + 研报 RAG + Vue 前端**
 
 ---
 
@@ -16,7 +16,7 @@
 
 ### 方案
 
-IRIS 基于 **LangGraph StateGraph** 搭建 **九节点多智能体协同架构**，将投研分析拆解为独立子任务交给各专业 Agent 执行（入口新增 load_memories 长期记忆注入节点）。系统接入 AKShare 真实 A 股数据（行情/财务/新闻）+ 研报 PDF 入库检索，输出符合券商规范的中文六章节研报。
+IRIS 基于 **LangGraph StateGraph** 搭建 **多智能体协同架构**（`backend/app/graph/graph.py` 实际注册 15 个节点：核心 Agent 链 + load_memories 长期记忆注入 + 分章写作等支撑节点）。系统接入 AKShare 真实 A 股数据（行情/财务/新闻）+ 研报 PDF 入库检索，输出符合券商规范的中文六章节研报。
 
 ### 适用场景
 
@@ -43,7 +43,7 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **九节点多智能体协同架构*
 └─────────────────────────────┬───────────────────────────────────┘
                               │
 ┌─────────────────────────────▼───────────────────────────────────┐
-│              LangGraph StateGraph (9 节点协同)                    │
+│              LangGraph StateGraph (多节点协同)                    │
 │                                                                  │
 │  load_memories（长期记忆注入）                                    │
 │      → router → planner → researcher → search_agent ⇄ tools     │
@@ -67,7 +67,7 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **九节点多智能体协同架构*
 
 ## 核心特性
 
-### 1. 九节点多智能体协同 + Function Calling + 长期记忆
+### 1. 多智能体协同 + Function Calling + 长期记忆
 
 | 节点 | 职责 | 关键技术 |
 | ------ | ------ | --------- |
@@ -76,9 +76,10 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **九节点多智能体协同架构*
 | 🔍 **Researcher** | 本地文档检索 + 文档相关性审计 | ChromaDB RAG + Grader |
 | 🤖 **SearchAgent** | LLM 驱动的网络搜索 | Function Calling: `@tool` + `bind_tools` + 自定义 ToolNode |
 | 🔧 **SearchTools** | 执行 LLM 决定的工具调用 | Tavily 搜索 + 新闻 API |
-| 📊 **DataCollector** | 金融数据拉取：AKShare 并行调用 | ThreadPoolExecutor 扇出 + 三层降级 + 60s 缓存 |
+| 📊 **DataCollector** | 金融数据拉取：AKShare 并行调用 | ThreadPoolExecutor 扇出 + 四层降级 + 60s 缓存 |
 | ✍️ **Writer** | 中文研报撰写：六章节格式 | 数据与观点分离 + 来源标注 |
 | 🔍 **Reviewer** | 质量审查：PASS/FAIL + 修复循环 | JSON 输出 + cosine 相似度早停 |
+| ✍️ **Refiner** | 双模式修订（多轮追问/修改） | 对话摘要上下文 |
 
 **Function Calling 改造亮点**：
 
@@ -128,7 +129,7 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **九节点多智能体协同架构*
 | ------ | ------ |
 | **死循环防护** | MAX_REVISIONS(5) + cosine 相似度早停(0.95) |
 | **LLM 降级** | 主模型 → 备用模型（5min TTL 自动恢复） |
-| **数据降级** | 三层数据源 + 模拟数据兜底 |
+| **数据降级** | 四层数据源 + 模拟数据兜底 |
 | **工具容错** | 永不抛异常，结构化错误 JSON |
 | **限流** | SQLite 滑动窗口（每 IP 5次/分钟） |
 | **可观测性** | LangSmith traceable 全链路 |
@@ -152,7 +153,7 @@ cd iris-project
 
 # 2. 启动后端
 cd backend
-python -m venv venv && venv\Scripts\activate
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 # 配置 .env（填入 DeepSeek API Key）
 cp .env.example .env
@@ -253,7 +254,7 @@ IRIS/
 │   │   │   └── routes.py             # REST + SSE 路由（含股票查询/研报 API）
 │   │   ├── graph/
 │   │   │   ├── state.py              # AgentState（含 financial_data, messages）
-│   │   │   ├── graph.py              # StateGraph 拓扑（9 节点 + Function Calling 循环 + 长期记忆入口）
+│   │   │   ├── graph.py              # StateGraph 拓扑（15 节点 + Function Calling 循环 + 长期记忆入口）
 │   │   │   └── nodes/                # 9 个 Agent 节点（含 load_memories）
 │   │   │       ├── router.py         # 意图路由
 │   │   │       ├── planner.py        # 搜索规划
@@ -267,7 +268,7 @@ IRIS/
 │   │   │   ├── engine.py             # ChromaDB RAG + 可选 CrossEncoder
 │   │   │   └── report_ingest.py      # 研报 PDF 入库 + 实体抽取
 │   │   ├── tools/
-│   │   │   ├── akshare_tools.py      # AKShare 4 工具（含新闻）+ 三层降级
+│   │   │   ├── akshare_tools.py      # AKShare 4 工具（含新闻）+ 四层降级 + 同花顺 L0
 │   │   │   ├── search_tools.py       # Function Calling @tool 声明
 │   │   │   └── search.py             # Tavily 搜索封装
 │   │   └── utils/
@@ -276,12 +277,12 @@ IRIS/
 │   │       ├── memory.py             # 会话记忆
 │   │       └── logger.py             # 结构化日志
 │   ├── eval/                         # 评测框架（12 个 Golden Case）
-│   ├── tests/                        # 218 个测试（全量通过）
+│   ├── tests/                        # 299 个测试（全量通过，覆盖率 69.22%）
 │   ├── main.py                       # FastAPI 入口
 │   └── requirements.txt              # 依赖清单
 ├── mcp_server.py                     # MCP stdio server（只读金融工具暴露，任意 MCP 客户端复用）
-├── frontend-next/                    # 新前端壳：React 19 + assistant-ui 0.15（SSE 适配器/时间线/行情卡/导出）
-├── frontend/                         # 旧前端（Vue 3 + Vite，已被 frontend-next 替代，待下线）
+├── frontend-next/                    # 新前端壳：React 19 + assistant-ui（重构中，未接入生产部署）
+├── frontend/                         # Vue 3 + Vite（当前生产使用的前端，docker-compose 与服务器部署均指向它）
 │   ├── src/
 │   │   ├── views/
 │   │   │   ├── ChatView.vue          # 聊天页（功能引导 + 消息流 + 侧边栏布局 + 附件上传）
@@ -309,13 +310,14 @@ IRIS/
 │   │   ├── style.css                  # 毛玻璃全局样式
 │   │   └── main.js
 │   └── package.json
-├── deploy/                           # Nginx 配置
+├── deploy/                           # Nginx 配置 + 演示前自检脚本
 ├── docker-compose.yml                # Docker 部署（backend + frontend）
-├── docs/research/                    # 调研报告（6 份）
-├── REFACTOR_PLAN.md                  # 分阶段重构计划（含面试验证）
+├── eval/                             # LLM 裁判（llm_judge.py）+ 真实报告首评结果
+├── docs/research/                    # 调研报告（7 份）
+├── docs/interview/                   # 面试文档（6 份，细到能照着讲）
+├── docs/archive/                     # 历史文档（REFACTOR_PLAN / PROJECT_BRIEFING / blueprint）
 ├── AGENTS.md                         # 项目指南
-├── PROJECT_BRIEFING.md               # 项目简报
-└── CLAUDE.md                         # Claude Code 配置
+└── CLAUDE.md                         # Claude Code 入口（指向 AGENTS.md）
 ```
 
 ---
@@ -341,20 +343,23 @@ IRIS/
 ## 测试覆盖
 
 ```
-127 tests in 38.16s
+299 passed, 4 warnings in ~47s（覆盖率 69.22%，2026-11-11 实测）
 
-├── test_akshare_tools.py     13 passed  (AKShare 4 工具 + mock)
-├── test_data_collector.py     9 passed  (DataCollector 节点 + mock)
-├── test_chinese_report.py    11 passed  (中文报告格式 + 表格生成)
-├── test_router.py            18 passed  (意图路由)
-├── test_reviewer.py          12 passed  (质量审查)
-├── test_researcher.py         5 passed  (RAG 检索 + 审计)
-├── test_search_agent.py       8 passed  (Function Calling 节点)
-├── test_report_ingest.py     13 passed  (研报入库 + 检索)
-├── test_llm.py                9 passed  (LLM 工厂)
-├── test_graph.py              6 passed  (图拓扑)
-└── integration/              23 passed  (集成测试)
+├── test_akshare_tools.py       # AKShare/同花顺工具层 + mock + 降级链
+├── test_data_collector.py      # DataCollector 节点 + mock
+├── test_chinese_report.py      # 中文报告格式 + 表格生成
+├── test_router.py              # 意图路由
+├── test_reviewer.py            # 质量审查 + cosine 早停
+├── test_researcher.py          # RAG 检索 + 审计
+├── test_search_agent.py        # Function Calling 节点
+├── test_report_ingest.py       # 研报入库 + 检索
+├── test_hithink_tools.py       # 同花顺 L0 客户端（fail-open）
+├── test_api_routes.py          # API 端点
+├── test_fault_injection.py     # 故障注入
+└── integration/                # 集成测试
 ```
+
+复现：`cd backend && .venv/bin/python -m pytest -q --cov=app --cov-fail-under=62`
 
 ---
 
@@ -362,16 +367,9 @@ IRIS/
 
 > 详见 `docs/benchmark.md`
 
-**评测方法**：5 只样本股（600196/000001/600519/000333/601318），每只跑 3 次取平均值。
+**评测方法**：20 只样本池（`backend/eval/benchmark_run.py`），其中 5 只已实测（600196/000001/600519/000333/601318，2026-08-24 / 2026-11-08 / v2.1 三轮），15 只待低峰时段分夜实测。**数字一律实测填入，不编造**，详见 `docs/benchmark.md`。
 
-| 指标 | 结果 | 说明 |
-| ------ | ------ | ------ |
-| **六章节完整率** | 待实测 | 报告是否包含全部 6 个章节 |
-| **数据来源标注率** | 待实测 | 数值是否标注来源 |
-| **端到端延迟** | 待实测 | 从输入到报告生成的总耗时 |
-| **LLM 成本** | 待实测 | 单次研报的 token 消耗 |
-
-**数字留空不编造**：以上指标需实测后填入。运行 `python -m eval.evaluator` 获取真实数据。
+**LLM 裁判**（2026-11-11 起）：`eval/llm_judge.py` 以 5 维度 + 引文作证 + temp 0 对报告质量打分；对 600519 真实报告首评 7/10，抓到 3 条人工复核属实的缺陷（详见 `docs/interview/03-评测与可观测.md` 第 4 节）。
 
 ---
 
@@ -379,9 +377,9 @@ IRIS/
 
 ### ✅ 已完成（v1.0）
 
-- [x] 基于 LangGraph StateGraph 的九节点多智能体协同架构（+ Rerank 重排 / 长期记忆 Store）
+- [x] 基于 LangGraph StateGraph 的多智能体协同架构（+ Rerank 重排 / 长期记忆 Store）
 - [x] Function Calling 改造（LLM 驱动工具调用 + ≤5 轮循环终止）
-- [x] AKShare 真实 A 股数据接入（4 个工具 + 三层降级 + 60s 缓存）
+- [x] AKShare 真实 A 股数据接入（4 个工具 + 四层降级 + 60s 缓存）
 - [x] 中文六章节投研报告格式（数据与观点分离）
 - [x] 研报 PDF 入库 RAG（PyMuPDF + 实体抽取）
 - [x] 个股新闻/公告聚合
@@ -392,7 +390,7 @@ IRIS/
 - [x] 限流器 + 生产级 FastAPI 后端
 - [x] Vue 3 前端（智能问答 + 投研分析 Tab）
 - [x] Docker Compose 部署
-- [x] 218 个测试，零回归
+- [x] 299 个测试，零回归（覆盖率 69.22%）
 - [x] 图拓扑修复（researcher→search_agent 断链）
 - [x] 节点状态事件（start/done + elapsed 真实进度）
 - [x] search_iteration 循环终止（≤5 轮自动停止）
@@ -432,9 +430,9 @@ IRIS/
 | 为什么选 LangGraph？ | 显式状态 + 条件路由 + Checkpoint，适合可审计的确定性流程 |
 | 如何防死循环？ | MAX_REVISIONS(5) + cosine 相似度早停(0.95) |
 | 如何防幻觉？ | 数据与观点分离 + 来源标注 + 诚实告知原则 |
-| 如何降级？ | 三层数据源 + LLM 主备切换 + 工具级不抛异常 |
+| 如何降级？ | 四层数据源 + LLM 主备切换 + 工具级不抛异常 |
 | Function Calling？ | `@tool` 声明 + `bind_tools` + 自定义 `ToolNode` + LLM 自主决策 |
-| 多 Agent 架构？ | 9 节点协同，每节点独立解耦，可单独测试替换 |
+| 多 Agent 架构？ | 15 节点协同（核心 Agent 链 + 支撑节点），每节点独立解耦，可单独测试替换 |
 | 记忆系统？ | 双层：conversation_summary 增量摘要（会话内，checkpoint 持久化）+ 长期记忆 AsyncSqliteStore（跨会话） |
 | 为什么长期记忆「只注入不路由」？ | 记忆影响"怎么答"不影响"走哪条边"——错误记忆误导路由会造成 refine/research 误判；注入只改变 prompt 上下文，风险可控且用户可删 |
 | 为什么 watch_stock 用规则抽取而不是每轮 LLM？ | 省成本、行为可预期：严格正则识别股票代码零成本零幻觉；LLM 只兜底"记住我喜欢…"这类无结构化信号的显式请求 |
