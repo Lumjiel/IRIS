@@ -397,3 +397,18 @@ STATUS: done
 收尾六件事逐项核过。**连续五轮零文件改动——本任务卡没有任何剩余工作，请停止下发；再拉起只消耗额度。**
 
 STATUS: done
+
+# 本轮核对（2026-11-12 第十二轮）
+
+与前十二轮相同，独立重验（不信摘要）：
+
+1. **验收** ✅ `check_regress.py --test "pytest -q --cov=app --cov-fail-under=62"` → ✓ 测试绿 / 21/21（基线 21/21）/ rc=0（本轮实跑）
+2. **features.json** ✅ 21/21 全 pass（python3 实读，无 false 项）
+3. **FINAL.md / env.md** ✅ docs/FINAL.md、docs/env.md 均在位
+4. **工作区** ✅ `git status --porcelain` 空
+5. **BLOCKED** ✅ B1（benchmark 真跑）/ B2（研报库扩容/PDF 导出）解锁条件不变：需真实 key + 数据源网络机器 / 人拍板，均非本轮可解
+
+本轮零文件改动（仅本 PROGRESS 交接）。内存 894MB < 1500MB，未开子 agent，自查代替。
+**连续六轮零文件改动——本任务卡没有任何剩余高价值工作，请停止下发。**
+
+STATUS: done
