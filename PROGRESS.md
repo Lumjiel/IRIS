@@ -142,3 +142,32 @@ docs/FINAL.md | 12 ++++++++++++
 GOAL 三条「什么算成了」均满足、features 21/21 全有 evidence、验收 rc=0。项目归档，时间片让给下一个项目。
 
 STATUS: done
+
+---
+
+# PROGRESS — IRIS#M1 确认轮（2026-11-12，done 后被重复拉起）
+
+上轮已写 `STATUS: done` 且收尾轮已提交（`4bd0cfc`）。本轮被系统再次拉起，职责仅为确认，无新改动。
+
+## 确认结果（无新改动，全部只读核实）
+
+1. **验收命令跑了两次，均 rc=0**：`check_regress.py --test "pytest -q --cov=app --cov-fail-under=62"`
+   → 两次均 ✓ 测试绿 / ✓ 完成度 21/21（基线 21/21）/ ✓ 通过
+2. **features.json 21/21 全 true，逐条抽查 evidence 字段非空**（F01-F07 真实数据链、F08-F15 演示与走查、F16-F21 interview 文档）
+3. **BLOCKED.md 核实为历史留档**：属旧里程碑 IRIS#E1（2026-11-10），非 M1 活阻塞，无需处理
+4. **GOAL 三条「什么算成了」**：真实数据跑通 ✅（F01-F07，2026-11-11 真 key e2e）/ 现场能跑 ✅（F08-F09，
+   precheck_demo.sh ALL GREEN）/ interview 文档 ✅（F16-F21，数字 2026-11-11 实测对齐）
+5. **无值得做的增量**：GOAL 明文「不许无上限堆功能」；上两轮走查发现的 4 个 bug 已修并复测。
+   剩余可做项（如 benchmark 20 样本真实数字）在 BLOCKED.md 有明确解锁条件（需真 key + benchmark 时长），
+   不是本轮能推进的。
+
+## 本轮改动清单
+
+零改动（工作区 clean，未碰任何文件，除本 PROGRESS 交接）。
+
+## 审查结论（合题）
+
+站得住：两条证据链（验收 rc=0 ×2 + features 逐条 evidence 抽查）与上轮声明一致，无空头支票。
+不需要再开收尾轮——最新 commit `4bd0cfc` 已完成六件事对账。
+
+STATUS: done
