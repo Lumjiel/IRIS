@@ -21,9 +21,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-timeout
-      - name: Run tests
-        run: python -m pytest tests/ -q
+          pip install pytest pytest-asyncio pytest-timeout pytest-cov ruff
+      - name: Lint (ruff E9/F63/F7/F82)
+        run: ruff check app/ --select E9,F63,F7,F82
+      - name: Run tests with coverage
+        run: python -m pytest tests/ -q --timeout=120 --cov=app --cov-fail-under=62
         env:
           OPENAI_API_KEY: ci-dummy-key
           OPENAI_API_BASE: https://dashscope.aliyuncs.com/compatible-mode/v1
