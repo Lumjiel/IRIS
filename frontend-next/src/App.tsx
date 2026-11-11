@@ -118,13 +118,13 @@ function AppInner() {
 
       {/* 主区 */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-2 border-b px-4 py-2">
+        <header className="flex h-11 flex-nowrap items-center gap-2 border-b px-4 py-2">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setSidebarOpen((v) => !v)}
             aria-label="切换侧边栏"
-            className="size-7 text-muted-foreground"
+            className="size-7 shrink-0 text-muted-foreground"
           >
             {sidebarOpen ? (
               <PanelLeftCloseIcon className="size-4" />
@@ -132,7 +132,7 @@ function AppInner() {
               <PanelLeftOpenIcon className="size-4" />
             )}
           </Button>
-          <span className="min-w-0 truncate text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             {threadTitle ?? "六章节中文研报 · 数据与观点分离 · 来源可溯"}
           </span>
           <ResearchStatusChip />

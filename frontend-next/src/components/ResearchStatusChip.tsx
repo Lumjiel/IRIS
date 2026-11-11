@@ -29,6 +29,8 @@ export function ResearchStatusChip() {
 
   const total = Math.floor((Date.now() - startedAt) / 1000);
   const m = Math.floor(total / 60);
+  // 固定 mm:ss 格式：宽度恒定，避免每秒走针引起顶栏抖动
+  const clock = `${String(m).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 
   return (
     <button
@@ -40,14 +42,13 @@ export function ResearchStatusChip() {
           ?.scrollIntoView({ behavior: "smooth", block: "start" })
       }
       title="点击查看研究进程详情"
-      className="ml-auto inline-flex max-w-[55%] items-center gap-1.5 rounded-full border bg-card/80 px-2.5 py-1 text-xs shadow-sm transition-colors hover:bg-accent"
+      className="flex h-7 shrink-0 items-center gap-1.5 rounded-full border bg-card/80 px-2.5 text-xs shadow-sm transition-colors hover:bg-accent"
     >
       <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
       <span className="shrink-0 font-medium text-primary">研究中</span>
-      <span className="truncate text-muted-foreground">{label}</span>
-      <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-        {m > 0 ? `${m}m` : ""}
-        {String(total % 60).padStart(2, "0")}s
+      <span className="max-w-36 truncate text-muted-foreground">{label}</span>
+      <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+        {clock}
       </span>
     </button>
   );
