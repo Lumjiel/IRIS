@@ -88,3 +88,11 @@ STATUS: done
 - FINAL.md「本次收尾做了什么」补记 bun.lock 归档与 BLOCKED.md 保留结论
 
 STATUS: done
+
+## 2026-11-13 凌晨 · 复核轮
+
+- 上轮已写 done、收尾 commit（30dd183）已落；本轮为拉起复核，无新改动。
+- 最终验收跑两次均 rc=0（测试绿 / 完成度 21/21 / 基线 21/21）；`git status` 干净，docs/FINAL.md 在位。
+- 对照 GOAL 三条「什么算成了」均已满足（真实数据 F01-F07 / 现场能跑 F08-F09 / 移动端 F10-F15 / 面试文档 F16-F21），无高价值增量，让出时间片。
+
+STATUS: done
