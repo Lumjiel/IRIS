@@ -412,3 +412,19 @@ STATUS: done
 **连续六轮零文件改动——本任务卡没有任何剩余高价值工作，请停止下发。**
 
 STATUS: done
+
+# 本轮核对（2026-11-12 第十三轮，收尾核对）
+
+与前十三轮相同，独立重验六件事（不信摘要，全部本轮实跑实读）：
+
+1. **验收** ✅ `check_regress.py --test "cd backend && pytest -q --cov=app --cov-fail-under=62"` → ✓ 测试绿 / 完成度 21/21（基线 21/21）/ ✓ 通过，rc=0
+2. **features.json** ✅ 21/21 全 pass 且 21 条 evidence 全部在填（python3 实读逐条核对）
+3. **FINAL.md / env.md** ✅ 在位：FINAL.md 六节齐全（含历轮补记）；env.md 2026-11-11 五条在账，本轮无新装
+4. **结构盘点** ✅ `tree -L 2` 重跑：根目录干净；全仓 find（排除 node_modules/.venv/.git/dist）无 `*.bak`/`*.orig`/`*~`/`*.swp`/`*.tmp`，无空目录；trash 索引确认历轮归档在案（bun.lock 2026-11-12 01:42）
+5. **文档同步抽查** ✅ README 测试数（299/69.22%，3 处）、LLM 默认模型（qwen3.7-plus@llm.py:48 / deepseek-v4-flash@llm.py:49）与代码一致；BLOCKED.md B1/B2 解锁条件不变（真实 key + 数据源网络机器 / 人拍板），均非本轮可解
+6. **工作区** ✅ `git status --porcelain` 空（本轮改动仅 PROGRESS.md 本段）
+
+本轮零文件改动（仅本 PROGRESS 交接）。结论与前十二轮一致：GOAL 三条终局标准均已兑现且可复现，
+收尾六件事逐项核过。**连续七轮零文件改动——本任务卡已归档完毕，请停止下发；再拉起只消耗额度不产生价值。**
+
+STATUS: done
