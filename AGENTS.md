@@ -22,7 +22,7 @@ The core workflow is a LangGraph `StateGraph` defined in `backend/app/graph/grap
 ```
 router (conditional entry, NOT a node)
   ├── NEW_TOPIC → planner → researcher → search_agent ⇄ search_tools → data_collector → writer → reviewer
-  │                                                              └── FAIL → planner (up to MAX_REVISIONS=5)
+  │                                                              └── FAIL → planner (up to MAX_REVISIONS=3, .env 可调)
   └── REFINE → refiner → END
 ```
 
@@ -275,7 +275,7 @@ Production runs **bare-metal** (not Docker Compose) on `49.234.178.53` (OpenClou
 ## Interview Talking Points
 
 - **Why LangGraph?** Explicit state + conditional routing + Checkpoint, ideal for auditable deterministic workflows
-- **How to prevent infinite loops?** MAX_REVISIONS(5) + cosine similarity early-stop(0.95)
+- **How to prevent infinite loops?** MAX_REVISIONS(3) + cosine similarity early-stop(0.95)
 - **How to prevent hallucination?** Data-opinion separation + source attribution + honest reporting
 - **How to handle degradation?** 4-tier data sources (同花顺 L0 → 东财 → 雪球/新浪 → Mock) + LLM primary/fallback + tool-level never-throw
 - **Multi-agent architecture?** 8-node collaboration with Function Calling loop (search_agent ⇄ search_tools)

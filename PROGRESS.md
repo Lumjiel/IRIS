@@ -203,3 +203,65 @@ STATUS: done
    回到仓库根目录即恢复 rc=0，非测试问题。
 
 STATUS: done
+
+---
+
+# 本轮核对（2026-11-12 第三轮：GOAL 对账 + 过期断言修复）
+
+features 21/21 全 pass，本轮不另起炉灶，做独立抽查（不信 evidence 字符串，自己验）：
+
+## 做了什么
+1. **抽查 interview/01 全部行号引用**：`config.py:12`(MAX_REVISIONS=3)、`llm.py` NODE_MODELS/`_EXHAUSTED_TTL=300`、
+   `streaming.py` thread_id 注册表注释、`reviewer.py:79`(相似度>0.95 早停) —— 全部真实存在，文档准确。
+2. **发现并修复 5 处过期断言**：AGENTS.md:25/278、README.md:130/428、FINAL.md:44 写 `MAX_REVISIONS=5`，
+   实际代码默认 3（`config.py:12`、`.env.example:25`，本地无 .env 覆盖）。已按 3 修正，保留「.env 可调」表述。
+   面试文档（01/05）本来就写 3 且带行号——是 AGENTS/README/FINAL 落后于代码，不是文档错。
+3. **数字口径复核**：interview 六份文档 299 tests / 69.22% 口径一致。
+
+## 证据
+- 验收命令跑两次均 rc=0：`✓ 测试绿 / 完成度 21/21（基线 21/21）/ ✓ 通过`
+- 修正复核：`grep -rn MAX_REVISIONS AGENTS.md README.md docs/FINAL.md` → 5 处全为 3
+
+## 审查结论（合题）
+站得住：GOAL 三条「什么算成了」逐条有 evidence（F01-F07 真实数据 / F08-F09 现场演示 / F16-F21 面试文档）。
+剩余缺口均已在 FINAL.md / BLOCKED.md 如实交底（indexes 区空、benchmark 15 样本待真实环境、真实报告截图）。
+真实数据 e2e 重跑烧配额（5/日）且可由 `deploy/precheck_demo.sh` 复现，属低价值增量，不做。
+
+## 没解决
+无新增；既有交底项见 docs/FINAL.md「已知缺陷」。
+
+## 建议下一步
+无——GOAL 达成，offer 到手即触发放弃条件。
+
+STATUS: done
+
+---
+
+# 本轮核对（2026-11-12 第四轮：断言第三扫 + 终验）
+
+features 21/21 全 pass（上轮已终判 done，本轮为复核轮）。
+
+## 做了什么
+上轮修 MAX_REVISIONS 说明文档仍有残留风险，本轮把 README/AGENTS 头部技术断言做第三遍系统抽查：
+1. 节点数：`graph.py:240-256` add_node 恰 15 处 = AGENTS「15 节点」✓
+2. 工具数：`akshare_tools.py:650` AKSHARE_TOOLS 4 项 = AGENTS「4 工具」✓（第 5 个 @tool 为 K 线辅助，未入清单）
+3. RAG：engine.py:40-41 fetch_k=20/top_k=5、:106-107 CHUNK_SIZE/OVERLAP ✓
+4. 记忆：memory.py:14 SUMMARY_MAX_CHARS=2000 ✓；config.py llm TTL 300 ✓；reviewer.py:79 早停 0.95 ✓
+5. 默认模型 qwen3.7-plus / deepseek-v4-flash ✓
+—— 本扫未发现新过期断言。
+
+## 证据
+验收命令两次均 rc=0：`✓ 测试绿 / 完成度 21/21（基线 21/21）/ ✓ 通过`
+工作区仅含上轮文档修正（AGENTS/README/FINAL/PROGRESS），待 runner 提交。
+
+## 审查结论（合题）
+站得住：GOAL 三条逐条有 evidence；文档-代码口径经第三扫一致。剩余候选活
+（真实数据 e2e 重跑烧 5/日配额、文档再扫）均为低价值，按「不制造垃圾产出」原则不做。
+
+## 没解决
+无新增；既有交底见 docs/FINAL.md「已知缺陷」。
+
+## 建议下一步
+无——项目已达成 GOAL，让出时间片。
+
+STATUS: done

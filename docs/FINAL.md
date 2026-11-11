@@ -41,7 +41,7 @@ cd backend && .venv/bin/python -m pytest -q --cov=app --cov-fail-under=62   # 29
 - **三大指数区为空**：同花顺 L0 不支持指数代码，修法（腾讯兜底）待拍板，需改 `app/` 并重启服务。
 - **benchmark 15/20 样本未实测**：需真实 key + 低峰分夜跑（单次 15min×15 不可行），已注册样本池，数字不预填。
 - **frontend-next**（React 壳）重构中未接入生产，生产前端仍是 `frontend/`；其英文「New Thread」未汉化（需 vite build，本机 3.6G 内存峰值超红线）。
-- **单次研究耗时长**：reviewer 质量审查严格，曾连续打回 3 次到修订上限（MAX_REVISIONS=5）——演示按「边跑边讲」设计。
+- **单次研究耗时长**：reviewer 质量审查严格，曾连续打回到修订上限（MAX_REVISIONS=3，代码默认）——演示按「边跑边讲」设计。
 - **不做**：PDF/Word 导出、多股对比、定时研报、HITL（README 远期规划，明确不在此项目做）。
 
 ## 待清理（拿不准，留在原处）

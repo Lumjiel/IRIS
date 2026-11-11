@@ -127,7 +127,7 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **多智能体协同架构**（`back
 
 | 机制 | 实现 |
 | ------ | ------ |
-| **死循环防护** | MAX_REVISIONS(5) + cosine 相似度早停(0.95) |
+| **死循环防护** | MAX_REVISIONS(3) + cosine 相似度早停(0.95) |
 | **LLM 降级** | 主模型 → 备用模型（5min TTL 自动恢复） |
 | **数据降级** | 四层数据源 + 模拟数据兜底 |
 | **工具容错** | 永不抛异常，结构化错误 JSON |
@@ -425,7 +425,7 @@ IRIS/
 | 面试问题 | 回答要点 |
 | --------- | --------- |
 | 为什么选 LangGraph？ | 显式状态 + 条件路由 + Checkpoint，适合可审计的确定性流程 |
-| 如何防死循环？ | MAX_REVISIONS(5) + cosine 相似度早停(0.95) |
+| 如何防死循环？ | MAX_REVISIONS(3) + cosine 相似度早停(0.95) |
 | 如何防幻觉？ | 数据与观点分离 + 来源标注 + 诚实告知原则 |
 | 如何降级？ | 四层数据源 + LLM 主备切换 + 工具级不抛异常 |
 | Function Calling？ | `@tool` 声明 + `bind_tools` + 自定义 `ToolNode` + LLM 自主决策 |
