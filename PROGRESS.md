@@ -308,3 +308,22 @@ STATUS: done
 **维持结论：本任务卡应停止下发**。连续两轮零文件改动复核，再拉起只消耗额度。
 
 STATUS: done
+
+---
+
+# 本轮核对（2026-11-12 第七轮：收尾任务卡独立重验）
+
+不信前六轮摘要，六件事逐项独立重验（内存 884MB available < 1500MB，未开 review 子 agent，自查代替）：
+
+1. **FINAL.md** ✅ 在位，通读与代码现状一致，无新过期断言
+2. **结构盘点** ✅ 全仓 find（排除 node_modules/.venv/.git/dist）：无 `*.bak`/`*.orig`/`*~`/`*.swp`/`*.tmp`，无空目录；仅 `__pycache__`（构建缓存，gitignored，非冗余）
+3. **文档同步** ✅ `git status` clean，无待提交改动
+4. **冗余清理** ✅ 无新增；`/root/trash/INDEX.tsv` 在账（demo jpeg ×2、whiteboard png、bun.lock 已归档）
+5. **依赖记账** ✅ 本轮无新装，env.md 无需追加
+6. **验收** ✅ `check_regress.py --test "pytest -q --cov=app --cov-fail-under=62"` → ✓ 测试绿 / 21/21（基线 21/21）/ rc=0
+7. **features.json** ✅ 21/21 全 pass（oracle 实测输出一致）
+
+本轮零文件改动（仅本 PROGRESS 交接）。结论与前六轮一致：项目已达成 GOAL，
+BLOCKED.md 剩余项全部卡在「需真实 key/人拍板」，**本任务卡应停止下发**，再拉起只消耗额度。
+
+STATUS: done
