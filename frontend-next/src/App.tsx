@@ -14,6 +14,7 @@ import { ThreadList } from "@/components/assistant-ui/elements/thread-list.aui";
 import { IrisModelAdapter } from "@/lib/irisRuntime";
 import { irisThreadListAdapter } from "@/lib/threadStore";
 import { ResearchTimeline } from "@/components/ResearchTimeline";
+import { ResearchStatusChip } from "@/components/ResearchStatusChip";
 import { MarketDataCard } from "@/components/MarketDataCard";
 import { ReportFooterBar } from "@/components/ReportFooterBar";
 import { Welcome } from "@/components/Welcome";
@@ -134,6 +135,7 @@ function AppInner() {
           <span className="min-w-0 truncate text-xs text-muted-foreground">
             {threadTitle ?? "六章节中文研报 · 数据与观点分离 · 来源可溯"}
           </span>
+          <ResearchStatusChip />
         </header>
         <div className="min-h-0 flex-1">
           <Thread
