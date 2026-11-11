@@ -111,7 +111,7 @@
                       <span class="num text-label font-medium px-2 py-0.5 rounded-md" :class="badgeClass(s)">{{ changeInfo(s).display }}</span>
                     </td>
                     <td class="text-right px-3 py-3 num text-slate-600 dark:text-slate-300">{{ s['换手率'] || '-' }}</td>
-                    <td class="text-right px-3 py-3 num text-slate-600 dark:text-slate-300">{{ fixedOrDash(s['市盈率']) }}</td>
+                    <td class="text-right px-3 py-3 num text-slate-600 dark:text-slate-300">{{ fixedOrDash(s['市盈率'] ?? s['市盈率-动态']) }}</td>
                     <td class="text-right px-3 py-3 num text-slate-600 dark:text-slate-300">{{ fixedOrDash(s['市净率']) }}</td>
                     <td class="text-right px-3 py-3 num text-slate-600 dark:text-slate-300">{{ formatBigInt(s['总市值']) }}</td>
                     <td class="px-3 py-3">
@@ -229,9 +229,12 @@
 
         <!-- 免责声明（与内容流左对齐） -->
         <footer class="pt-1 pb-4 border-t border-slate-100 dark:border-slate-700/60">
-          <p class="text-caption text-slate-400 mt-3">
+          <p v-if="dataSources.length" class="text-caption text-slate-400 mt-3">
             数据来源：<template v-for="(src, i) in dataSources" :key="src">{{ src }}<span v-if="i < dataSources.length - 1"> / </span></template>
             <template v-if="updatedAt"> · 更新于 {{ updatedTimeText }}</template>
+          </p>
+          <p v-else-if="updatedAt" class="text-caption text-slate-400 mt-3">
+            更新于 {{ updatedTimeText }}
           </p>
           <p class="text-caption text-slate-400 mt-0.5">仅供学习参考，不构成投资建议</p>
         </footer>
@@ -354,11 +357,13 @@ function fixedOrDash(v) {
   return v == null || v === "" || v === "-" || !Number.isFinite(n) ? "-" : n.toFixed(2);
 }
 
-/** 明细字段渲染：big → 亿级缩写 / price → 价格 / 其余原样（换手率自带 %） */
+/** 明细字段渲染：big → 亿级缩写 / price → 价格 / 其余原样（换手率自带 %）
+ *  PE 兼容两条链的字段名：腾讯补充链「市盈率」/ Mock 链「市盈率-动态」 */
 function renderDetail(s, field) {
-  if (field.format === "big") return formatBigInt(s[field.label]);
-  if (field.format === "price") return formatPrice(s[field.label]);
-  return s[field.label] ?? "-";
+  const v = s[field.label] ?? s[`${field.label}-动态`];
+  if (field.format === "big") return formatBigInt(v);
+  if (field.format === "price") return formatPrice(v);
+  return v ?? "-";
 }
 
 function changeInfo(q) {
@@ -404,8 +409,15 @@ async function loadStockKline(code) {
   }
 }
 
+// 挂载期慢请求（降级链重试可达 30s+）持有 loading 时，addPreset 触发的
+// refresh 会被下方守卫静默丢弃 → 加了自选但卡片迟迟不出。改为记一笔，结束后补跑。
+let pendingRefresh = false;
+
 async function refresh(manual = false) {
-  if (loading.value) return;
+  if (loading.value) {
+    pendingRefresh = true;
+    return;
+  }
   loading.value = true;
   try {
     const codes = watchlist.list.map((w) => w.code);
@@ -429,6 +441,10 @@ async function refresh(manual = false) {
     if (manual) inputError.value = "行情服务暂不可用，请稍后重试";
   } finally {
     loading.value = false;
+    if (pendingRefresh) {
+      pendingRefresh = false;
+      refresh();
+    }
   }
 }
 

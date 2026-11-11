@@ -57,3 +57,9 @@ cd backend && .venv/bin/python -m pytest -q --cov=app --cov-fail-under=62   # 29
 - 归档（trash）：`docs/demo{1,2}.jpeg`、`docs/diagrams/whiteboard_*.png`（无引用）→ `/root/trash/2026-11-12/`（索引已记 INDEX.tsv）
 - 文档同步：README（测试数 299/69.22%、节点数以 `graph.py:240-257` 实际注册 15 个为准、四层降级口径、frontend/frontend-next 状态、引用路径）、AGENTS.md（同上）、CLAUDE.md 收敛为指向 AGENTS.md 的入口页
 - 验收：`299 passed / 69.22% / rc=0`（含最终跑，见 PROGRESS.md）
+
+## 移动端走查补轮（2026-11-12 深夜，features 21/21）
+
+- **MarketView / Settings / History 三页 375px 实测通过**（`frontend/` Vue 生产前端，playwright 实开页面交互验证），上轮走查对象是 frontend-next 部署版，MarketView 在 Vue 端——这就是 F12/F14 此前留 false 的真实原因（上轮 PROGRESS 声称「理由见 FINAL.md」但此处并未写，本轮补记并解决）。记录：`docs/frontend-walkthrough-20261112.md`
+- 走查发现并修复 4 个问题（2 个 P1：refresh 竞态静默丢弃、formatBigInt 丢单位导致误导性数字；2 个 P2：PE 字段名双链兼容、空数据来源标签），前端 vitest 15/15 全绿
+- 本轮走查数据为 Mock 兜底（真实 key 上轮会话临时注入未落盘，本轮验证目标是布局可用性）——真实数据链路已于 2026-11-11 用真 key 验过（F01-F07），两条证据链不混

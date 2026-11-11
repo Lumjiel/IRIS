@@ -32,8 +32,10 @@ export function parseChange(raw) {
 /** 格式化大数字：亿 / 万亿 */
 export function formatBigInt(val) {
  if (val == null || val === "" || val === "N/A" || val === "-") return "-";
- const num =
-  typeof val === "number" ? val : parseFloat(String(val).replace(/[,，]/g, ""));
+ const raw = String(val).replace(/[,，]/g, "");
+ // 降级链（Mock 兜底）返回已带单位的字符串（如「1.91万亿」「35.8亿」），原样展示防单位丢失
+ if (/万亿|亿|万$/.test(raw)) return raw;
+ const num = parseFloat(raw);
  if (isNaN(num)) return String(val);
 // A 股习惯：市值/成交额以「元」为原始单位 → 1e12=万亿，1e8=亿，1e4=万
  if (num >= 1e12) return `${(num / 1e12).toFixed(2)} 万亿`;
