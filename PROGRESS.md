@@ -61,3 +61,30 @@ GOAL「什么算成了」全部满足、features 21/21、验收两次 rc=0。收
 归档/依赖记账/验收）上轮已完成，本轮补走查记录并同步 FINAL.md。项目归档，时间片让给下一个项目。
 
 STATUS: done
+
+---
+
+# 收尾核对轮（2026-11-12 凌晨）——上一轮已 done，本轮只核对补漏
+
+任务书再次下发「收尾：结构整理 + 文档同步 + 冗余归档」。上轮收尾六件事已全部完成，本轮逐项复核：
+
+## 复核结果（六件事）
+
+1. **FINAL.md** ✅ 存在且与代码现状一致（三条演示路径 / 已知缺陷 / 待清理俱全）
+2. **结构盘点** ✅ 重跑 `tree -L 2`：无备份文件（*.bak/*~/*.orig）、无空目录、db 文件已 gitignore
+3. **文档同步** ✅ 抽查 README 关键断言（299 tests / 69.22% / 15 节点 / 降级口径）与代码一致；上轮已同步
+4. **冗余清理** ✅ **本轮补漏一处**：`frontend/bun.lock` 归档 → `/root/trash/2026-11-12/`（工具链是 npm，
+   `package-lock.json` 在用，全仓库无 bun 引用；INDEX.tsv 已记含理由）
+5. **依赖记账** ✅ docs/env.md 五条记录齐全（venv/pytest-env/playwright/libgbm/CJK 字体，均含卸载方式）
+6. **验收** ✅ `check_regress.py --test "pytest -q --cov=app --cov-fail-under=62"` → 测试绿 / 21/21 / rc=0
+
+## 拿不准但确认保留的
+
+- 根目录 `BLOCKED.md`：IRIS#E1 历史记录，被 docs/interview/ 四处引用（「15 只样本不预填数字」的证据），非冗余，保留
+- `backend/store.db` / `checkpoints.db`：运行时数据，已 gitignore，保留
+
+## 文档同步
+
+- FINAL.md「本次收尾做了什么」补记 bun.lock 归档与 BLOCKED.md 保留结论
+
+STATUS: done

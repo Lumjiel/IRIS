@@ -55,6 +55,8 @@ cd backend && .venv/bin/python -m pytest -q --cov=app --cov-fail-under=62   # 29
 
 - 归档：`REFACTOR_PLAN.md`、`PROJECT_BRIEFING.md`、`blueprint/` → `docs/archive/`
 - 归档（trash）：`docs/demo{1,2}.jpeg`、`docs/diagrams/whiteboard_*.png`（无引用）→ `/root/trash/2026-11-12/`（索引已记 INDEX.tsv）
+- 归档（trash，收尾核对轮 2026-11-12）：`frontend/bun.lock`（冗余 lockfile——工具链是 npm，`package-lock.json` 在用，全仓库无 bun 引用）→ `/root/trash/2026-11-12/`
+- 核对轮结论：根目录 `BLOCKED.md` **保留**（IRIS#E1 历史记录，被 `docs/interview/` 四处引用作「不预填数字」的证据），非冗余
 - 文档同步：README（测试数 299/69.22%、节点数以 `graph.py:240-257` 实际注册 15 个为准、四层降级口径、frontend/frontend-next 状态、引用路径）、AGENTS.md（同上）、CLAUDE.md 收敛为指向 AGENTS.md 的入口页
 - 验收：`299 passed / 69.22% / rc=0`（含最终跑，见 PROGRESS.md）
 
