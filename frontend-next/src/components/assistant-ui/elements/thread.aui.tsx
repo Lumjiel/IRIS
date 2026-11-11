@@ -119,6 +119,10 @@ const reasoningDuration = (timing: ThreadGroupPart["timing"]) =>
 export type ThreadComponents = {
   AssistantMessage?: ComponentType | undefined;
   Welcome?: ComponentType | undefined;
+  /** 渲染在滚动视口顶部、消息流之上（随内容滚动；IRIS 用它挂时间线/行情卡） */
+  ViewportTop?: ComponentType | undefined;
+  /** 渲染在消息流末尾、视口底部输入框之上（IRIS 用它挂研报底部条） */
+  ViewportBottom?: ComponentType | undefined;
   ToolFallback?: ToolCallMessagePartComponent | undefined;
   ToolGroup?:
     | ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>>
@@ -221,7 +225,8 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
   isEmpty,
   autoFocus,
 }) => {
-  const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
+  const { Welcome = ThreadWelcome, ViewportTop, ViewportBottom } =
+    useContext(ThreadComponentsContext);
 
   return (
     <ThreadPrimitive.Root
@@ -235,7 +240,6 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
       }}
     >
       <ThreadPrimitive.Viewport
-        turnAnchor="top"
         data-slot="aui_thread-viewport"
         className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth"
       >
@@ -245,6 +249,7 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
             isEmpty && "justify-center",
           )}
         >
+          {ViewportTop && <ViewportTop />}
           <AuiIf condition={isNewChatView}>
             <Welcome />
           </AuiIf>
@@ -263,6 +268,7 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
             </ThreadPrimitive.Messages>
           </div>
 
+          {ViewportBottom && <ViewportBottom />}
           <ThreadPrimitive.ViewportFooter
             className={cn(
               "aui-thread-viewport-footer bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6",

@@ -135,14 +135,27 @@ function AppInner() {
             {threadTitle ?? "六章节中文研报 · 数据与观点分离 · 来源可溯"}
           </span>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <ResearchTimeline />
-          <MarketDataCard />
-          <Thread components={{ Welcome }} />
-          <ReportFooterBar />
+        <div className="min-h-0 flex-1">
+          <Thread
+            components={{
+              Welcome,
+              ViewportTop: IrisViewportTop,
+              ViewportBottom: ReportFooterBar,
+            }}
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+/** 随消息流滚动的研究上下文：时间线（运行中吸顶）+ 行情卡 */
+function IrisViewportTop() {
+  return (
+    <>
+      <ResearchTimeline />
+      <MarketDataCard />
+    </>
   );
 }
 

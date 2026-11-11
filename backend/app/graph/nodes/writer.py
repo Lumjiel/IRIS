@@ -175,15 +175,27 @@ async def write_chapter_node(payload: dict) -> dict:
 """
     # 同步 llm_invoke 必须下放线程池：直接调用会阻塞事件循环，
     # 导致六章实际串行执行且 SSE 心跳/事件全部停摆（E2E 实测教训）
-    try:
-        response = await asyncio.to_thread(
-            llm_invoke, [HumanMessage(content=prompt_text)], node="writer"
-        )
-        text = response.content or ""
-    except Exception as e:
-        # 章节级 fail-open：单章失败不炸整图，汇编节点用占位章节兜底
-        log.warning("[Writer] 章节 %s 撰写失败（fail-open）: %s", chapter["title"], e)
-        text = ""
+    # 六章并行对模型网关瞬时压力大，偶发限流/超时很常见：加重试兜底
+    response = None
+    for attempt in range(3):
+        try:
+            response = await asyncio.to_thread(
+                llm_invoke, [HumanMessage(content=prompt_text)], node="writer"
+            )
+            break
+        except Exception as e:
+            if attempt < 2:
+                wait = 2 * (attempt + 1)
+                log.warning(
+                    "[Writer] 章节 %s 第 %d 次调用失败，%ds 后重试: %s",
+                    chapter["title"], attempt + 1, wait, e,
+                )
+                await asyncio.sleep(wait)
+            else:
+                # 章节级 fail-open：单章失败不炸整图，汇编节点用占位章节兜底
+                log.warning("[Writer] 章节 %s 撰写失败（fail-open）: %s", chapter["title"], e)
+                text = ""
+    text = (response.content or "") if response is not None else text
     if not text.strip():
         text = f"## {chapter['title']}\n\n⚠️ 数据不足，暂不评价。"
     # langgraph 并行实例不继承请求 ContextVar，凭 thread_id 从注册表取队列

@@ -35,9 +35,13 @@ export function ResearchTimeline() {
   return (
     <div
       data-slot="iris_timeline"
-      className="sticky top-0 z-10 mx-auto w-full max-w-3xl px-4 pb-2 pt-2"
+      className={cn(
+        "mx-auto w-full max-w-3xl px-4 pb-2 pt-2",
+        // 研究运行中吸顶便于盯进度；结束后回归文档流，随内容自然滚走
+        running && "sticky top-0 z-10",
+      )}
     >
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card/80 px-4 py-3 text-xs shadow-sm backdrop-blur">
+      <div className="flex max-h-[55vh] flex-wrap items-center gap-2 overflow-y-auto rounded-xl border bg-card/80 px-4 py-3 text-xs shadow-sm backdrop-blur">
         <span className="mr-1 font-medium text-muted-foreground">
           研究进程
         </span>
