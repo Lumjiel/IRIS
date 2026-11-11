@@ -184,7 +184,6 @@ async def write_chapter_node(payload: dict) -> dict:
         # 章节级 fail-open：单章失败不炸整图，汇编节点用占位章节兜底
         log.warning("[Writer] 章节 %s 撰写失败（fail-open）: %s", chapter["title"], e)
         text = ""
-    text = response.content or ""
     if not text.strip():
         text = f"## {chapter['title']}\n\n⚠️ 数据不足，暂不评价。"
     # langgraph 并行实例不继承请求 ContextVar，凭 thread_id 从注册表取队列
