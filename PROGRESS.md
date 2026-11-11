@@ -96,3 +96,49 @@ STATUS: done
 - 对照 GOAL 三条「什么算成了」均已满足（真实数据 F01-F07 / 现场能跑 F08-F09 / 移动端 F10-F15 / 面试文档 F16-F21），无高价值增量，让出时间片。
 
 STATUS: done
+
+---
+
+# 收尾核对轮 2（2026-11-12 第二次下发，只整理不加功能）
+
+上轮复核已 done，本轮再跑一次六件事，这次**对照代码逐条核对了文档断言**（前几轮只抽查了
+测试数/节点数，模型默认值这类细节没对过），补出 9 处过期断言并修复：
+
+## 六件事对账
+
+1. **FINAL.md** ✅ 追加「收尾核对轮」一节（改动清单 + 证据行号），其余结构已完整
+2. **结构盘点** ✅ 重跑 `tree -L 2` + 全仓 `find`：无 `*.bak`/`*.orig`/`*~`/空目录/临时脚本；
+   `BLOCKED.md`、根目录 `pyrightconfig.json`（有意双份）、两处 eval 并存均维持保留结论
+3. **文档同步** ✅ 本轮主体，共 9 处：
+   - **`.mcp.json`（唯一非文档改动）**：`backend/.venv/Scripts/python.exe` → `backend/.venv/bin/python`——
+     原是 Windows 路径，本机 Linux 拉不起 MCP server。改后冒烟 `import mcp_server` → OK
+   - **README 6 处**：① 研报 RAG「pypdf」→「PyMuPDF(fitz)」×2（`report_ingest.py:104` 实际 `import fitz`）；
+     ② LLM 默认模型表改代码事实：PRIMARY=`qwen3.7-plus`（`llm.py:48`）、FALLBACK=`deepseek-v4-flash`（`llm.py:49`）、
+     逐节点未配置回退 PRIMARY（`llm.py:53-58`），删不存在的 `DEEPSEEK_API_KEY` 行；③ `mcp_server.py` 结构树归位 `backend/`；
+     ④ MCP 注册命令路径同步；⑤「方式四」重复编号改「方式五」
+   - **AGENTS.md 2 处**：LLM 默认模型同上；`mcp_server.py` 位置同上
+   - GOAL.md 无过期断言，未动
+4. **冗余清理** ✅ 本轮无新增冗余（上两轮已归档干净）。破例披露：改 `.mcp.json` 前的备份
+   `.mcp.json.bak-1112-0246` 验证通过后即删，原件在 git HEAD 有底，内容零丢失
+5. **依赖记账** ✅ 本轮无新装包，`docs/env.md` 五条记录齐备，无需追加
+6. **验收** ✅ `check_regress.py --test "pytest -q --cov=app --cov-fail-under=62"` →
+   测试绿 / 完成度 21/21（基线 21/21）/ exit 0
+
+## 改动清单
+
+```
+.mcp.json     |  2 +-
+AGENTS.md     |  6 +++---
+README.md     | 21 +++++++++------------
+docs/FINAL.md | 12 ++++++++++++
+```
+
+## 自查（内存 682MB < 1500MB，未开 review 子 agent，主 agent 逐条自查）
+
+- 无作弊：没删测试、没放宽断言（测试数/覆盖率未动，验收由 check_regress 独立判）
+- 无新功能：9 处全是「文档断言对齐代码事实」+ 1 处让既有 MCP 功能在本机可达的路径修复
+- 每处改动带代码行号证据，可抽检
+
+GOAL 三条「什么算成了」均满足、features 21/21 全有 evidence、验收 rc=0。项目归档，时间片让给下一个项目。
+
+STATUS: done

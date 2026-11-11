@@ -201,7 +201,7 @@ IRIS/
 ├── deploy/                           # nginx.conf + precheck_demo.sh（演示前自检）
 ├── docs/interview/                   # 面试文档 6 份（细到能照着讲）
 ├── docs/archive/                     # 历史文档（REFACTOR_PLAN / PROJECT_BRIEFING / blueprint）
-├── mcp_server.py + .mcp.json         # MCP stdio server（只读金融工具暴露）
+├── backend/mcp_server.py             # MCP stdio server（只读金融工具暴露；注册文件 .mcp.json 在仓库根）
 ---
 
 ## Key Design Decisions
@@ -221,8 +221,8 @@ IRIS/
 | ---------- | ------------- | --------- |
 | `OPENAI_API_KEY` | LLM API key（DashScope compatible-mode） | - |
 | `OPENAI_API_BASE` | API base URL | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| `LLM_MODEL_PRIMARY` | Primary model | `qwen3.8-27b` |
-| `LLM_MODEL_FALLBACK` | Fallback model | `deepseek-v4-flash-0731` |
+| `LLM_MODEL_PRIMARY` | Primary model | `qwen3.7-plus`（`llm.py:48` 代码默认） |
+| `LLM_MODEL_FALLBACK` | Fallback model | `deepseek-v4-flash`（`llm.py:49`） |
 | `LLM_MODEL_{ROUTER|PLANNER|RESEARCHER|WRITER|REVIEWER|REFINER}` | 逐节点模型路由（可选） | - |
 | `DASHSCOPE_API_KEY` | Embedding/重排（text-embedding-v4, gte-rerank-v2） | - |
 | `TAVILY_API_KEY` | Tavily search API key | - |

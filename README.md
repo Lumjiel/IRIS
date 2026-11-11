@@ -112,7 +112,7 @@ IRIS 基于 **LangGraph StateGraph** 搭建 **多智能体协同架构**（`back
 
 ### 4. 研报 PDF 入库 RAG
 
-- **pypdf 抽取**：全文提取 + 页级处理
+- **PyMuPDF 抽取**（`import fitz`）：全文提取 + 页级处理
 - **实体抽取**：正则抽取公司名/代码/评级/目标价/日期
 - **元数据入库**：ChromaDB metadata 存 `{source, stock_code, rating, report_date}`
 - **按标的检索**：`search_reports(query, stock_code="600196")`
@@ -231,10 +231,10 @@ curl -X PUT "http://localhost:8000/api/memory-items/{key}" -H "X-User-Id: defaul
 
 # 方式四：MCP 客户端复用数据工具（stdio，只读）
 # 仓库根已注册 .mcp.json（iris-findata），Claude Code 打开即用；或手动：
-#   claude mcp add iris-findata -- backend/.venv/Scripts/python.exe backend/mcp_server.py
+#   claude mcp add iris-findata -- backend/.venv/bin/python backend/mcp_server.py
 # 工具：query_stock_info / query_financial_indicators / query_stock_quote / query_stock_news / search_reports
 
-# 方式四：研报 RAG
+# 方式五：研报 RAG
 curl -X POST http://localhost:8000/api/reports/upload \
   -F "file=@report.pdf"
 curl "http://localhost:8000/api/reports/search?q=复星医药&stock_code=600196"
@@ -278,9 +278,10 @@ IRIS/
 │   │       └── logger.py             # 结构化日志
 │   ├── eval/                         # 评测框架（12 个 Golden Case）
 │   ├── tests/                        # 299 个测试（全量通过，覆盖率 69.22%）
+│   ├── mcp_server.py                 # MCP stdio server（只读金融工具暴露，任意 MCP 客户端复用）
 │   ├── main.py                       # FastAPI 入口
 │   └── requirements.txt              # 依赖清单
-├── mcp_server.py                     # MCP stdio server（只读金融工具暴露，任意 MCP 客户端复用）
+├── .mcp.json                         # MCP 注册（iris-findata，指向 backend/.venv/bin/python）
 ├── frontend-next/                    # 新前端壳：React 19 + assistant-ui（重构中，未接入生产部署）
 ├── frontend/                         # Vue 3 + Vite（当前生产使用的前端，docker-compose 与服务器部署均指向它）
 │   ├── src/
@@ -328,15 +329,11 @@ IRIS/
 | --------- | ------ | -------- |
 | `OPENAI_API_KEY` | DashScope API 密钥 | - |
 | `OPENAI_API_BASE` | API 基础地址（DashScope 兼容端点） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| `LLM_MODEL_PRIMARY` | 默认主模型 | `qwen3.8-27b` |
-| `LLM_MODEL_FALLBACK` | 全局备用模型（额度/异常降级） | `qwen-plus` |
-| `LLM_MODEL_ROUTER` / `_RESEARCHER` | 轻任务模型（意图路由/文档审计） | `qwen-plus` |
-| `LLM_MODEL_PLANNER` / `_REFINER` | 规划/修订模型 | `qwen3.8-27b` |
-| `LLM_MODEL_WRITER` | 报告撰写模型 | `qwen3.8-27b` |
-| `LLM_MODEL_REVIEWER` | 质量审查模型 | `deepseek-v4-pro-0813` |
+| `LLM_MODEL_PRIMARY` | 默认主模型 | `qwen3.7-plus`（`llm.py:48` 代码默认） |
+| `LLM_MODEL_FALLBACK` | 全局备用模型（额度/异常降级） | `deepseek-v4-flash`（`llm.py:49`） |
+| `LLM_MODEL_ROUTER` / `_PLANNER` / `_RESEARCHER` / `_WRITER` / `_REVIEWER` / `_REFINER` | 逐节点模型路由（可选） | 未配置时回退 `LLM_MODEL_PRIMARY`（`llm.py:53-58`） |
 | `TAVILY_API_KEY` | Tavily 搜索 API Key | - |
 | `LANGSMITH_API_KEY` | LangSmith 可观测性（可选） | - |
-| `DEEPSEEK_API_KEY` | DeepSeek 密钥（旧版兼容） | - |
 
 ---
 
@@ -438,7 +435,7 @@ IRIS/
 | 为什么 watch_stock 用规则抽取而不是每轮 LLM？ | 省成本、行为可预期：严格正则识别股票代码零成本零幻觉；LLM 只兜底"记住我喜欢…"这类无结构化信号的显式请求 |
 | 为什么 rerank 选 DashScope gte-rerank 而不是本地 CrossEncoder？ | 同供应商同 Key 零额外依赖；本地模型 +400MB 内存且 Windows/容器安装易翻车；API 失败 fail-open 降级纯向量序，可用性优先于精排收益 |
 | rerank 怎么证明有效？ | score 契约用 `reranked` 字段区分语义（relevance_score vs Chroma distance），可观测可回归；20 query 手工标注小评测待补（诚实边界） |
-| 研报 RAG？ | pypdf 抽取 + 正则实体抽取 + ChromaDB 按标的检索 + gte-rerank 精排 |
+| 研报 RAG？ | PyMuPDF(fitz) 抽取 + 正则实体抽取 + ChromaDB 按标的检索 + gte-rerank 精排 |
 ---
 
 ## 开源协议

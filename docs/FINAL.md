@@ -60,6 +60,18 @@ cd backend && .venv/bin/python -m pytest -q --cov=app --cov-fail-under=62   # 29
 - 文档同步：README（测试数 299/69.22%、节点数以 `graph.py:240-257` 实际注册 15 个为准、四层降级口径、frontend/frontend-next 状态、引用路径）、AGENTS.md（同上）、CLAUDE.md 收敛为指向 AGENTS.md 的入口页
 - 验收：`299 passed / 69.22% / rc=0`（含最终跑，见 PROGRESS.md）
 
+## 收尾核对轮（2026-11-12 第二次收尾，只整理不加功能）
+
+对照代码逐条核对文档断言，修正过期项（全部有代码行号佐证）：
+
+- **`.mcp.json` Windows 路径修复**：`backend/.venv/Scripts/python.exe` → `backend/.venv/bin/python`（本机是 Linux，原路径拉不起 MCP server；改后 `import mcp_server` 冒烟通过）
+- **README 6 处**：研报 RAG 抽取库 pypdf → PyMuPDF(fitz)（`report_ingest.py:104` 实际 `import fitz`）；LLM 默认模型表改为代码事实（PRIMARY=`qwen3.7-plus`@`llm.py:48`、FALLBACK=`deepseek-v4-flash`@`llm.py:49`，逐节点未配置回退 PRIMARY@`llm.py:53-58`，删除代码中不存在的 `DEEPSEEK_API_KEY` 行）；`mcp_server.py` 结构树归位到 `backend/`；MCP 注册命令路径同步；「方式四」重复编号修正为「方式五」
+- **AGENTS.md 2 处**：LLM 默认模型同上；`mcp_server.py` 位置同上
+- 结构盘点（`tree -L 2`）：根目录干净，无 `*.bak`/`*.orig`/`~`/空目录/临时脚本；`BLOCKED.md`、根目录 `pyrightconfig.json`（有意双份，注释写明需同步）、`eval/` 与 `backend/eval/` 两处并存均维持上轮「保留」结论
+- 冗余归档：本轮**无新增**冗余（上两轮已归档 demo jpeg / whiteboard png / bun.lock）
+- 依赖记账：本轮无新装（env.md 无需追加）
+- 验收：见 PROGRESS.md 末尾
+
 ## 移动端走查补轮（2026-11-12 深夜，features 21/21）
 
 - **MarketView / Settings / History 三页 375px 实测通过**（`frontend/` Vue 生产前端，playwright 实开页面交互验证），上轮走查对象是 frontend-next 部署版，MarketView 在 Vue 端——这就是 F12/F14 此前留 false 的真实原因（上轮 PROGRESS 声称「理由见 FINAL.md」但此处并未写，本轮补记并解决）。记录：`docs/frontend-walkthrough-20261112.md`
