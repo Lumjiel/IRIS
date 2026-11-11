@@ -265,3 +265,25 @@ features 21/21 全 pass（上轮已终判 done，本轮为复核轮）。
 无——项目已达成 GOAL，让出时间片。
 
 STATUS: done
+
+---
+
+# 本轮核对（2026-11-12 第五轮收尾复核：六件事独立重验）
+
+任务卡第 N 次下发收尾。前四轮已对账，本轮不信摘要、独立重验（内存 922MB < 1500MB，
+未开 review 子 agent，自查代替）：
+
+1. **FINAL.md** ✅ 在位且与代码现状一致（前几轮已按行号逐条修正，本轮通读未发现新过期断言）
+2. **结构盘点** ✅ 重跑 `tree -L 2` + 全仓 find：无 `*.bak`/`*.orig`/`*~`/`*.swp`/`*.tmp`，无空目录，根目录干净
+3. **文档同步** ✅ `git status` clean（8ef0d3e 已含前几轮全部文档修正），无待提交改动
+4. **冗余清理** ✅ 无新增冗余（demo jpeg / whiteboard png / bun.lock 已在前几轮归档至 /root/trash/2026-11-12/）
+5. **依赖记账** ✅ 本轮无新装，docs/env.md 无需追加
+6. **验收** ✅ `check_regress.py --test "pytest -q --cov=app --cov-fail-under=62"` →
+   ✓ 测试绿 / 完成度 21/21（基线 21/21）/ ✓ 通过，rc=0
+7. **features.json** ✅ 21/21 全 pass，pass 条目 evidence 字段全部非空（脚本逐条检查）
+
+无任何文件改动（除本 PROGRESS 交接）。GOAL 三条「什么算成了」持续满足。
+**本任务卡应停止下发**：连续多轮零增量复核，再拉起只会消耗额度；剩余待拍板项（指数区、
+benchmark 真跑、口径约束）解锁条件写在 BLOCKED.md / FINAL.md，需人来拍板。
+
+STATUS: done
