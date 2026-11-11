@@ -287,3 +287,24 @@ STATUS: done
 benchmark 真跑、口径约束）解锁条件写在 BLOCKED.md / FINAL.md，需人来拍板。
 
 STATUS: done
+
+---
+
+# 本轮核对（2026-11-12 第六轮：环境独立重验）
+
+上一轮已声明 done 且断言「任务卡应停止下发」。本轮不信摘要，从环境层独立重验：
+
+1. **环境** ✅ `backend/.venv/bin/pytest` 与全局 pytest 均在位，无需重建（上次任务卡的
+   「重建 venv」步骤在更早轮已完成且未失效）
+2. **验收** ✅ `check_regress.py --test "pytest -q --cov=app --cov-fail-under=62"` 跑两次，
+   均 ✓ 测试绿 / 完成度 21/21（基线 21/21）/ rc=0
+3. **清单** ✅ features.json 21/21 全 pass
+4. **工作区** ✅ `git status` clean，无未提交改动
+5. **增量判断** ❌ 无本轮可做的增量：BLOCKED.md 剩余项（benchmark 20 只真跑、研报库扩容、
+   PDF 导出）全部卡在「需真实 key + 数据源网络的机器」或「需人拍板」，解锁条件已写明
+
+内存 839MB < 1500MB，未开 review 子 agent，自查代替（无文件改动，无可审产物）。
+
+**维持结论：本任务卡应停止下发**。连续两轮零文件改动复核，再拉起只消耗额度。
+
+STATUS: done
