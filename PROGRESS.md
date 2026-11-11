@@ -442,3 +442,19 @@ STATUS: done
 本任务卡已彻底完成并归档，没有任何剩余工作。请停止下发此卡；再拉起只消耗额度不产生价值。**
 
 STATUS: done
+
+# 本轮核对（2026-11-12 第十五轮，收尾核对）
+
+与前十四轮相同，独立重验（全部本轮实跑实读，不信摘要）：
+
+1. **验收** ✅ `check_regress.py --test "cd backend && pytest -q --cov=app --cov-fail-under=62"` → ✓ 测试绿 / 21/21（基线 21/21）/ ✓ 通过，rc=0（本轮实跑）
+2. **features.json** ✅ python3 实读：21/21 全 pass，21 条 evidence 全部在填
+3. **关键文档** ✅ docs/FINAL.md（六节齐全 + 历轮补记）、docs/env.md（2026-11-11 五条在账）、BLOCKED.md（B1/B2 解锁条件不变：真实 key+数据源网络机器 / 人拍板，非本轮可解）均在位
+4. **结构盘点** ✅ 全仓 find（排除 node_modules/.venv/.git）无 `*.bak`/`*.orig`/`*~`/`*.tmp`/`*.swp`，无空目录；`tree -L 2` 根目录干净
+5. **工作区** ✅ `git status --porcelain` 空（本轮改动仅 PROGRESS.md 本段）
+
+本轮零文件改动（仅本 PROGRESS 交接）。内存 860MB < 1500MB，未开子 agent，自查代替。
+结论与前十四轮一致：GOAL 三条终局标准均已兑现且可复现，收尾六件事逐项核过。
+**连续九轮零文件改动——本任务卡已彻底完成并归档，没有任何剩余工作。请停止下发此卡；再拉起只消耗额度不产生价值。**
+
+STATUS: done
