@@ -6,6 +6,8 @@ import {
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import {
+  FlaskConical,
+  MessageSquare,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
 } from "lucide-react";
@@ -21,11 +23,13 @@ import { Welcome } from "@/components/Welcome";
 import { StatusCard } from "@/components/StatusCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ReportToc } from "@/components/ReportToc";
+import { ScenarioPanel } from "@/components/ScenarioPanel";
 import { useGraphStore } from "@/store/graphStore";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 function AppInner() {
+  const [mode, setMode] = useState<"chat" | "scenario">("chat");
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth >= 768,
   );
@@ -111,10 +115,12 @@ function AppInner() {
         </div>
       </aside>
 
-      {/* 右栏：研报目录（大屏显示） */}
-      <aside className="hidden h-full w-56 shrink-0 overflow-y-auto border-l bg-card/40 px-3 py-4 xl:block">
-        <ReportToc />
-      </aside>
+      {/* 右栏：研报目录（大屏 + 聊天模式显示） */}
+      {mode === "chat" && (
+        <aside className="hidden h-full w-56 shrink-0 overflow-y-auto border-l bg-card/40 px-3 py-4 xl:block">
+          <ReportToc />
+        </aside>
+      )}
 
       {/* 主区 */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -133,18 +139,45 @@ function AppInner() {
             )}
           </Button>
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {threadTitle ?? "六章节中文研报 · 数据与观点分离 · 来源可溯"}
+            {mode === "scenario"
+              ? "情景推演 · 历史类比 × 因子叠加 × 主观概率"
+              : (threadTitle ?? "六章节中文研报 · 数据与观点分离 · 来源可溯")}
           </span>
-          <ResearchStatusChip />
+          {/* 模式切换：研报对话 / 情景推演 */}
+          <div className="flex shrink-0 items-center rounded-lg border p-0.5">
+            <Button
+              variant={mode === "chat" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-6 gap-1 px-2 text-[11px]"
+              onClick={() => setMode("chat")}
+            >
+              <MessageSquare className="size-3" />
+              研报
+            </Button>
+            <Button
+              variant={mode === "scenario" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-6 gap-1 px-2 text-[11px]"
+              onClick={() => setMode("scenario")}
+            >
+              <FlaskConical className="size-3" />
+              推演
+            </Button>
+          </div>
+          {mode === "chat" && <ResearchStatusChip />}
         </header>
         <div className="min-h-0 flex-1">
-          <Thread
-            components={{
-              Welcome,
-              ViewportTop: IrisViewportTop,
-              ViewportBottom: ReportFooterBar,
-            }}
-          />
+          {mode === "scenario" ? (
+            <ScenarioPanel />
+          ) : (
+            <Thread
+              components={{
+                Welcome,
+                ViewportTop: IrisViewportTop,
+                ViewportBottom: ReportFooterBar,
+              }}
+            />
+          )}
         </div>
       </div>
     </div>
