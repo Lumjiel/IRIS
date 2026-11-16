@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -6,13 +6,20 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   FlaskConical,
   History,
   Layers,
+  Loader2,
   RefreshCw,
+  Trash2,
+  TrendingUp,
+  XCircle,
 } from "lucide-react";
 
-/* ============ 类型（与后端 /api/scenario/analyze 对齐） ============ */
+/* ============ 类型（与后端 /api/scenario/* 对齐） ============ */
 
 interface ScenarioFactor {
   name: string;
@@ -52,7 +59,55 @@ interface ScenarioResult {
   confidence_note: string;
   degraded: string[];
   disclaimer: string;
+  run_id: number | null;
+  saved?: boolean;
+  created_at?: string;
 }
+
+interface HistoryItem {
+  id: number;
+  created_at: string;
+  scenario: string;
+  impact_count: number;
+  top_impact: ScenarioImpact | null;
+  verified: boolean;
+}
+
+interface VerifyItem {
+  target: string;
+  direction: "up" | "down";
+  probability: number;
+  base_date?: string;
+  base_close?: number;
+  latest_date?: string;
+  latest_close?: number;
+  pct_change?: number;
+  hit?: boolean;
+  code: string;
+  error?: string;
+}
+
+interface VerifyResult {
+  start_date: string;
+  verifiable: VerifyItem[];
+  unverifiable_count: number;
+  hit_count: number;
+  judgeable_count: number;
+  hit_rate: number | null;
+}
+
+type StageKey = "decompose" | "analogy" | "synthesize";
+interface StageState {
+  key: StageKey;
+  label: string;
+  status: "pending" | "running" | "done";
+}
+
+const INITIAL_STAGES: StageState[] = [
+  { key: "decompose", label: "拆解风险因子", status: "pending" },
+  { key: "analogy", label: "联网检索历史类比案例", status: "pending" },
+  { key: "synthesize", label: "因子叠加推演与概率合成", status: "pending" },
+];
 
 const EXAMPLES = [
   "未来一年地缘战争增多，全球粮食欠收",
@@ -61,50 +116,171 @@ const EXAMPLES = [
   "AI 算力需求见顶回落",
 ];
 
-const STAGES = [
-  "拆解风险因子…",
-  "联网检索历史类比案例…",
-  "因子叠加推演与概率合成…",
-];
-
 /**
  * 情景推演面板：输入对未来的预测情景 → 方向 × 概率 × 依据链
- * 独立于聊天 Thread，通过顶栏切换进入
+ * 支持真进度 SSE、追加因子多轮推演、历史存档回看与事后走势验证
  */
 export function ScenarioPanel() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [stage, setStage] = useState(0);
+  const [stages, setStages] = useState<StageState[]>(INITIAL_STAGES);
   const [result, setResult] = useState<ScenarioResult | null>(null);
   const [error, setError] = useState("");
+  const [round, setRound] = useState(1);
+
+  // 追加因子
+  const [appendInput, setAppendInput] = useState("");
+
+  // 历史存档
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // 事后验证
+  const [verify, setVerify] = useState<VerifyResult | null>(null);
+  const [verifying, setVerifying] = useState(false);
 
   const canSubmit = input.trim().length > 0 && !loading;
 
-  const analyze = async () => {
-    if (!canSubmit) return;
+  const refreshHistory = useCallback(async () => {
+    try {
+      const r = await fetch("/api/scenario/history");
+      const d = await r.json();
+      setHistory(d.runs ?? []);
+    } catch {
+      /* 历史加载失败不影响主流程 */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshHistory();
+  }, [refreshHistory]);
+
+  /** 核心：SSE 消费一次推演（真实阶段进度 → 最终结果） */
+  const analyze = async (scenarioText: string) => {
+    if (!scenarioText.trim() || loading) return;
     setLoading(true);
     setError("");
     setResult(null);
-    // 阶段提示动画（纯展示，实际后端一次性返回）
-    const timer = setInterval(
-      () => setStage((s) => Math.min(s + 1, STAGES.length - 1)),
-      4000,
-    );
+    setVerify(null);
+    setStages(INITIAL_STAGES.map((s) => ({
+      ...s,
+      status: s.key === "decompose" ? "running" : "pending",
+    })));
     try {
       const res = await fetch("/api/scenario/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario: input.trim() }),
+        body: JSON.stringify({ scenario: scenarioText.trim() }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-      setResult(data);
+      if (!res.ok || !res.body) {
+        const d = await res.json().catch(() => null);
+        const msg = d?.detail?.[0]?.msg ?? d?.detail ?? `HTTP ${res.status}`;
+        throw new Error(String(msg));
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      let gotResult = false;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith("data:")) continue;
+          const ev = JSON.parse(t.slice(5).trim());
+          if (ev.type === "stage") {
+            const { key, status } = ev as { key: StageKey; status: "start" | "done" };
+            setStages((prev) =>
+              prev.map((s) =>
+                s.key === key
+                  ? { ...s, status: status === "start" ? ("running" as const) : ("done" as const) }
+                  : s,
+              ),
+            );
+            // done 时把下一阶段置为 running
+            if (status === "done") {
+              setStages((prev) => {
+                const idx = prev.findIndex((s) => s.key === key);
+                return prev.map((s, i) =>
+                  i === idx + 1 ? { ...s, status: "running" as const } : s,
+                );
+              });
+            }
+          } else if (ev.type === "result") {
+            gotResult = true;
+            setResult(ev.data as ScenarioResult);
+            void refreshHistory();
+          } else if (ev.type === "error") {
+            throw new Error(ev.detail ?? "推演失败");
+          }
+        }
+      }
+      if (!gotResult) throw new Error("推演流意外中断");
     } catch (e) {
       setError(e instanceof Error ? e.message : "推演请求失败");
     } finally {
-      clearInterval(timer);
       setLoading(false);
-      setStage(0);
+    }
+  };
+
+  /** 追加因子：并入原情景重新推演（第 N 轮） */
+  const runAppend = () => {
+    const add = appendInput.trim();
+    if (!add || !result || loading) return;
+    const merged = `${result.scenario}；另外：${add}`;
+    setRound((r) => r + 1);
+    setInput(merged.slice(0, 500));
+    void analyze(merged.slice(0, 500));
+    setAppendInput("");
+  };
+
+  /** 加载一条历史存档到主视图 */
+  const loadRun = async (id: number) => {
+    if (loading) return;
+    setError("");
+    setVerify(null);
+    try {
+      const r = await fetch(`/api/scenario/history/${id}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail ?? "加载失败");
+      setResult(d.payload as ScenarioResult);
+      setInput(d.scenario ?? "");
+      setRound(1);
+      setVerify(d.verify ?? null);
+      setHistoryOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "加载失败");
+    }
+  };
+
+  const deleteRun = async (id: number) => {
+    try {
+      await fetch(`/api/scenario/history/${id}`, { method: "DELETE" });
+      if (result?.run_id === id) setResult(null);
+      void refreshHistory();
+    } catch {
+      /* 忽略 */
+    }
+  };
+
+  /** 事后验证：推演日至今实际涨跌 */
+  const runVerify = async () => {
+    if (!result?.run_id || verifying) return;
+    setVerifying(true);
+    try {
+      const r = await fetch(`/api/scenario/history/${result.run_id}/verify`, {
+        method: "POST",
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail ?? "验证失败");
+      setVerify(d as VerifyResult);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "验证失败");
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -114,7 +290,14 @@ export function ScenarioPanel() {
       <div className="mb-4 flex items-center gap-2">
         <FlaskConical className="size-5 text-violet-500" />
         <div>
-          <h1 className="text-base font-semibold tracking-tight">情景推演</h1>
+          <h1 className="text-base font-semibold tracking-tight">
+            情景推演
+            {round > 1 && (
+              <span className="ml-2 rounded-full bg-violet-500/10 px-2 py-0.5 text-[11px] font-normal text-violet-500">
+                第 {round} 轮
+              </span>
+            )}
+          </h1>
           <p className="text-xs text-muted-foreground">
             输入对未来的预测情景，基于历史类比推演 A 股板块涨跌方向与主观概率
           </p>
@@ -129,14 +312,14 @@ export function ScenarioPanel() {
           placeholder="描述你对未来的预测，例如：未来一年战争增多，粮食欠收…"
           className="min-h-20 resize-none border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-0"
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) analyze();
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void analyze(input);
           }}
         />
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] text-muted-foreground">
             {input.length}/500 · Ctrl+Enter 提交
           </span>
-          <Button size="sm" onClick={analyze} disabled={!canSubmit}>
+          <Button size="sm" onClick={() => void analyze(input)} disabled={!canSubmit}>
             {loading ? (
               <RefreshCw className="size-3.5 animate-spin" />
             ) : (
@@ -158,25 +341,77 @@ export function ScenarioPanel() {
             ))}
           </div>
         )}
+        {/* 历史存档折叠条 */}
+        <div className="border-t pt-2">
+          <button
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="flex w-full items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            {historyOpen ? (
+              <ChevronDown className="size-3.5" />
+            ) : (
+              <ChevronRight className="size-3.5" />
+            )}
+            <History className="size-3.5" />
+            历史推演（{history.length}）
+          </button>
+          {historyOpen && (
+            <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto">
+              {history.length === 0 && (
+                <p className="px-1 text-[11px] text-muted-foreground/60">
+                  还没有存档。每次推演会自动保存，之后可以回看并验证走势。
+                </p>
+              )}
+              {history.map((h) => (
+                <div
+                  key={h.id}
+                  className="group flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] hover:bg-muted/50"
+                >
+                  <button
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => void loadRun(h.id)}
+                  >
+                    <div className="truncate font-medium">{h.scenario}</div>
+                    <div className="text-muted-foreground">
+                      {h.created_at} · {h.impact_count} 条推演
+                      {h.verified && (
+                        <span className="ml-1 text-emerald-600">· 已验证</span>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    aria-label="删除存档"
+                    className="opacity-0 transition-opacity group-hover:opacity-100"
+                    onClick={() => void deleteRun(h.id)}
+                  >
+                    <Trash2 className="size-3.5 text-muted-foreground hover:text-red-500" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 加载中 */}
+      {/* 加载中：真实阶段进度 */}
       {loading && (
         <div className="mt-6 space-y-2 rounded-xl border bg-card p-4">
-          {STAGES.map((s, i) => (
-            <div key={s} className="flex items-center gap-2 text-xs">
-              {i < stage ? (
-                <span className="text-emerald-500">✓</span>
-              ) : i === stage ? (
-                <RefreshCw className="size-3.5 animate-spin text-violet-500" />
+          {stages.map((s) => (
+            <div key={s.key} className="flex items-center gap-2 text-xs">
+              {s.status === "done" ? (
+                <CheckCircle2 className="size-3.5 text-emerald-500" />
+              ) : s.status === "running" ? (
+                <Loader2 className="size-3.5 animate-spin text-violet-500" />
               ) : (
                 <span className="text-muted-foreground/40">○</span>
               )}
-              <span className={cn(i > stage && "text-muted-foreground/40")}>{s}</span>
+              <span className={cn(s.status === "pending" && "text-muted-foreground/40")}>
+                {s.label}
+              </span>
             </div>
           ))}
           <p className="pt-1 text-[11px] text-muted-foreground/70">
-            通常需要 30-60 秒（含联网检索历史案例）
+            含联网检索历史案例，通常 1-2 分钟；关闭页面不会中断后台推演
           </p>
         </div>
       )}
@@ -200,8 +435,14 @@ export function ScenarioPanel() {
 
           {/* 总结论 */}
           <div className="rounded-xl border bg-card p-4">
-            <div className="mb-1.5 text-xs font-semibold text-muted-foreground">
-              推演总结论
+            <div className="mb-1.5 flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span>推演总结论</span>
+              {result.created_at && (
+                <span className="text-[10px] font-normal">
+                  {result.created_at}
+                  {result.saved && " · 已存档"}
+                </span>
+              )}
             </div>
             <p className="text-sm leading-relaxed">{result.summary}</p>
             {result.confidence_note && (
@@ -209,6 +450,123 @@ export function ScenarioPanel() {
                 置信度说明：{result.confidence_note}
               </p>
             )}
+          </div>
+
+          {/* 事后验证区 */}
+          {result.run_id && (
+            <div className="rounded-xl border bg-card">
+              <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-semibold">
+                <TrendingUp className="size-3.5 text-violet-500" />
+                事后走势验证
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto h-6 px-2 text-[11px]"
+                  onClick={() => void runVerify()}
+                  disabled={verifying}
+                >
+                  {verifying ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : verify ? (
+                    "重新验证"
+                  ) : (
+                    "验证走势"
+                  )}
+                </Button>
+              </div>
+              {verify ? (
+                <div className="px-4 py-3">
+                  {verify.judgeable_count > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-[11px] text-muted-foreground">
+                        推演日 {verify.start_date} 至今 · 方向命中{" "}
+                        <span
+                          className={cn(
+                            "font-semibold",
+                            (verify.hit_rate ?? 0) >= 50
+                              ? "text-emerald-600"
+                              : "text-red-500",
+                          )}
+                        >
+                          {verify.hit_count}/{verify.judgeable_count}（{verify.hit_rate}%）
+                        </span>
+                      </div>
+                      {verify.verifiable.map((v, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-2 border-t pt-2 text-xs first:border-t-0 first:pt-0"
+                        >
+                          {v.error ? (
+                            <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+                          ) : v.hit ? (
+                            <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                          ) : (
+                            <XCircle className="size-3.5 shrink-0 text-red-500" />
+                          )}
+                          <span className="min-w-0 flex-1 truncate">{v.target}</span>
+                          <span className="text-muted-foreground">
+                            预测{v.direction === "up" ? "涨" : "跌"} {v.probability}%
+                          </span>
+                          {v.error ? (
+                            <span className="text-[10px] text-amber-600">{v.error}</span>
+                          ) : (
+                            <span
+                              className={cn(
+                                "font-mono font-semibold",
+                                (v.pct_change ?? 0) > 0 ? "text-red-500" : "text-emerald-600",
+                              )}
+                            >
+                              {(v.pct_change ?? 0) > 0 ? "+" : ""}
+                              {v.pct_change}%
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      本次推演无可识别股票代码的标的，暂无法自动验证。
+                    </p>
+                  )}
+                  {verify.unverifiable_count > 0 && (
+                    <p className="mt-2 text-[10px] text-muted-foreground/70">
+                      另有 {verify.unverifiable_count} 条板块级推演无法自动验证（纯板块目标）。
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="px-4 py-3 text-[11px] text-muted-foreground">
+                  推演只是起点——点「验证走势」查看推演日至今的实际涨跌，校准概率是否靠谱。
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 追加因子：多轮推演 */}
+          <div className="rounded-xl border border-dashed bg-card p-3">
+            <div className="flex items-center gap-2">
+              <Textarea
+                value={appendInput}
+                onChange={(e) => setAppendInput(e.target.value.slice(0, 200))}
+                placeholder="追加因子再推演，例如：如果央行同时降息呢？"
+                className="min-h-10 resize-none border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    runAppend();
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 shrink-0"
+                onClick={runAppend}
+                disabled={!appendInput.trim() || loading}
+              >
+                并入推演
+              </Button>
+            </div>
           </div>
 
           {/* 推演明细表 */}
