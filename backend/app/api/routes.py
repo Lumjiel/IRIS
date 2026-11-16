@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, field_validator
 from typing import List
 from app.graph.graph import create_graph
@@ -1251,6 +1251,15 @@ async def scenario_analyze(req: ScenarioRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/scenario/suggest")
+async def scenario_suggest():
+    """懒人模式：今日热点 → 情景短句（新闻提炼，30min 缓存；新闻挂了回退预设库）。"""
+    from app.scenario.suggest import get_suggestions
+    data = await get_suggestions()
+    # no-store：避免浏览器启发式缓存把重启窗口期的旧响应钉死
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/scenario/history")
