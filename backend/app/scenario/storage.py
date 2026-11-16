@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS scenario_runs (
 )
 """
 
+_WATCHLIST = """
+CREATE TABLE IF NOT EXISTS watchlist (
+    code      TEXT PRIMARY KEY,
+    name      TEXT NOT NULL DEFAULT '',
+    added_at  TEXT NOT NULL
+)
+"""
+
 
 @contextmanager
 def _conn():
@@ -32,6 +40,7 @@ def _conn():
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(_TABLE)  # IF NOT EXISTS，懒建表
+        conn.execute(_WATCHLIST)
         yield conn
         conn.commit()
     except Exception:
@@ -140,3 +149,43 @@ def save_verification(run_id: int, verify_payload: dict) -> bool:
     except Exception as e:
         log.error(f"验证结果回写失败[{run_id}]: {e}")
         return False
+
+
+# ============ 自选股对照 ============
+
+def watchlist_add(code: str, name: str = "") -> bool:
+    """添加自选股（已存在则更新名称，幂等）。"""
+    try:
+        with _conn() as conn:
+            conn.execute(
+                "INSERT INTO watchlist (code, name, added_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(code) DO UPDATE SET name = excluded.name",
+                (code, name, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            )
+        return True
+    except Exception as e:
+        log.error(f"自选股添加失败[{code}]: {e}")
+        return False
+
+
+def watchlist_remove(code: str) -> bool:
+    try:
+        with _conn() as conn:
+            conn.execute("DELETE FROM watchlist WHERE code = ?", (code,))
+        return True
+    except Exception as e:
+        log.error(f"自选股删除失败[{code}]: {e}")
+        return False
+
+
+def watchlist_list() -> list[dict]:
+    """自选股列表（按加入时间倒序）。"""
+    try:
+        with _conn() as conn:
+            rows = conn.execute(
+                "SELECT code, name, added_at FROM watchlist ORDER BY added_at DESC"
+            ).fetchall()
+        return [{"code": c, "name": n, "added_at": a} for c, n, a in rows]
+    except Exception as e:
+        log.error(f"自选股读取失败: {e}")
+        return []

@@ -17,6 +17,7 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
+  Star,
   Trash2,
   TrendingUp,
   XCircle,
@@ -124,8 +125,20 @@ function extractCode(target: string): string | null {
   return m ? m[0] : null;
 }
 
-/** 推演条目联动：带代码的标的可查实时行情 / 一键转研报深入研究 */
-function ImpactActions({ target }: { target: string }) {
+interface WatchItem {
+  code: string;
+  name: string;
+  added_at: string;
+}
+
+/** 推演条目联动：带代码的标的可查实时行情 / 一键转研报深入研究 / 加入自选对照 */
+function ImpactActions({
+  target,
+  onAddWatch,
+}: {
+  target: string;
+  onAddWatch: (code: string, name: string) => void;
+}) {
   const code = extractCode(target);
   const aui = useAui();
   const setMode = useGraphStore((s) => s.setMode);
@@ -189,11 +202,18 @@ function ImpactActions({ target }: { target: string }) {
         </div>
       )}
       <button
+        onClick={() => onAddWatch(code, name)}
+        className="font-medium text-amber-600 transition-colors hover:text-amber-500"
+        title="加入自选股对照"
+      >
+        ＋对照
+      </button>
+      <button
         onClick={() => {
           aui.thread.append(`研究一下 ${code} ${name} 的投资价值`);
           setMode("chat");
         }}
-        className="ml-auto font-medium text-violet-600 transition-colors hover:text-violet-500 dark:text-violet-400"
+        className="font-medium text-violet-600 transition-colors hover:text-violet-500 dark:text-violet-400"
       >
         → 转研报深入研究
       </button>
@@ -228,6 +248,59 @@ export function ScenarioPanel() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggestMode, setSuggestMode] = useState<"news" | "preset">("preset");
   const [suggestLoading, setSuggestLoading] = useState(true);
+
+  // 输入结构引导：时间聚焦
+  const FOCUS_OPTIONS = ["不限", "短期(1-2周)", "中期(1-3月)", "长期(半年以上)"];
+  const [focus, setFocus] = useState("不限");
+
+  // 自选股对照
+  const [watchlist, setWatchlist] = useState<WatchItem[]>([]);
+  const [wlInput, setWlInput] = useState("");
+  const [wlError, setWlError] = useState("");
+
+  const refreshWatchlist = useCallback(async () => {
+    try {
+      const r = await fetch("/api/watchlist", { cache: "no-store" });
+      const d = await r.json();
+      setWatchlist(d.items ?? []);
+    } catch {
+      /* fail-soft */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshWatchlist();
+  }, [refreshWatchlist]);
+
+  const addWatch = useCallback(
+    async (code: string, name: string) => {
+      try {
+        const r = await fetch("/api/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, name }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail?.[0]?.msg ?? d.detail ?? "添加失败");
+        void refreshWatchlist();
+      } catch (e) {
+        setWlError(e instanceof Error ? e.message : "添加失败");
+      }
+    },
+    [refreshWatchlist],
+  );
+
+  const removeWatch = useCallback(
+    async (code: string) => {
+      try {
+        await fetch(`/api/watchlist/${code}`, { method: "DELETE" });
+        void refreshWatchlist();
+      } catch {
+        /* 忽略 */
+      }
+    },
+    [refreshWatchlist],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -264,6 +337,9 @@ export function ScenarioPanel() {
   /** 核心：SSE 消费一次推演（真实阶段进度 → 最终结果） */
   const analyze = async (scenarioText: string) => {
     if (!scenarioText.trim() || loading) return;
+    // 时间聚焦：拼接进情景文本，让推演聚焦对应时间窗
+    const merged =
+      focus !== "不限" ? `${scenarioText.trim()}（请重点关注${focus}的影响）` : scenarioText.trim();
     setLoading(true);
     setError("");
     setResult(null);
@@ -276,7 +352,7 @@ export function ScenarioPanel() {
       const res = await fetch("/api/scenario/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario: scenarioText.trim() }),
+        body: JSON.stringify({ scenario: merged }),
       });
       if (!res.ok || !res.body) {
         const d = await res.json().catch(() => null);
@@ -433,6 +509,26 @@ export function ScenarioPanel() {
             )}
           </Button>
         </div>
+        {/* 时间聚焦：结构化引导，降低"不知道写多细"的门槛 */}
+        {!loading && (
+          <div className="flex flex-wrap items-center gap-1.5 border-t pt-2">
+            <span className="text-[11px] text-muted-foreground">时间聚焦</span>
+            {FOCUS_OPTIONS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setFocus(f)}
+                className={cn(
+                  "rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
+                  focus === f
+                    ? "border-violet-400 bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        )}
         {/* 今日热点（懒人一键） / 示例情景 */}
         {!result && !loading && (
           <div className="border-t pt-2">
@@ -602,6 +698,93 @@ export function ScenarioPanel() {
               <p className="mt-2 border-t pt-2 text-[11px] text-muted-foreground">
                 置信度说明：{result.confidence_note}
               </p>
+            )}
+          </div>
+
+          {/* 自选股对照：这个情景对我的持仓意味着什么 */}
+          <div className="rounded-xl border bg-card">
+            <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2 text-xs font-semibold">
+              <Star className="size-3.5 text-amber-500" />
+              自选股对照
+              <span className="text-[10px] font-normal text-muted-foreground">
+                这个情景对你关注的标的意味着什么
+              </span>
+              <div className="ml-auto flex items-center gap-1.5">
+                <input
+                  value={wlInput}
+                  onChange={(e) => setWlInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6位代码"
+                  className="h-6 w-20 rounded border bg-transparent px-1.5 text-[11px] tabular-nums outline-none focus:border-violet-400"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && wlInput.length === 6) {
+                      void addWatch(wlInput, "");
+                      setWlInput("");
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[11px]"
+                  disabled={wlInput.length !== 6}
+                  onClick={() => {
+                    void addWatch(wlInput, "");
+                    setWlInput("");
+                  }}
+                >
+                  添加
+                </Button>
+              </div>
+            </div>
+            {wlError && (
+              <p className="px-4 pt-2 text-[11px] text-red-500">{wlError}</p>
+            )}
+            {watchlist.length === 0 ? (
+              <p className="px-4 py-3 text-[11px] text-muted-foreground">
+                还没有自选股。点下方推演条目的「＋对照」，或输入 6 位代码添加，之后每次推演都会自动告诉你它受何影响。
+              </p>
+            ) : (
+              <div className="divide-y">
+                {watchlist.map((w) => {
+                  const hit = result.impacts.find(
+                    (imp) => !!extractCode(imp.target) && extractCode(imp.target) === w.code,
+                  );
+                  return (
+                    <div key={w.code} className="flex items-center gap-2 px-4 py-2.5 text-xs">
+                      <span className="font-mono text-[11px] text-muted-foreground">{w.code}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium">
+                        {w.name || w.code}
+                      </span>
+                      {hit ? (
+                        <>
+                          <span
+                            className={cn(
+                              "rounded px-1.5 py-0.5 text-[11px] font-medium",
+                              hit.direction === "up"
+                                ? "bg-red-500/10 text-red-500"
+                                : "bg-emerald-500/10 text-emerald-600",
+                            )}
+                          >
+                            {hit.direction === "up" ? "涨" : "跌"} {hit.probability}% ·{" "}
+                            {hit.horizon}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground/70">
+                          本次推演未直接涉及
+                        </span>
+                      )}
+                      <button
+                        aria-label="移除自选股"
+                        onClick={() => void removeWatch(w.code)}
+                        className="text-muted-foreground/60 transition-colors hover:text-red-500"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -777,8 +960,8 @@ export function ScenarioPanel() {
                       类比案例：{imp.case_refs.join("、")}
                     </div>
                   )}
-                  {/* 联动：查行情 / 转研报 */}
-                  <ImpactActions target={imp.target} />
+                  {/* 联动：查行情 / 转研报 / 加入对照 */}
+                  <ImpactActions target={imp.target} onAddWatch={(c, n) => void addWatch(c, n)} />
                 </div>
               ))}
             </div>

@@ -1262,6 +1262,44 @@ async def scenario_suggest():
     return JSONResponse(data, headers={"Cache-Control": "no-store"})
 
 
+@router.get("/watchlist")
+async def watchlist_get():
+    """自选股列表（推演对照用）。"""
+    from app.scenario.storage import watchlist_list
+    return {"items": watchlist_list()}
+
+
+class WatchlistItem(BaseModel):
+    code: str
+    name: str = ""
+
+    @field_validator("code")
+    @classmethod
+    def _code(cls, v: str) -> str:
+        import re as _re
+        v = v.strip()
+        if not _re.fullmatch(r"\d{6}", v):
+            raise ValueError("股票代码须为 6 位数字")
+        return v
+
+
+@router.post("/watchlist")
+async def watchlist_add(item: WatchlistItem):
+    from app.scenario.storage import watchlist_add as _add
+    ok = _add(item.code, item.name.strip())
+    if not ok:
+        raise HTTPException(status_code=500, detail="添加失败")
+    return {"ok": True}
+
+
+@router.delete("/watchlist/{code}")
+async def watchlist_delete(code: str):
+    from app.scenario.storage import watchlist_remove
+    if not watchlist_remove(code):
+        raise HTTPException(status_code=500, detail="删除失败")
+    return {"ok": True}
+
+
 @router.get("/scenario/history")
 async def scenario_history():
     """推演历史列表（倒序摘要）。"""
