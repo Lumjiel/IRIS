@@ -1194,3 +1194,33 @@ async def system_status():
     return payload
 
 
+# ============ 情景推演（Scenario Prediction） ============
+
+class ScenarioRequest(BaseModel):
+    scenario: str
+
+    @field_validator("scenario")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("情景描述不能为空")
+        if len(v) > 500:
+            raise ValueError("情景描述过长（≤500 字）")
+        return v
+
+
+@router.post("/scenario/analyze")
+async def scenario_analyze(req: ScenarioRequest):
+    """情景推演：因子拆解 → 历史类比（联网检索）→ 影响推演 → 概率合成。
+
+    独立于主研报流水线，返回结构化 JSON（含免责声明）。
+    """
+    from app.scenario.pipeline import run_scenario_analysis
+    try:
+        return await run_scenario_analysis(req.scenario)
+    except Exception as e:
+        log.error(f"情景推演异常: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
