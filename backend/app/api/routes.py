@@ -1212,15 +1212,79 @@ class ScenarioRequest(BaseModel):
 
 @router.post("/scenario/analyze")
 async def scenario_analyze(req: ScenarioRequest):
-    """情景推演：因子拆解 → 历史类比（联网检索）→ 影响推演 → 概率合成。
+    """情景推演（SSE 流式）。
 
-    独立于主研报流水线，返回结构化 JSON（含免责声明）。
+    事件流：阶段进度（stage start/done）→ 最终结果（type=result，含自动存档 run_id）。
+    阶段间 LLM 调用可能长达 30s，每 15s 推一次 : hb 心跳防代理超时。
     """
-    from app.scenario.pipeline import run_scenario_analysis
-    try:
-        return await run_scenario_analysis(req.scenario)
-    except Exception as e:
-        log.error(f"情景推演异常: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    from app.scenario.pipeline import iter_scenario_events
+
+    async def gen():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def produce():
+            try:
+                async for ev in iter_scenario_events(req.scenario):
+                    await queue.put(ev)
+            except Exception as e:
+                log.error(f"情景推演事件流异常: {e}")
+                await queue.put({"type": "error", "detail": str(e)})
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(produce())
+        try:
+            while True:
+                try:
+                    ev = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield ": hb\n\n"
+                    continue
+                if ev is None:
+                    break
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        finally:
+            task.cancel()
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/scenario/history")
+async def scenario_history():
+    """推演历史列表（倒序摘要）。"""
+    from app.scenario import storage
+    return {"runs": storage.list_runs()}
+
+
+@router.get("/scenario/history/{run_id}")
+async def scenario_run_detail(run_id: int):
+    """推演历史单条详情（完整 payload + 已有验证结果）。"""
+    from app.scenario import storage
+    run = storage.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="存档不存在")
+    return run
+
+
+@router.delete("/scenario/history/{run_id}")
+async def scenario_run_delete(run_id: int):
+    from app.scenario import storage
+    if not storage.delete_run(run_id):
+        raise HTTPException(status_code=500, detail="删除失败")
+    return {"ok": True}
+
+
+@router.post("/scenario/history/{run_id}/verify")
+async def scenario_run_verify(run_id: int):
+    """事后验证：计算推演日至今各标的实际涨跌，判定方向命中并回写存档。"""
+    from app.scenario.pipeline import verify_run
+    result = await verify_run(run_id)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
 
 
