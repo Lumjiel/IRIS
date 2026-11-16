@@ -14,6 +14,7 @@ import {
   Layers,
   Loader2,
   RefreshCw,
+  Sparkles,
   Trash2,
   TrendingUp,
   XCircle,
@@ -138,6 +139,27 @@ export function ScenarioPanel() {
   // 事后验证
   const [verify, setVerify] = useState<VerifyResult | null>(null);
   const [verifying, setVerifying] = useState(false);
+
+  // 今日热点（懒人一键）
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestMode, setSuggestMode] = useState<"news" | "preset">("preset");
+  const [suggestLoading, setSuggestLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/scenario/suggest", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        setSuggestions(d.suggestions ?? []);
+        setSuggestMode(d.mode ?? "preset");
+      })
+      .catch(() => {})
+      .finally(() => alive && setSuggestLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const canSubmit = input.trim().length > 0 && !loading;
 
@@ -327,18 +349,65 @@ export function ScenarioPanel() {
             )}
           </Button>
         </div>
-        {/* 示例情景 */}
+        {/* 今日热点（懒人一键） / 示例情景 */}
         {!result && !loading && (
-          <div className="flex flex-wrap gap-1.5 border-t pt-2">
-            {EXAMPLES.map((ex) => (
-              <button
-                key={ex}
-                onClick={() => setInput(ex)}
-                className="rounded-full border px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-violet-400 hover:text-violet-500"
-              >
-                {ex}
-              </button>
-            ))}
+          <div className="border-t pt-2">
+            {suggestLoading ? (
+              <div className="flex flex-wrap gap-1.5">
+                {[0, 1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-6 animate-pulse rounded-full bg-muted"
+                    style={{ width: `${140 + i * 24}px` }}
+                  />
+                ))}
+              </div>
+            ) : suggestions.length > 0 ? (
+              <>
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-violet-500" />
+                  <span className="text-[11px] text-muted-foreground">
+                    今日热点 · 点一下直接推演
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[10px]",
+                      suggestMode === "news"
+                        ? "bg-emerald-500/10 text-emerald-600"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {suggestMode === "news" ? "实时快讯" : "预设"}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => {
+                        setInput(s);
+                        void analyze(s);
+                      }}
+                      className="rounded-full border border-violet-300/60 bg-violet-500/5 px-2.5 py-1 text-[11px] text-violet-600 transition-colors hover:bg-violet-500/15 dark:border-violet-700/60 dark:text-violet-400"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {EXAMPLES.map((ex) => (
+                  <button
+                    key={ex}
+                    onClick={() => setInput(ex)}
+                    className="rounded-full border px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-violet-400 hover:text-violet-500"
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {/* 历史存档折叠条 */}
