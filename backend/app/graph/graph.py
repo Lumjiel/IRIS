@@ -1,14 +1,12 @@
 """
 IRIS LangGraph 状态机拓扑
 - LangSmith Traceable 包装
-- RetryPolicy/TimeoutPolicy
 - 条件边循环终止（cosine 早停 + MAX_ITERATIONS）
 - 节点级状态事件（start/done + elapsed）→ 前端时间线真实进度
 """
 import time as _time
 from langgraph.graph import StateGraph, END
 from langsmith import traceable
-import httpx
 
 from app.graph.state import AgentState
 from app.graph.nodes.router import route_query
@@ -29,20 +27,6 @@ log = get_logger("graph")
 # === 循环终止配置 ===
 MAX_ITERATIONS = 5  # 最大循环次数（reviewer → planner 回跳）
 COSINE_SIMILARITY_THRESHOLD = 0.95  # cosine 相似度早停阈值
-
-# === 重试策略 ===
-retry_policy = {
-    "max_attempts": 3,
-    "initial_interval": 1.0,
-    "backoff_factor": 2.0,
-    "max_interval": 10.0,
-    "jitter": True,
-    "retry_on": (
-        httpx.TimeoutException,
-        httpx.HTTPStatusError,
-        ConnectionError,
-    )
-}
 
 # === Traceable 包装节点 ===
 @traceable(run_type="chain", name="router")
