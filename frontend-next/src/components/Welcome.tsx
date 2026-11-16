@@ -1,4 +1,6 @@
 import { useAui } from "@assistant-ui/react";
+import { FlaskConical } from "lucide-react";
+import { useGraphStore } from "@/store/graphStore";
 
 const PROMPTS = [
   "研究一下 600196 复星医药的投资价值",
@@ -11,6 +13,7 @@ const PROMPTS = [
  */
 export function Welcome() {
   const aui = useAui();
+  const setMode = useGraphStore((s) => s.setMode);
   return (
     <div className="flex flex-col items-center gap-3 py-12 text-center">
       <h1 className="text-xl font-semibold tracking-tight">
@@ -31,6 +34,19 @@ export function Welcome() {
           </button>
         ))}
       </div>
+      {/* 情景推演引导：让用户知道还有第二个能力 */}
+      <button
+        onClick={() => setMode("scenario")}
+        className="mt-3 flex max-w-md items-center gap-2.5 rounded-xl border border-violet-300/60 bg-violet-500/5 px-4 py-2.5 text-left text-xs transition-colors hover:bg-violet-500/10 dark:border-violet-700/60"
+      >
+        <FlaskConical className="size-4 shrink-0 text-violet-500" />
+        <span className="text-muted-foreground">
+          想预判"如果战争增多、粮食欠收，哪些板块会动"？
+          <span className="font-medium text-violet-600 dark:text-violet-400">
+            试试情景推演 →
+          </span>
+        </span>
+      </button>
     </div>
   );
 }

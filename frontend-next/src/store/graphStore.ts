@@ -22,6 +22,8 @@ export interface QuoteData {
 }
 
 interface GraphState {
+  /** 主区视图模式：研报对话 / 情景推演（全局，Welcome/推演面板可切换） */
+  mode: "chat" | "scenario";
   /** 意图：research / refine / chat */
   intent: string | null;
   /** 节点状态表，key 为后端节点名（router/planner/...） */
@@ -46,6 +48,7 @@ interface GraphState {
   quote: QuoteData | null;
 
   reset: () => void;
+  setMode: (m: "chat" | "scenario") => void;
   /** 会话切换时清理（不动 running，避免误杀仍在后台跑的 run） */
   clearSession: () => void;
   setIntent: (intent: string) => void;
@@ -58,6 +61,7 @@ interface GraphState {
 }
 
 export const useGraphStore = create<GraphState>((set) => ({
+  mode: "chat",
   intent: null,
   nodes: {},
   order: [],
@@ -71,6 +75,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   startedAt: null,
   endedAt: null,
 
+  setMode: (m) => set({ mode: m }),
   reset: () =>
     set({
       intent: null, nodes: {}, order: [], error: null, running: true,

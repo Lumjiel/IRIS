@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAui } from "@assistant-ui/react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useGraphStore, type QuoteData } from "@/store/graphStore";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -116,6 +118,88 @@ const EXAMPLES = [
   "国内房地产政策全面松绑",
   "AI 算力需求见顶回落",
 ];
+
+function extractCode(target: string): string | null {
+  const m = target.match(/\d{6}/);
+  return m ? m[0] : null;
+}
+
+/** 推演条目联动：带代码的标的可查实时行情 / 一键转研报深入研究 */
+function ImpactActions({ target }: { target: string }) {
+  const code = extractCode(target);
+  const aui = useAui();
+  const setMode = useGraphStore((s) => s.setMode);
+  const [quote, setQuote] = useState<QuoteData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  if (!code) return null;
+
+  const name = target.replace(/\(?\d{6}\)?/g, "").replace(/[：:]/g, " ").trim() || code;
+
+  const fetchQuote = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/stock/${code}/quote`, { cache: "no-store" });
+      const d = await r.json();
+      setQuote((d.quote ?? d) as QuoteData);
+      setOpen(true);
+    } catch {
+      /* fail-open */
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pct = quote?.涨跌幅 ? Number(quote.涨跌幅) : null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t pt-2 text-[11px]">
+      {!open ? (
+        <button
+          onClick={() => void fetchQuote()}
+          className="text-muted-foreground transition-colors hover:text-violet-500"
+        >
+          {loading ? "行情加载中…" : `📊 查 ${code} 实时行情`}
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-mono text-muted-foreground">{code}</span>
+          <span className="font-semibold tabular-nums">{quote?.最新价 ?? "—"}</span>
+          {pct !== null && !Number.isNaN(pct) && (
+            <span
+              className={cn(
+                "font-medium tabular-nums",
+                pct >= 0 ? "text-red-600" : "text-emerald-600",
+              )}
+            >
+              {pct > 0 ? "+" : ""}
+              {pct.toFixed(2)}%
+            </span>
+          )}
+          {quote?.市盈率 && (
+            <span className="text-muted-foreground">
+              PE <span className="tabular-nums text-foreground">{quote.市盈率}</span>
+            </span>
+          )}
+          {quote?.data_source && (
+            <span className="text-muted-foreground/70" title={quote.data_source}>
+              {quote.data_source}
+            </span>
+          )}
+        </div>
+      )}
+      <button
+        onClick={() => {
+          aui.thread.append(`研究一下 ${code} ${name} 的投资价值`);
+          setMode("chat");
+        }}
+        className="ml-auto font-medium text-violet-600 transition-colors hover:text-violet-500 dark:text-violet-400"
+      >
+        → 转研报深入研究
+      </button>
+    </div>
+  );
+}
 
 /**
  * 情景推演面板：输入对未来的预测情景 → 方向 × 概率 × 依据链
@@ -641,7 +725,7 @@ export function ScenarioPanel() {
           {/* 推演明细表 */}
           <div className="overflow-hidden rounded-xl border bg-card">
             <div className="border-b bg-muted/40 px-4 py-2 text-xs font-semibold">
-              板块推演明细 · 按 |概率-50%| 降序
+              板块推演明细 · 主观情景概率 · 按 |概率-50%| 降序
             </div>
             <div className="divide-y">
               {result.impacts.map((imp, i) => (
@@ -658,6 +742,7 @@ export function ScenarioPanel() {
                         "font-mono text-sm font-bold",
                         imp.direction === "up" ? "text-red-500" : "text-emerald-600",
                       )}
+                      title="主观情景概率：基于历史类比与因子逻辑的估计，非统计精确值"
                     >
                       {imp.direction === "up" ? "涨" : "跌"} {imp.probability}%
                     </span>
@@ -692,6 +777,8 @@ export function ScenarioPanel() {
                       类比案例：{imp.case_refs.join("、")}
                     </div>
                   )}
+                  {/* 联动：查行情 / 转研报 */}
+                  <ImpactActions target={imp.target} />
                 </div>
               ))}
             </div>
