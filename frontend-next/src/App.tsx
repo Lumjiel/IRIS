@@ -29,7 +29,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 function AppInner() {
-  const [mode, setMode] = useState<"chat" | "scenario">("chat");
+  const mode = useGraphStore((s) => s.mode);
+  const setMode = useGraphStore((s) => s.setMode);
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth >= 768,
   );
