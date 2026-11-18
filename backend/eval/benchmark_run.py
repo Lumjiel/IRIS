@@ -6,7 +6,8 @@ IRIS 端到端 Benchmark 运行器（docs/benchmark.md 数据来源）
 - 端到端延迟（请求发出 → [DONE]）
 - 六章节完整率（报告含 一~六 章标题）
 - 数据来源标注率（「来源」标注次数 / 经验阈值 4，上限 100%）
-- Reviewer 一次通过率（review_status=PASS 且无 FAIL 回跳）
+- Reviewer 首轮通过率（review_pass_first_try：首轮 review_status=PASS 且全程无 FAIL 回跳，
+  逐轮采集实现；附 reviewer_rounds / review_final_status）
 - Token 消耗（/api/usage 差值；real=provider 回传，est=流式字符估算）
 
 用法：
@@ -59,6 +60,49 @@ def usage_snapshot(reset=False):
     return r.json()["usage"]
 
 
+def ingest_event(ev: dict, acc: dict, now: float):
+    """解析单条 SSE 事件，更新采集累加器 acc（纯函数，供单测回放）。
+
+    两处历史坑（2026-11-19 修复，此前归档 node_elapsed 只剩 {'intent': 0.0}）：
+    - 节点耗时：traced_* 包装经 emit_node_event 发出的 start/done 事件把 elapsed 挂在
+      payload 顶层（utils/streaming.py），只有 routes 预跑路由的 intent 事件嵌在 data 里；
+      旧代码只读 data["elapsed"]，per-node 耗时被整体丢弃。
+    - 首轮通过：reviewer 每轮执行都会在 graph 流上发一条带 review_status 的节点更新
+      事件（routes astream 透传 state_update），旧代码覆盖写只留最终状态，本模块
+      文档声明的「PASS 且无 FAIL 回跳」从未真正实现。
+
+    同一节点多轮执行（修订回跳场景）elapsed 按 step 累加：定位「修订轮耗时」要的是
+    总量，轮数由 reviewer_rounds 单独给出，两者不混装。
+    """
+    step = ev.get("step", "")
+    data = ev.get("data") or {}
+    if step.endswith("_token") and acc["first_token_at"] is None and isinstance(data, dict) and data.get("token"):
+        acc["first_token_at"] = now
+
+    # elapsed 双形态：顶层（traced_* done 事件）/ data 嵌套（intent 预跑路由事件）
+    elapsed = ev.get("elapsed")
+    if elapsed is None and isinstance(data, dict):
+        elapsed = data.get("elapsed")
+    if isinstance(elapsed, (int, float)) and elapsed > 0:
+        acc["node_elapsed"][step] = round(acc["node_elapsed"].get(step, 0.0) + elapsed, 2)
+
+    if isinstance(data, dict):
+        if step == "reviewer" and data.get("review_status"):
+            acc["reviewer_statuses"].append(data["review_status"])
+        if step == "writer" and data.get("final_report"):
+            acc["final_report"] = data["final_report"]
+
+
+def finalize_review(statuses: list[str]) -> tuple[bool, int, str]:
+    """按模块文档声明实现首轮通过判定：首轮即 PASS 且全程无 FAIL 回跳。
+
+    返回 (review_pass_first_try, reviewer_rounds, review_final_status)。
+    旧实现是覆盖写只留最终状态——字段名与实现不符的问题在 2026-11-19 取证中暴露并修复。
+    """
+    first_try = bool(statuses) and statuses[0] == "PASS" and "FAIL" not in statuses
+    return first_try, len(statuses), statuses[-1] if statuses else ""
+
+
 def run_one(stock_code: str, name: str) -> dict:
     thread_id = f"bench-{stock_code}-{time.time():.0f}"  # 时间戳字符串，无类型转换
     body = {
@@ -70,11 +114,8 @@ def run_one(stock_code: str, name: str) -> dict:
     }
     headers = {"Content-Type": "application/json", "X-User-Id": USER_ID}
 
-    final_report = ""
-    review_status = ""
-    node_elapsed = {}
+    acc = {"first_token_at": None, "node_elapsed": {}, "reviewer_statuses": [], "final_report": ""}
     t0 = time.time()
-    first_token_at = None
 
     with httpx.stream("POST", f"{BASE}/chat", json=body, headers=headers,
                       timeout=httpx.Timeout(600, connect=15)) as resp:
@@ -94,19 +135,13 @@ def run_one(stock_code: str, name: str) -> dict:
                         ev = json.loads(payload)
                     except json.JSONDecodeError:
                         continue
-                    step = ev.get("step", "")
-                    data = ev.get("data") or {}
-                    if step.endswith("_token") and first_token_at is None and data.get("token"):
-                        first_token_at = time.time() - t0
-                    if isinstance(data, dict):
-                        if "elapsed" in data:
-                            node_elapsed[step] = data["elapsed"]
-                        if step == "reviewer" and data.get("review_status"):
-                            review_status = data["review_status"]
-                        if step == "writer" and data.get("final_report"):
-                            final_report = data["final_report"]
+                    ingest_event(ev, acc, now=time.time() - t0)
 
     latency = round(time.time() - t0, 1)
+    first_token_at = acc["first_token_at"]
+    final_report = acc["final_report"]
+    review_pass_first_try, reviewer_rounds, review_final_status = \
+        finalize_review(acc["reviewer_statuses"])
 
     chapters_hit = sum(1 for c in CHAPTERS if c in final_report)
     chapter_rate = round(chapters_hit / len(CHAPTERS) * 100)
@@ -124,8 +159,10 @@ def run_one(stock_code: str, name: str) -> dict:
         "source_rate_pct": source_rate,
         "source_tags": source_tags,
         "report_chars": report_chars,
-        "review_pass_first_try": review_status == "PASS",
-        "node_elapsed_s": {k: v for k, v in sorted(node_elapsed.items())},
+        "review_pass_first_try": review_pass_first_try,
+        "reviewer_rounds": reviewer_rounds,
+        "review_final_status": review_final_status,
+        "node_elapsed_s": {k: v for k, v in sorted(acc["node_elapsed"].items())},
     }
 
 
