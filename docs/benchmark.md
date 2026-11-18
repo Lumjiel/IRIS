@@ -45,6 +45,21 @@
 | **RAG 引用命中率** | 检索结果是否被引用到报告中 | > 60% |
 | **Reviewer 通过率** | 一次生成即 PASS 的比例 | > 50% |
 
+### 结果 JSON 字段口径（2026-11-19 采集修复后）
+
+`backend/eval/reports/benchmark_results.json` 各字段的准确含义——**读历史归档前必读**：
+
+- `review_pass_first_try`：首轮 review_status=PASS **且全程无 FAIL 回跳**。
+  ⚠️ 历史口径断层：2026-11-19 之前该字段实现为覆盖写，只记录**最终**审查状态
+  （v2/v2.1 两份归档里 True 均表示「最终通过」而非「首轮通过」），与修复后的语义不可比；
+  修复前样本的修订轮数只能由 est_completion 字符算术反推。
+- `reviewer_rounds` / `review_final_status`：2026-11-19 新增——reviewer 实际执行轮数
+  （即修订轮数的直接留痕，不再需要反推）与最终审查状态。
+- `node_elapsed_s`：各节点耗时（秒）。⚠️ 2026-11-19 之前该字段因 schema 错配
+  （采集脚本只读 `data.elapsed`，节点事件 elapsed 在 SSE payload 顶层）只漏存了
+  `{'intent': 0.0}`，历史归档无有效 per-node 数据；修复后同一节点多轮执行按 step 累加
+  （修订场景 writer 多轮总耗时，轮数看 `reviewer_rounds`）。
+
 ## 评测结果
 
 ### 综合评分
