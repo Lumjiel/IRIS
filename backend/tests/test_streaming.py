@@ -25,16 +25,16 @@ class TestQueueRegistry:
         streaming.set_token_queue(None)
         assert streaming.get_token_queue() is None
 
-    def test_register_unregister_thread_queues(self):
+    def test_register_thread_queues(self):
         tq, nq = asyncio.Queue(), asyncio.Queue()
         streaming.register_queues("t1", tq, nq)
         got = streaming.get_queues_by_thread("t1")
         assert got == {"token": tq, "node": nq}
-        streaming.unregister_queues("t1")
-        assert streaming.get_queues_by_thread("t1") is None
-
-    def test_unregister_unknown_is_noop(self):
-        streaming.unregister_queues("nonexistent-thread")
+        # 同 thread_id 重开覆盖旧条目（注册表设计为进程内有界 dict，无逐条清理，
+        # 弃用会话条目留到进程重启——原 unregister_queues 死代码已删，见 graph 清理）
+        streaming.register_queues("t1", nq, tq)
+        got = streaming.get_queues_by_thread("t1")
+        assert got == {"token": nq, "node": tq}
 
     def test_emit_node_event_with_queue(self):
         q = asyncio.Queue()

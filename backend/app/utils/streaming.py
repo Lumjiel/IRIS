@@ -55,10 +55,6 @@ def register_queues(thread_id: str, token_q: asyncio.Queue, node_q: asyncio.Queu
     _active_queues[thread_id] = {"token": token_q, "node": node_q}
 
 
-def unregister_queues(thread_id: str):
-    _active_queues.pop(thread_id, None)
-
-
 def get_queues_by_thread(thread_id: str) -> dict | None:
     return _active_queues.get(thread_id)
 
