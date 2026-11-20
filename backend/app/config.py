@@ -45,6 +45,7 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
 
 CHECKPOINT_DB = os.getenv("CHECKPOINT_DB", os.path.join(DATA_DIR, "checkpoints.db"))
 STORE_DB = os.getenv("STORE_DB", os.path.join(DATA_DIR, "store.db"))
+MEMORY_TASKS_DB = os.getenv("MEMORY_TASKS_DB", os.path.join(DATA_DIR, "memory_tasks.db"))
 
 # === LangSmith 可观测性 ===
 LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY", "")

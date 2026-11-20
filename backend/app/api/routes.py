@@ -410,11 +410,26 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                         # 后台长期记忆写入：规则+LLM 抽取 → 独立短命 store 上下文，不阻塞响应、
                         # 不依赖本请求的 store 连接（fail-open，失败只打日志）
                         from app.utils.memory_store import remember_from_session
+                        from app.utils.memory_tasks import enqueue_memory_task, mark_memory_task_done
+                        # 落盘保护：create_task 之前先落 pending 任务，进程中途死掉
+                        # 由下次启动扫描重放（确定性 key 幂等，重放不产生重复记忆）
+                        mem_task_id = enqueue_memory_task(
+                            user_id, request.thread_id, request.query, final_snapshot)
                         mem_task = asyncio.create_task(
                             remember_from_session(user_id, request.query, final_snapshot,
                                                   thread_id=request.thread_id)
                         )
                         _background_mem_tasks.add(mem_task)
+                        if mem_task_id is not None:
+                            def _mark_memory_done(t, _tid=mem_task_id):
+                                try:
+                                    exc = t.exception()
+                                    # 同步 SQLite 短连接（本地毫秒级）；意外异常留 pending 待启动重放
+                                    mark_memory_task_done(_tid,
+                                                          f"{type(exc).__name__}: {exc}" if exc else "")
+                                except Exception:
+                                    pass
+                            mem_task.add_done_callback(_mark_memory_done)
                         mem_task.add_done_callback(_background_mem_tasks.discard)
                         await graph_queue.put(None)
 

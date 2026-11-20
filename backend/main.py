@@ -70,6 +70,9 @@ async def _setup_memory_store():
     try:
         await ensure_store_setup()
         await seed_demo_memories()
+        # 落盘保护收尾：重放上一次进程没跑完的记忆写入任务（pending → done）
+        from app.utils.memory_tasks import replay_pending_memory_tasks
+        await replay_pending_memory_tasks()
     except Exception as e:
         log.warning(f"[Memory] 启动初始化失败（记忆功能降级，不影响服务）: {e}")
 
