@@ -8,10 +8,10 @@ asyncio task，进程在 task 完成前死掉（重启/崩溃），这一轮的�
 - SSE 收尾、create_task 之前先同步落一条 pending 任务（memory_tasks.db，
   与 checkpoint/store 两库再隔离一个文件，单写方无竞争）
 - task 完成回调收账：无错 → done；意外异常 → attempts+1 保留 pending
-- 应用启动扫描 pending 重放（remember_from_session 内部 fail-open 不抛，
-  watch:{code} 确定性 key 幂等 upsert，重放不产生重复记忆）
+- 应用启动扫描 pending 重放（remember_from_session 内部 fail-open 不抛；
+  幂等仅覆盖 watch:{code} 确定性 key——uuid 类在收账失败窗口内重放会重复）
 - fail-open 双向：任务表打不开不阻塞记忆写入（退回原无保护行为）；
-  重放失败累计超 MAX_ATTEMPTS 标 dead 不再重放，防止毒任务每轮重试
+  重放失败累计超 MAX_ATTEMPTS 后被重放查询过滤（status 仍 pending，非 dead），防毒任务每轮重试
 """
 import json
 import sqlite3

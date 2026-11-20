@@ -412,7 +412,7 @@ async def chat_endpoint(request: ChatRequest, req: Request):
                         from app.utils.memory_store import remember_from_session
                         from app.utils.memory_tasks import enqueue_memory_task, mark_memory_task_done
                         # 落盘保护：create_task 之前先落 pending 任务，进程中途死掉
-                        # 由下次启动扫描重放（确定性 key 幂等，重放不产生重复记忆）
+                        # 由下次启动扫描重放（幂等仅覆盖 watch 类；uuid 类在收账失败窗口内重放会重复）
                         mem_task_id = enqueue_memory_task(
                             user_id, request.thread_id, request.query, final_snapshot)
                         mem_task = asyncio.create_task(
