@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS memory_tasks (
 
 def _connect() -> sqlite3.Connection:
     """短命连接，随用随关（与记忆写入的短命 store 上下文同策略）。"""
-    conn = sqlite3.connect(MEMORY_TASKS_DB, timeout=5)
+    conn = sqlite3.connect(MEMORY_TASKS_DB, timeout=5)  # timeout=5 即 busy_timeout
+    conn.execute("PRAGMA journal_mode=WAL")  # 与 routes.py 的 checkpoint/store 连接同惯例
     conn.execute(_SCHEMA)  # 建表幂等：首次使用即建，不等启动钩子
     return conn
 
