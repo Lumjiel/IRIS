@@ -69,7 +69,7 @@ def ingest_event(ev: dict, acc: dict, now: float):
       旧代码只读 data["elapsed"]，per-node 耗时被整体丢弃。
     - 首轮通过：reviewer 每轮执行都会在 graph 流上发一条带 review_status 的节点更新
       事件（routes astream 透传 state_update），旧代码覆盖写只留最终状态，本模块
-      文档声明的「PASS 且无 FAIL 回跳」从未真正实现。
+      文档声明的「PASS 且全程无 FAIL 回跳」从未真正实现。
 
     同一节点多轮执行（修订回跳场景）elapsed 按 step 累加：定位「修订轮耗时」要的是
     总量，轮数由 reviewer_rounds 单独给出，两者不混装。
